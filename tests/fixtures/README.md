@@ -105,16 +105,34 @@ Market ZZB→ZZA inbound havuzu = {NI1, NI2, RB2}, outbound havuzu = {NO1, NO2, 
 
 ## Rakip yenme ve sıralama ödülü (Kısıt D)
 
-Market ZZA→ZZB rakipleri: R1 (T_comp=300), R2 (T_comp=250).
-- π1(J=280)≤300 → **R1 yenildi**. π1,π2 ≤250? Hayır → **R2 yenilmedi**.
-- N=2, yenilen=1, r = 2−1 = **1**. b (taban, verilmiş) = 2.
-- `W(N=2,b=2,r=1)` = **1.6321205588285577** (gerçek `change_ranking_input.xlsx`'ten
-  birebir alınan değer).
+**Rakip tanımı düzeltmesi (M2, `docs/decisions.md` 2026-07-09)**: bir "rakip"
+TEK BİR TAŞIYICI (Cr1), o taşıyıcının o (o,d,gün)'deki TÜM itineraryleri o
+rakibin PARÇASI (min T_comp'a konsolide edilir), ayrı rakipler değil. Rival
+satırları artık DİSTİNCT carrier kodlarıyla (`R1..R5`), R4 ayrıca İKİNCİ (daha
+kötü) bir itinerary ile konsolidasyonu test ediyor (bkz.
+`tests/unit/test_competitors.py`).
 
-Market ZZB→ZZA rakipleri: R3 (T_comp=500), R4 (T_comp=400), R5 (T_comp=445, **sınır**).
-- π3(J=445)≤500 → **R3 yenildi**. ≤400? Hayır → **R4 yenilmedi**. ≤445 (sınır, ≤ dahil)
-  → **R5 yenildi**.
-- N=3, yenilen=2, r = 3−2 = **1**. b (taban) = 1 (sıralama değişmedi).
+**b_od düzeltmesi**: b_od artık `src/data/ranking.py::derive_b_od` ile
+TÜRETİLİYOR (M0'da elle seçilmiş b_od=2 değeri YANLIŞTI — sadece belirli bir
+lookup satırını test etmek için hardcode edilmişti, gerçek formülle
+tutarsızdı). Doğru formül: b_od = N − (TK'nin BASELINE en iyi itinerary'sinin
+D'nin AYNI ≤ kuralıyla yendiği rakip sayısı) — r'nin kendisinin, optimizasyon
+ÖNCESİ zamana uygulanmış hali, ayrı bir kural değil.
+
+Market ZZA→ZZB rakipleri: R1 (T_comp=300), R2 (T_comp=250).
+- Baseline en iyi = π1 (J=280). 280≤300 → **R1 baseline'da yenildi**. 280≤250? Hayır.
+- b_od = N(2) − beaten_baseline(1) = **1** (M0'ın hardcode edilmiş 2 değeri değil).
+- π1(J=280)≤300 → **R1 yenildi**. π1,π2 ≤250? Hayır → **R2 yenilmedi**.
+- N=2, yenilen=1, r = 2−1 = **1**.
+- `W(N=2,b=1,r=1)` = **1.0** (gerçek `change_ranking_input.xlsx`'ten birebir).
+
+Market ZZB→ZZA rakipleri: R3 (T_comp=500), R4 (T_comp=400, 2 itinerary min),
+R5 (T_comp=445, **sınır**).
+- Baseline en iyi = π3 (J=445). 445≤500 → **R3 baseline'da yenildi**. ≤400? Hayır.
+  ≤445 (sınır, ≤ dahil) → **R5 baseline'da yenildi**.
+- b_od = N(3) − beaten_baseline(2) = **1**.
+- π3(J=445)≤500 → **R3 yenildi**. ≤400? Hayır → **R4 yenilmedi**. ≤445 → **R5 yenildi**.
+- N=3, yenilen=2, r = 3−2 = **1**.
 - `W(N=3,b=1,r=1)` = **0.0** (sentetik, "değişim yok → ödül yok" mantığı).
 
 ## Toplam amaç değeri (Gün=1)
@@ -122,14 +140,19 @@ Market ZZB→ZZA rakipleri: R3 (T_comp=500), R4 (T_comp=400), R5 (T_comp=445, **
 ρ_ZZA-ZZB=100, ρ_ZZB-ZZA=50 (`synthetic_yolcu_verisi.xlsx`).
 
 ```
-obj = 100 × (1.5 + 1.6321205588285577) + 50 × (1.0 + 0.0)
-    = 100 × 3.1321205588285577 + 50
-    = 313.21205588285577 + 50
-    = 363.21205588285577
+obj = 100 × (1.5 + 1.0) + 50 × (1.0 + 0.0)
+    = 100 × 2.5 + 50
+    = 250.0 + 50
+    = 300.0
 ```
 
 Bileşenler ayrı ayrı: bağlantı-ödülü bileşeni = 100×1.5+50×1.0 = **200.0**; sıralama-ödülü
-bileşeni = 100×1.6321205588285577+50×0.0 = **163.21205588285577**.
+bileşeni = 100×1.0+50×0.0 = **100.0**.
+
+**Not**: bu değer (300.0), `adjustable_set:none` (Rfix) senaryosunda hem B/C
+hem D bileşenlerinin BİRLİKTE doğru bağlandığını kanıtlayan M2'nin birincil
+solve-testinin beklenen değeridir (Rfix'te r=b_od her zaman, çünkü zaman
+serbestliği yok — bkz. aşağıdaki "Test stratejisi" notu).
 
 ## Rotasyon (Kısıt A) — `synthetic_flight_pairs.xlsx`
 
@@ -167,3 +190,34 @@ sentezlenmiş adaylar da devrede (bkz. `docs/decisions.md` 2026-07-09,
 elle çıkarılmadı. Test bu değeri **alt sınır olarak KULLANMIYOR** (>=400.0
 assert ediyor, tam değeri değil) — 568.75'in kendisi doğrulanana kadar sadece
 gözlemlenen/loglanan bir referans noktasıdır.
+
+## M2 eki — D kısıtı, rank clamp düzeltmesi, under-claim toleransı
+
+**Düzeltilmiş hand-calc** (`adjustable_set:none`, D dahil): bkz. yukarıdaki
+"Rakip yenme ve sıralama ödülü" bölümü — Gün1 connection_reward=200.0,
+ranking_reward=100.0. Gün1+Gün2 birlikte (M1'in 2-günlük yapısı korunuyor):
+connection_reward=**400.0** (200×2), ranking_reward=**100.0** (rakip verisi
+yalnızca Gün1'de var, Gün2 pazarları N=0 → katkı yok), **toplam=500.0**
+(`tests/solve/test_m2_ranking_reward.py::test_fixture_objective_matches_corrected_hand_calc`
+ile assert edildi).
+
+**Kritik bulgu — rank clamp infeasibility tuzağı** (CLI end-to-end testiyle
+yakalandı, `docs/decisions.md` 2026-07-09): r=N-beaten formülü [0,N] üretebilir
+ama gerçek `change_ranking_input.xlsx`'te r asla 0 değil (min=1, doğrulandı).
+İlk tasarımda rank-onehot linking'i EŞİTLİK (`sum(r·onehot_r)==rank`) olarak
+kurulmuştu — bu, solver'ın beaten=N'e ulaşmasını YAPISAL OLARAK imkansız
+kılıyordu (r=0'ın onehot karşılığı yok), yani solver en az bir rakibi BEDAVA
+OLSA bile kasıtlı yenilmemiş bırakmak ZORUNDA kalıyordu. Düzeltme: linking
+EŞİTSİZLİK yapıldı (`>=`), r'nin kendi domain'i [1,N] + W'nin monotonluğu
+otomatik olarak r=max(1,N-beaten)'e oturuyor (C'nin slot argümanıyla aynı
+mantık — max()/min() lineerleştirmesi gerekmedi).
+
+**Under-claim toleransı** (kasıtlı tasarım kararı, validator'da dokümante):
+forward-only D forcing (monotonik W varsayımı altında) claimed_beaten'i
+HER ZAMAN actual_beaten'in bir ALT KÜMESİ yapar (over-claim yapısal olarak
+imkansız) — bu yüzden under-claim (gerçekte yenilen ama raporlanmayan bir
+rakip) hiçbir zaman ödülü ŞİŞİRMEZ, sadece bilgi eksikliğidir, diskalifiye
+sebebi DEĞİLDİR. Validator bunu flag ETMEZ (bkz. `test_validate_allows_under_claimed_beaten_rivals`,
+ZZB-ZZA pazarında NI1×NO2'nin serbest zamanlarla J=360 elde edip R3,R4,R5'in
+ÜÇÜNÜ de yenebildiği ama sadece R3,R5'in claim edildiği elle-doğrulanmış bir
+senaryo).

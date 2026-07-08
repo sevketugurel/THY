@@ -130,3 +130,91 @@ def test_validate_catches_reported_time_outside_legal_window(tmp_path):
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert not result.is_valid
     assert any("window" in v.lower() for v in result.violations)
+
+
+def _write_output_with_ranking(tmp_path, connections, adjusted_times, ranking_results):
+    data = {
+        "objective_value": 0.0,
+        "selected_connections": connections,
+        "adjusted_flight_times": adjusted_times,
+        "ranking_results": ranking_results,
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }
+    path = tmp_path / "output.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+def test_validate_passes_correctly_reported_beaten_rivals_and_rank(tmp_path):
+    # MI1xMO2, J=280, correctly beats R1(300) not R2(250) -- matches
+    # fixtures/README.md hand calc: N=2, beaten=[R1], rank=1.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[{"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+        ],
+        ranking_results=[{"o": "ZZA", "d": "ZZB", "gun": 1, "rank": 1, "beaten_rivals": ["R1"]}],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
+    assert result.is_valid, result.violations
+
+
+def test_validate_catches_fabricated_beaten_rival(tmp_path):
+    # Same offered connection (only beats R1), but output FALSELY claims R2
+    # (250) was also beaten -- J=280 does not beat T_comp=250.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[{"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+        ],
+        ranking_results=[{"o": "ZZA", "d": "ZZB", "gun": 1, "rank": 0, "beaten_rivals": ["R1", "R2"]}],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
+    assert not result.is_valid
+    assert any("R2" in v and "beaten" in v.lower() for v in result.violations)
+
+
+def test_validate_allows_under_claimed_beaten_rivals(tmp_path):
+    # Forward-only D forcing (monotonic W(r)) can legitimately leave a
+    # genuinely-beatable rival unclaimed in a flat-reward-tie scenario (e.g.
+    # beating N-1 vs N rivals both land on the same clamped r=1) -- this is
+    # NOT a violation (claimed subset of actual is always reward-safe, never
+    # inflated). NI1xNO2 reported at arr=700,dep=820 (within each leg's
+    # +-180min window of baseline 795/1000) -> gap=120, J=K_od(240)+120=360,
+    # which genuinely beats ALL THREE rivals (R3=500,R4=400,R5=445) -- but
+    # only R3,R5 are claimed, R4 deliberately left out.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[{"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 120}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 700},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 820},
+        ],
+        ranking_results=[{"o": "ZZB", "d": "ZZA", "gun": 1, "rank": 1, "beaten_rivals": ["R3", "R5"]}],
+    )
+    result = validate_output(
+        output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U,
+        adjustable_window_min=180, adjustable_set="all",
+    )
+    assert result.is_valid, result.violations
+
+
+def test_validate_catches_rank_inconsistent_with_beaten_count(tmp_path):
+    # beaten_rivals correctly lists just R1, but claimed rank doesn't match
+    # N(2) - len(beaten)(1) = 1.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[{"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+        ],
+        ranking_results=[{"o": "ZZA", "d": "ZZB", "gun": 1, "rank": 99, "beaten_rivals": ["R1"]}],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
+    assert not result.is_valid
+    assert any("rank" in v.lower() for v in result.violations)

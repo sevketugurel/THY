@@ -51,3 +51,19 @@ def test_main_cli_requires_exactly_one_data_source(tmp_path):
     )
     assert result.returncode != 0
     assert "exactly one" in result.stderr
+
+
+def test_main_cli_is_deterministic_excluding_wall_clock(tmp_path):
+    def run(out_path):
+        subprocess.run(
+            [sys.executable, "main.py", "--config", "src/config/standard.yaml",
+             "--fixture", "--output", str(out_path)],
+            cwd=ROOT, capture_output=True, text=True, timeout=60,
+        )
+        data = json.loads(out_path.read_text())
+        del data["solver_metrics"]["solve_time_sec"]
+        return data
+
+    run1 = run(tmp_path / "out1.json")
+    run2 = run(tmp_path / "out2.json")
+    assert run1 == run2

@@ -1,20 +1,29 @@
 """Independent feasibility validator -- deliberately does not import src.model.*
-or src.candidates.*. Re-derives gap validity and legal-window membership from
-raw data + the OUTPUT's own reported values, never trusting a value the solver
-already computed internally (disqualification insurance, plan §1/§5). Some
-logic (epoch anchor, window bounds) is intentionally duplicated from
-src.candidates.generate rather than imported -- a shared bug there must not be
-able to silently pass validation too.
+or src.candidates.*. Re-derives gap validity, legal-window membership, and
+beaten-rival/rank claims from raw data + the OUTPUT's own reported values,
+never trusting a value the solver already computed internally (disqualification
+insurance, plan §1/§5). Some logic (epoch anchor, window bounds) is
+intentionally duplicated from src.candidates.generate rather than imported --
+a shared bug there must not be able to silently pass validation too.
 
-M1 scope: B-style gap-window check now validated against the OUTPUT's own
-reported adjusted times (not static baseline, since times can genuinely move),
-plus a legal-window check per adjustable flight instance. A/D/E/F/G checks land
-alongside their constraint groups in M2-M4.
+D-checking reuses src.data.block_times / src.data.competitors (the DATA layer,
+not src.model.*/src.candidates.*) to recompute journey times and rival best
+times -- this is a disclosed, narrower sharing than "zero shared code": a bug
+in the block-time/rival DERIVATION itself could still slip through both the
+model and the validator, but the DECISION LOGIC (which candidates get
+selected, which beats get claimed) is independently re-verified.
+
+M1: B-style gap-window check validated against the OUTPUT's own reported
+adjusted times, plus a legal-window check per adjustable flight instance.
+M2: beaten_rivals/rank claims re-derived and cross-checked. A/E/F/G land
+alongside their constraint groups in M3-M4.
 """
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from src.data.block_times import BlockTimeProvider
+from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_od_table
 
 
@@ -109,5 +118,60 @@ def validate_output(
                 f"connection {conn['od']} FlNo1={conn['flno1']} FlNo2={conn['flno2']} "
                 f"Gün={conn['gun']}: gap={actual_gap}min outside [{L},{U}]"
             )
+
+    ranking_results = data.get("ranking_results", [])
+    if ranking_results:
+        provider = BlockTimeProvider(tk, L=L, U=U)
+        offered_by_market = {}
+        for conn in data["selected_connections"]:
+            o, d = conn["od"].split("-")
+            arr_key = ("IB", conn["flno1"], conn["gun"])
+            dep_key = ("OB", conn["flno2"], conn["gun"])
+            if arr_key not in reported_times or dep_key not in reported_times:
+                continue
+            gap = reported_times[dep_key] - reported_times[arr_key]
+            try:
+                journey = provider.get_journey_constant(o, d) + gap
+            except KeyError:
+                continue
+            offered_by_market.setdefault((o, d, conn["gun"]), []).append(journey)
+
+        for entry in ranking_results:
+            market = (entry["o"], entry["d"], entry["gun"])
+            rivals = derive_rival_best_times(od_table, entry["o"], entry["d"], entry["gun"])
+            journeys = offered_by_market.get(market, [])
+            actual_beaten = {k for k, t_comp in rivals.items() if any(j <= t_comp for j in journeys)}
+            claimed_beaten = set(entry["beaten_rivals"])
+
+            for k in claimed_beaten - actual_beaten:
+                violations.append(
+                    f"ranking_results {entry['o']}-{entry['d']} Gün={entry['gun']}: "
+                    f"claims rival {k} beaten but no offered connection actually beats it"
+                )
+            # NOTE: actual_beaten - claimed_beaten (under-claiming) is deliberately
+            # NOT flagged as a violation. D's beat reification is forward-only when
+            # W(r) is monotonic (docs/model.md §5 D) -- this makes claimed_beaten
+            # a PROVABLE SUBSET of actual_beaten (over-claiming is structurally
+            # impossible, per the check above), so the reported reward can only be
+            # an equal-or-lower bound on the true achievable reward, never inflated.
+            # Under-claiming happens legitimately when W has a flat (tied) segment
+            # (e.g. beating N-1 vs N rivals both land on r=1 -- see
+            # tests/fixtures/README.md "M2 eki"); it costs nothing structurally and
+            # is not a disqualifying inconsistency, only a missed reporting detail.
+
+            # Clamped at 1 (never 0): the real change_ranking_input.xlsx table
+            # never defines a reward for r=0 (min observed r is always 1 --
+            # confirmed by inspection); beating ALL rivals lands on the same
+            # r=1 "best available" tier as beating all-but-one. Must match
+            # src/model/constraints_competition.py::add_rank_onehot's clamp
+            # exactly, or a correctly-full beaten_rivals list would be
+            # wrongly flagged here.
+            expected_rank = max(1, len(rivals) - len(claimed_beaten)) if rivals else 0
+            if entry["rank"] != expected_rank:
+                violations.append(
+                    f"ranking_results {entry['o']}-{entry['d']} Gün={entry['gun']}: "
+                    f"claimed rank={entry['rank']} inconsistent with max(1,N({len(rivals)})"
+                    f"-beaten({len(claimed_beaten)}))={expected_rank}"
+                )
 
     return ValidationResult(is_valid=not violations, violations=violations)

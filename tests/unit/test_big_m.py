@@ -15,7 +15,7 @@ marker: unit (solver-free, pure arithmetic).
 import pytest
 
 from src.candidates.generate import Candidate
-from src.model.big_m import derive_b_big_ms
+from src.model.big_m import derive_b_big_ms, derive_d_big_ms
 
 pytestmark = pytest.mark.unit
 
@@ -65,3 +65,27 @@ def test_ms_never_exceed_1440_for_recommended_window():
     c = _candidate(gap_lo=worst_gap_lo, gap_hi=worst_gap_hi)
     for m in derive_b_big_ms(c, L=L, U=U):
         assert m <= 1440
+
+
+# --- D (beat reification) Big-M ---
+
+def test_d_worked_example_matches_hand_calc():
+    # journey_const=220, gap_hi=420 (pi1, w=180) -> J_hi=640. T_comp=300.
+    # M_fwd = max(0, 640-300) = 340. gap_lo=-300 -> J_lo=-80.
+    # M_bwd = max(0, (300+1)-(-80)) = 381.
+    c = _candidate(gap_lo=-300, gap_hi=420)
+    m_fwd, m_bwd = derive_d_big_ms(c, journey_const=220, t_comp=300)
+    assert (m_fwd, m_bwd) == (340, 381)
+
+
+def test_d_ms_are_nonnegative():
+    c = _candidate(gap_lo=-300, gap_hi=420)
+    m_fwd, m_bwd = derive_d_big_ms(c, journey_const=220, t_comp=300)
+    assert m_fwd >= 0 and m_bwd >= 0
+
+
+def test_d_zero_forcing_when_always_beats():
+    # J_hi <= T_comp always -> beat=1 never needs relaxation (M_fwd=0).
+    c = _candidate(gap_lo=0, gap_hi=10)
+    m_fwd, _ = derive_d_big_ms(c, journey_const=100, t_comp=1000)
+    assert m_fwd == 0

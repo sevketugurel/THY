@@ -25,7 +25,7 @@ pytestmark = pytest.mark.unit
 # ---------------------------------------------------------------------------
 def test_load_od_table_returns_expected_row_count_and_columns():
     df = load_od_table(FIXDIR / "synthetic_od_table.xlsx")
-    assert len(df) == 12 * 2 + 5  # 12 TK rows x 2 days + 5 rival rows
+    assert len(df) == 12 * 2 + 6  # 12 TK rows x 2 days + 6 rival rows (R4 has 2 itineraries)
     assert list(df.columns) == [
         "cr1", "carrier_name", "dep1", "arr1", "flno1", "arr_time",
         "cr2", "dep2", "arr2", "flno2", "dep_time",

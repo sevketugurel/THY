@@ -48,12 +48,15 @@ def od_row(flno1, arr_min, flno2, dep_min, base_date, o, d, gtg_min):
     ]
 
 
-def rival_row(od, t_comp_min, flno1, flno2, gun=1):
+def rival_row(od, t_comp_min, flno1, flno2, carrier, gun=1):
+    # carrier = distinct Cr1 code -- a "rival" is a CARRIER (brief's N_od /
+    # T_comp_k semantics), not a row/itinerary. Multiple rows under the SAME
+    # carrier consolidate to that carrier's best (min) itinerary.
     base = GUN1_BASE if gun == 1 else GUN2_BASE
     o, d = od.split("-")
     return [
-        "XX", "Rival Air", o, "XHB", flno1, dtm(base, 600),
-        "XX", "XHB", d, flno2, dtm(base, 600 + 90),
+        carrier, f"Rival {carrier}", o, "XHB", flno1, dtm(base, 600),
+        carrier, "XHB", d, flno2, dtm(base, 600 + 90),
         duration_min(t_comp_min), od, gun,
     ]
 
@@ -84,13 +87,18 @@ def build_od_table():
         for r in rows:
             ws.append(r)
 
-    # rivals (Gün=1 only; ranking/D is independent of the G day-to-day test)
+    # rivals (Gün=1 only; ranking/D is independent of the G day-to-day test).
+    # Each rival is a DISTINCT carrier (N_od = distinct Cr1 count, per brief's
+    # semantics) -- ZZA-ZZB has N=2 (R1,R2), ZZB-ZZA has N=3 (R3,R4,R5).
     rivals = [
-        rival_row("ZZA-ZZB", 300, 8001, 8101),  # R1 - beaten by MI1xMO2 (J=280)
-        rival_row("ZZA-ZZB", 250, 8002, 8102),  # R2 - not beaten
-        rival_row("ZZB-ZZA", 500, 8003, 8103),  # R3 - beaten by NI1xNO2 (J=445)
-        rival_row("ZZB-ZZA", 400, 8004, 8104),  # R4 - not beaten
-        rival_row("ZZB-ZZA", 445, 8005, 8105),  # R5 - beaten (boundary, J==T_comp)
+        rival_row("ZZA-ZZB", 300, 8001, 8101, carrier="R1"),  # beaten by MI1xMO2 (J=280)
+        rival_row("ZZA-ZZB", 250, 8002, 8102, carrier="R2"),  # not beaten
+        rival_row("ZZB-ZZA", 500, 8003, 8103, carrier="R3"),  # beaten by NI1xNO2 (J=445)
+        rival_row("ZZB-ZZA", 400, 8004, 8104, carrier="R4"),  # not beaten (best itinerary)
+        rival_row("ZZB-ZZA", 450, 8014, 8114, carrier="R4"),  # R4's WORSE 2nd itinerary -- must
+                                                                # consolidate to min(400,450)=400,
+                                                                # NOT count as a 4th rival
+        rival_row("ZZB-ZZA", 445, 8005, 8105, carrier="R5"),  # beaten (boundary, J==T_comp)
     ]
     for r in rivals:
         ws.append(r)

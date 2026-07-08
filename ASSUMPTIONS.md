@@ -104,3 +104,35 @@ $\le 1440$ assert'i o durumda tekrar kontrol edilmeli.
 **Organizatöre soru**: "Ayarlanabilir saatler için pratik bir hareket penceresi
 öngörüyor musunuz (ör. baseline ±kaç saat), yoksa bizim seçtiğimiz makul bir
 varsayım (3 saat) kabul edilebilir mi?"
+
+---
+
+## VARSAYIM-4: "Rakip" = taşıyıcı (Cr1), aynı rakibin çoklu itineraryleri min T_comp'a konsolide edilir
+
+**Bulgu**: O&D tablosunda bir rakip taşıyıcı (ör. gerçek veride Emirates/"EK")
+aynı (o,d,gün) pazarında BİRDEN FAZLA satırda (farklı uçuş numarası
+kombinasyonlarıyla) görünebiliyor. Brief, "rakip" (rival) kavramını net
+tanımlamıyor — bir SATIR mı, yoksa bir TAŞIYICI mı?
+
+**Karar**: Bir "rakip" TEK BİR TAŞIYICI (Cr1 kodu). O taşıyıcının o
+(o,d,gün)'deki TÜM itineraryleri o rakibin PARÇASI (ayrı rakipler değil).
+$N_{od,h}$ = o pazardaki DİSTİNCT Cr1 (TK hariç) sayısı.
+$T^{comp}_{od,h,k}$ = carrier $k$'nin o pazardaki TÜM itinerarylerinin
+gate-to-gate süresinin MİNİMUMU (rakibin EN İYİ/en hızlı alternatifi).
+
+**Neden**: (a) D kısıtının "bir rakip ancak onu yenen en az bir bağlantı
+sunuluyorsa yenilmiş sayılır" ifadesi, "rakip"in tek bir rekabetçi ANTİTE
+olduğunu ima ediyor — aynı taşıyıcının 2 farklı uçuşu 2 AYRI rakip olarak
+sayılırsa, N_od suni şekilde şişer. (b) TK bir rakibi yenmek için rakibin
+EN HIZLI alternatifinden daha hızlı olmalı — aksi halde yolcu hala rakibin
+daha hızlı seçeneğini tercih edebilir, gerçekte "yenilmiş" sayılmaz.
+
+**Etki alanı**: `src/data/competitors.py::derive_rival_best_times`, tek nokta.
+Alternatif bir tanım gelirse (ör. her itinerary ayrı rakip) bu fonksiyonun
+groupby mantığı değişir, N_od/T_comp'u kullanan D kısıtı ve b_od derivasyonu
+otomatik güncellenir (tek noktadan besleniyorlar).
+
+**Organizatöre soru**: "Aynı rakip taşıyıcının bir O–D/gün pazarında birden
+fazla itinerary'si varsa, bunlar N_od hesabında AYRI rakipler mi sayılmalı,
+yoksa tek bir rakip (en iyi/en hızlı itineraryi ile temsil edilen) olarak mı
+konsolide edilmeli?"

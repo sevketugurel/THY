@@ -21,6 +21,8 @@ class SolveResult:
     gap_values: dict = None
     arr_times: dict = None
     dep_times: dict = None
+    rank_values: dict = None
+    beaten_rivals: dict = None
 
 
 def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: int) -> SolveResult:
@@ -50,6 +52,8 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
     gap_values = {}
     arr_times = {}
     dep_times = {}
+    rank_values = {}
+    beaten_rivals = {}
     objective_value = None
     if status in ("optimal", "time_limit"):
         objective_value = pyo.value(model.objective)
@@ -64,6 +68,13 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
         if hasattr(model, "t_dep"):
             for r in model.DEP_INSTANCES:
                 dep_times[r] = int(round(pyo.value(model.t_dep[r])))
+        if hasattr(model, "rank"):
+            for market in model.MARKETS:
+                rank_values[market] = int(round(pyo.value(model.rank[market])))
+        if hasattr(model, "beaten"):
+            for (o, d, gun, k) in model.MARKET_RIVALS:
+                if int(round(pyo.value(model.beaten[o, d, gun, k]))) == 1:
+                    beaten_rivals.setdefault((o, d, gun), []).append(k)
 
     return SolveResult(
         status=status,
@@ -73,4 +84,6 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
         gap_values=gap_values,
         arr_times=arr_times,
         dep_times=dep_times,
+        rank_values=rank_values,
+        beaten_rivals=beaten_rivals,
     )
