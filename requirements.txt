@@ -1,0 +1,7 @@
+pyomo>=6.7
+highspy>=1.7
+openpyxl>=3.1
+pandas>=2.2
+numpy>=1.26
+PyYAML>=6.0
+pytest>=8.0

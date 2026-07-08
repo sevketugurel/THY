@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>İleri Formülasyon Kılavuzu — Sezgisel Versiyon (v2)</title>
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+<style>
+  :root{
+    --ink:#1d2433; --ink-soft:#4a5468; --line:#e3e6ee; --paper:#ffffff; --wash:#f6f7fb;
+    --indigo:#4f46e5; --indigo-soft:#eef0fe;
+    --teal:#0f8f6f; --teal-soft:#e3f5ef;
+    --coral:#cf5a30; --coral-soft:#fbeae2;
+    --amber:#b9760f; --amber-soft:#fbefdb;
+    --blue:#2563eb; --blue-soft:#e7f0fd;
+    --green:#5a8a1e; --green-soft:#eef5e0;
+    --red:#c23b3b; --red-soft:#fbe9e9;
+    --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--wash); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.7; font-size:17px;
+  }
+  .wrap{max-width:880px; margin:0 auto; padding:0 22px 120px;}
+  header.top{
+    background:var(--ink); color:#fff; margin:0 0 0; padding:54px 22px 46px;
+  }
+  header.top .inner{max-width:880px; margin:0 auto;}
+  header.top .kicker{font-size:13px; letter-spacing:.22em; text-transform:uppercase; color:#9aa3c7; margin:0 0 14px;}
+  header.top h1{font-size:34px; line-height:1.2; margin:0 0 14px; font-weight:650;}
+  header.top p{margin:0; color:#c7cce0; font-size:16px; max-width:640px;}
+  header.top .meta{margin-top:22px; font-size:13px; color:#8b93b8; display:flex; gap:20px; flex-wrap:wrap;}
+  header.top .meta b{color:#c7cce0; font-weight:500;}
+
+  .howto{
+    background:var(--indigo-soft); border:1px solid #d9dcfa; border-radius:14px;
+    padding:18px 22px; margin:30px 0 10px;
+  }
+  .howto h2{margin:0 0 8px; font-size:16px; color:var(--indigo);}
+  .howto p{margin:6px 0; font-size:15px; color:var(--ink-soft);}
+
+  .module{margin:54px 0 0; padding-top:30px; border-top:2px solid var(--line);}
+  .module-tag{
+    display:inline-block; font-size:12px; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--indigo); background:var(--indigo-soft); padding:5px 11px; border-radius:20px; font-weight:600;
+  }
+  h2.mtitle{font-size:26px; margin:14px 0 6px; font-weight:650; line-height:1.25;}
+  .subtitle{color:var(--ink-soft); font-size:16px; margin:0 0 22px;}
+
+  h3{font-size:19px; margin:30px 0 10px; font-weight:600;}
+  h4{font-size:16px; margin:22px 0 8px; font-weight:600; color:var(--ink-soft);}
+  p{margin:12px 0;}
+  .lead{font-size:18px;}
+
+  .callout{border-radius:13px; padding:16px 18px; margin:18px 0; border:1px solid;}
+  .callout .label{font-size:12px; letter-spacing:.1em; text-transform:uppercase; font-weight:700; margin:0 0 6px;}
+  .callout p{margin:6px 0; font-size:15.5px;}
+  .c-ml{background:var(--amber-soft); border-color:#f0d9ad;}
+  .c-ml .label{color:var(--amber);}
+  .c-key{background:var(--green-soft); border-color:#d3e3b3;}
+  .c-key .label{color:var(--green);}
+  .c-warn{background:var(--red-soft); border-color:#f0caca;}
+  .c-warn .label{color:var(--red);}
+  .c-note{background:var(--blue-soft); border-color:#cfe0fa;}
+  .c-note .label{color:var(--blue);}
+
+  figure{margin:26px 0; background:var(--paper); border:1px solid var(--line); border-radius:14px; padding:22px 18px 14px;}
+  figure svg{display:block; width:100%; height:auto;}
+  figcaption{font-size:13.5px; color:var(--ink-soft); text-align:center; margin-top:12px; padding:0 10px;}
+
+  .mathbox{background:var(--paper); border:1px solid var(--line); border-left:4px solid var(--indigo); border-radius:0 10px 10px 0; padding:6px 20px; margin:20px 0; overflow-x:auto;}
+  .decode{background:var(--wash); border:1px solid var(--line); border-radius:10px; padding:4px 0; margin:14px 0;}
+  .decode table{width:100%; border-collapse:collapse; font-size:15px;}
+  .decode td{padding:9px 16px; border-bottom:1px solid var(--line); vertical-align:top;}
+  .decode tr:last-child td{border-bottom:none;}
+  .decode td.sym{width:120px; font-family:var(--mono); color:var(--indigo); font-size:14px; white-space:nowrap;}
+
+  pre{background:#1d2433; color:#e6e9f2; border-radius:11px; padding:16px 18px; overflow-x:auto; font-family:var(--mono); font-size:13.5px; line-height:1.6; margin:18px 0;}
+  pre .cm{color:#8b93b8;}
+  pre .kw{color:#c2a3ff;}
+  pre .st{color:#9ed99e;}
+  code{font-family:var(--mono); font-size:.9em; background:var(--wash); padding:2px 6px; border-radius:5px; border:1px solid var(--line);}
+
+  .why{display:flex; gap:12px; align-items:flex-start; margin:14px 0; font-size:15px;}
+  .why .n{flex:none; width:26px; height:26px; border-radius:50%; background:var(--indigo); color:#fff; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600;}
+
+  hr.soft{border:none; border-top:1px solid var(--line); margin:34px 0;}
+  .pill{display:inline-block; font-size:12.5px; padding:3px 9px; border-radius:6px; font-weight:600;}
+  .pill.score{background:var(--green-soft); color:var(--green);}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="inner">
+    <p class="kicker">Teknofest · Havayolu Optimizasyonu · Versiyon 2</p>
+    <h1>İleri Formülasyon Kılavuzu — Bilgisayar Mühendisi İçin Sezgisel Anlatım</h1>
+    <p>Beş modülün her biri önce gündelik bir benzetme ve diyagramla anlatılır, hemen altında matematiksel gösterim sembol sembol çözülür. Önce <b>neden</b>, sonra <b>nasıl</b>, en sonda <b>formül</b>.</p>
+    <div class="meta">
+      <span><b>Modül 1</b> Sıkı doğrusallaştırma</span>
+      <span><b>Modül 2</b> Benders</span>
+      <span><b>Modül 3</b> Ön-işleme</span>
+      <span><b>Modül 4</b> ML warm-start</span>
+      <span><b>Modül 5</b> Monoton slot</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="howto">
+    <h2>Bu dokümanı nasıl okumalısın</h2>
+    <p><b>Renk kodları:</b> sarı kutular = makine öğrenmesi köprüsü (tanıdık olduğun şeyle bağ), yeşil kutular = puanı doğrudan etkileyen kritik içgörü, kırmızı kutular = sık yapılan hata, mavi kutular = mühendislik notu.</p>
+    <p>Matematiği atlayıp sadece diyagram + anlatımı okursan da problemin tamamını kavrarsın. Matematik bölümleri "ekstra derinlik" içindir ve her sembol açıklanır.</p>
+  </div>
+
+  <!-- ============ MODÜL 1 ============ -->
+  <section class="module">
+    <span class="module-tag">Modül 1</span>
+    <h2 class="mtitle">Sıkı Doğrusallaştırma & Big-M</h2>
+    <p class="subtitle">"Eğer–ise" mantığını solver'ın anlayacağı tek bir denkleme çevirmek — ve bunu yaparken solver'ı yavaşlatmamak.</p>
+
+    <p class="lead">Solver "şu koşulda bu kural geçerli, yoksa değil" gibi <b>if/else</b> anlamaz. Sadece düz denklem ve eşitsizlik anlar. Big-M, bu if/else'i tek bir eşitsizliğe sıkıştırma numarasıdır.</p>
+
+    <h3>Big-M numarası nedir?</h3>
+    <p>Diyelim ki kuralın şu: "Eğer bu bağlantıyı sunuyorsak, süresi rakibinkinden kısa olmalı." Bunu açıp/kapatabilen bir anahtar gibi düşün. Anahtar kapalıyken (bağlantı sunulmuyorsa) kural devre dışı kalmalı. İşte $M$ o anahtarın "devre dışı bırakma gücü".</p>
+
+    <div class="callout c-ml">
+      <p class="label">ML köprüsü</p>
+      <p>$M$'i <b>regularization katsayısı</b> gibi düşün. Çok büyük seçersen model "her şeyi serbest bırakır" — teknik olarak doğru ama eğitim/çözüm berbat olur. Çok küçük seçersen gerçek çözümü yanlışlıkla yasaklarsın. Tatlı nokta: kuralı tam gerektiği kadar gevşeten en küçük değer.</p>
+    </div>
+
+    <p>Buradaki tek en önemli ders: <b>tek bir dev $M$ (mesela 1.000.000) kullanma.</b> Her kural için, o kuralın fiziksel sınırlarından türetilmiş ayrı ve küçük bir $M$ hesapla. Bizim problemde her şey dakika cinsinden, dolayısıyla hiçbir $M$ bir günü (1440 dk) aşmamalı.</p>
+
+    <figure>
+      <svg viewBox="0 0 760 300" role="img" aria-label="Gevşek Big-M ve sıkı Big-M karşılaştırması">
+        <!-- title -->
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">Neden küçük M? — LP gevşetmesinin "gezinme alanı"</text>
+
+        <!-- loose M -->
+        <rect x="30" y="50" width="340" height="210" rx="12" fill="#fbe9e9" stroke="#e9b9b9" stroke-width="1"/>
+        <text x="200" y="74" text-anchor="middle" font-size="14" font-weight="600" fill="#c23b3b">Gevşek M (örn. 1.000.000)</text>
+
+        <!-- target dot -->
+        <circle cx="200" cy="150" r="7" fill="#1d2433"/>
+        <text x="200" y="135" text-anchor="middle" font-size="12" fill="#1d2433">gerçek tamsayı çözüm</text>
+        <!-- wandering region -->
+        <ellipse cx="200" cy="180" rx="140" ry="55" fill="none" stroke="#c23b3b" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="200" y="245" text-anchor="middle" font-size="12.5" fill="#c23b3b">LP çözümü çok geniş alanda gezinir</text>
+        <text x="200" y="205" text-anchor="middle" font-size="12" fill="#9a3b3b">→ solver yavaş, sayısal hata riski</text>
+
+        <!-- tight M -->
+        <rect x="390" y="50" width="340" height="210" rx="12" fill="#eef5e0" stroke="#cadda0" stroke-width="1"/>
+        <text x="560" y="74" text-anchor="middle" font-size="14" font-weight="600" fill="#5a8a1e">Sıkı M (örn. ~250 dk)</text>
+
+        <circle cx="560" cy="150" r="7" fill="#1d2433"/>
+        <text x="560" y="135" text-anchor="middle" font-size="12" fill="#1d2433">gerçek tamsayı çözüm</text>
+        <ellipse cx="560" cy="162" rx="44" ry="26" fill="none" stroke="#5a8a1e" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <text x="560" y="225" text-anchor="middle" font-size="12.5" fill="#5a8a1e">LP çözümü gerçeğe yapışır</text>
+        <text x="560" y="205" text-anchor="middle" font-size="12" fill="#4a7018">→ solver hızlı, kararlı</text>
+      </svg>
+      <figcaption>Aynı kuralı iki farklı M ile yazdığında: gevşek M solver'a "her yere gidebilirsin" der, sıkı M ise gerçek çözümün etrafına çitle örer. Doğruluk ikisinde de aynı — fark tamamen hız ve kararlılıkta.</figcaption>
+    </figure>
+
+    <h3>En zor parça: E2 — koşullu kural ("sadece her iki yön de aktifse")</h3>
+    <p>E2 kuralı şunu der: bir pazarın gidiş ve dönüş yönlerinin en hızlı yolculuk süreleri birbirine yakın olsun (fark ≤ 30 dk). <b>Ama</b> bu yalnızca <b>her iki yön de aktifse</b> geçerli. Bir yön boşsa kural uygulanmamalı.</p>
+    <p>Bunu nasıl tek denklemde ifade ederiz? İki tane açma/kapama anahtarı kullanarak: $a^\rightarrow$ (gidiş aktif mi) ve $a^\leftarrow$ (dönüş aktif mi). Aşağıdaki tablo mantığın tamamı:</p>
+
+    <figure>
+      <svg viewBox="0 0 760 270" role="img" aria-label="E2 koşullu aktivasyon doğruluk tablosu">
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">E2 kuralı ne zaman devreye girer?</text>
+
+        <!-- column headers -->
+        <text x="250" y="62" text-anchor="middle" font-size="13" fill="#4a5468">Gidiş aktif?</text>
+        <text x="420" y="62" text-anchor="middle" font-size="13" fill="#4a5468">Dönüş aktif?</text>
+        <text x="620" y="62" text-anchor="middle" font-size="13" fill="#4a5468">Kural bağlayıcı mı?</text>
+
+        <!-- row 1 -->
+        <rect x="40" y="74" width="680" height="42" rx="8" fill="#f6f7fb" stroke="#e3e6ee"/>
+        <text x="250" y="100" text-anchor="middle" font-size="14" fill="#1d2433">Hayır</text>
+        <text x="420" y="100" text-anchor="middle" font-size="14" fill="#1d2433">Hayır</text>
+        <text x="620" y="100" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5a8a1e">Hayır — serbest</text>
+
+        <!-- row 2 -->
+        <rect x="40" y="120" width="680" height="42" rx="8" fill="#f6f7fb" stroke="#e3e6ee"/>
+        <text x="250" y="146" text-anchor="middle" font-size="14" fill="#1d2433">Evet</text>
+        <text x="420" y="146" text-anchor="middle" font-size="14" fill="#1d2433">Hayır</text>
+        <text x="620" y="146" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5a8a1e">Hayır — serbest</text>
+
+        <!-- row 3 -->
+        <rect x="40" y="166" width="680" height="42" rx="8" fill="#f6f7fb" stroke="#e3e6ee"/>
+        <text x="250" y="192" text-anchor="middle" font-size="14" fill="#1d2433">Hayır</text>
+        <text x="420" y="192" text-anchor="middle" font-size="14" fill="#1d2433">Evet</text>
+        <text x="620" y="192" text-anchor="middle" font-size="13.5" font-weight="600" fill="#5a8a1e">Hayır — serbest</text>
+
+        <!-- row 4 highlighted -->
+        <rect x="40" y="212" width="680" height="44" rx="8" fill="#e7f0fd" stroke="#bcd5f7" stroke-width="1.5"/>
+        <text x="250" y="239" text-anchor="middle" font-size="14" font-weight="600" fill="#1d2433">Evet</text>
+        <text x="420" y="239" text-anchor="middle" font-size="14" font-weight="600" fill="#1d2433">Evet</text>
+        <text x="620" y="239" text-anchor="middle" font-size="13.5" font-weight="700" fill="#2563eb">EVET — fark ≤ 30 dk</text>
+      </svg>
+      <figcaption>Kural yalnızca son satırda (her ikisi de aktif) bağlayıcı. Big-M numarası tam olarak bunu yapar: anahtarlardan biri "Hayır" olduğunda kuralı M kadar gevşetip etkisiz kılar.</figcaption>
+    </figure>
+
+    <div class="callout c-key">
+      <p class="label">Puana etkisi</p>
+      <p>Pazar-bazlı sıkı $M$ hesaplamak, çözüm süresini ve optimality gap'i doğrudan iyileştirir → <span class="pill score">Hesaplama Performansı %15</span> kriterine somut katkı.</p>
+    </div>
+
+    <h4>Matematiksel gösterim (açıklamalı)</h4>
+    <p>E2'nin koşullu aktivasyonu şöyle yazılır:</p>
+    <div class="mathbox">
+      $$\begin{aligned}
+      J^{\min,\rightarrow}_{od,h} - J^{\min,\leftarrow}_{od,h} &\le \beta + M^{E2}_{od,h}\big(2 - a^{\rightarrow}_{od,h} - a^{\leftarrow}_{od,h}\big)\\
+      J^{\min,\leftarrow}_{od,h} - J^{\min,\rightarrow}_{od,h} &\le \beta + M^{E2}_{od,h}\big(2 - a^{\rightarrow}_{od,h} - a^{\leftarrow}_{od,h}\big)
+      \end{aligned}$$
+    </div>
+    <div class="decode">
+      <table>
+        <tr><td class="sym">$J^{\min,\rightarrow}$</td><td>Gidiş yönündeki en hızlı bağlantının yolculuk süresi (dakika).</td></tr>
+        <tr><td class="sym">$\beta = 30$</td><td>İzin verilen maksimum fark.</td></tr>
+        <tr><td class="sym">$a^\rightarrow, a^\leftarrow$</td><td>Açma/kapama anahtarları (0 veya 1). Yön aktifse 1.</td></tr>
+        <tr><td class="sym">$2 - a^\rightarrow - a^\leftarrow$</td><td><b>Sihirli kısım.</b> İkisi de 1 ise sonuç 0 → kural sıkı. Biri 0 ise sonuç 1 → kural $M$ kadar gevşer (etkisiz).</td></tr>
+        <tr><td class="sym">$M^{E2}_{od,h}$</td><td>Her pazar için ayrı, küçük gevşetme gücü. Pencere sınırlarından hesaplanır, tek dev sayı değil.</td></tr>
+      </table>
+    </div>
+    <p>Rakip yenme (Kısıt D) ve bağlantı boşluğu (Kısıt B) için en sıkı $M$ formülleri versiyon 1 dokümanındaki ile aynıdır; mantık birebir budur — anahtar kapalıyken kuralı tam gerektiği kadar gevşeten en küçük değer.</p>
+  </section>
+
+  <!-- ============ MODÜL 2 ============ -->
+  <section class="module">
+    <span class="module-tag">Modül 2</span>
+    <h2 class="mtitle">Benders Ayrıştırması</h2>
+    <p class="subtitle">Devasa problemi "zor kısım" ve "kolay kısım" diye ikiye bölüp aralarında mesaj gönderterek çözmek.</p>
+
+    <p class="lead">Bazı problemler, birkaç değişkeni sabitlediğinde aniden kolaylaşır. Bizim problemde o değişkenler <b>IST saatleri</b>. Saatleri sabitlersen, geri kalan her şey (hangi bağlantı kuruluyor, kaç rakip yeniliyor) kendiliğinden belli olur.</p>
+
+    <div class="callout c-ml">
+      <p class="label">ML köprüsü</p>
+      <p>İki aşamalı eğitim gibi düşün: önce ana parametreleri bir tahminle <b>dondur</b>, kalan ağı eğit, sonra kalan ağdan öğrendiğini geri besleyip ana parametreyi düzelt. Benders tam böyle gidip gelir — "master" ana kararı verir, "subproblem" sonucu ölçer ve geri bildirim (cut) yollar.</p>
+    </div>
+
+    <figure>
+      <svg viewBox="0 0 760 230" role="img" aria-label="Zor ve kolay değişkenlerin ayrışması">
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">Problemi neden ikiye bölüyoruz?</text>
+
+        <rect x="40" y="46" width="320" height="150" rx="12" fill="#fbeae2" stroke="#eccab5"/>
+        <text x="200" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="#cf5a30">ZOR kısım (master)</text>
+        <text x="200" y="100" text-anchor="middle" font-size="13.5" fill="#1d2433">IST kalkış / varış saatleri</text>
+        <text x="200" y="122" text-anchor="middle" font-size="13.5" fill="#1d2433">hangi uçuş hangi kovada</text>
+        <text x="200" y="150" text-anchor="middle" font-size="12.5" fill="#9a4a2a">bunları seçmek kombinatoryal</text>
+        <text x="200" y="168" text-anchor="middle" font-size="12.5" fill="#9a4a2a">olarak patlar</text>
+
+        <rect x="400" y="46" width="320" height="150" rx="12" fill="#e3f5ef" stroke="#b6e0d2"/>
+        <text x="560" y="72" text-anchor="middle" font-size="14" font-weight="600" fill="#0f8f6f">KOLAY kısım (subproblem)</text>
+        <text x="560" y="100" text-anchor="middle" font-size="13.5" fill="#1d2433">hangi bağlantı kuruluyor</text>
+        <text x="560" y="122" text-anchor="middle" font-size="13.5" fill="#1d2433">kaç rakip yeniliyor, ödül ne</text>
+        <text x="560" y="150" text-anchor="middle" font-size="12.5" fill="#0a6f56">saatler sabitse bunların hepsi</text>
+        <text x="560" y="168" text-anchor="middle" font-size="12.5" fill="#0a6f56">otomatik belli olur</text>
+      </svg>
+      <figcaption>Brief diyor ki: "uygun olan tüm bağlantılar sunulmak zorunda." Bu çok önemli — demek ki saatler belli olunca seçim kararı yok, her şey türev. Tüm zorluk sol kutuda.</figcaption>
+    </figure>
+
+    <h3>Master ile subproblem nasıl konuşur?</h3>
+    <p>Bir döngü kuruyoruz. Master bir saat planı önerir → subproblem bunu deneyip "bu planın gerçek ödülü şu kadar" veya "bu plan dengeyi bozuyor, olmaz" der → master bu geri bildirimi (cut) alıp daha iyi bir plan önerir. Tekrar tekrar, ta ki en iyiyi bulana dek.</p>
+
+    <figure>
+      <svg viewBox="0 0 760 320" role="img" aria-label="Benders master subproblem döngüsü">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round"/>
+          </marker>
+        </defs>
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">Master ↔ Subproblem döngüsü</text>
+
+        <rect x="60" y="56" width="270" height="96" rx="12" fill="#fbeae2" stroke="#eccab5"/>
+        <text x="195" y="82" text-anchor="middle" font-size="14" font-weight="600" fill="#cf5a30">MASTER</text>
+        <text x="195" y="106" text-anchor="middle" font-size="13" fill="#1d2433">saat planı öner</text>
+        <text x="195" y="126" text-anchor="middle" font-size="12.5" fill="#9a4a2a">(iyimser tahmin = üst sınır)</text>
+
+        <rect x="430" y="56" width="270" height="96" rx="12" fill="#e3f5ef" stroke="#b6e0d2"/>
+        <text x="565" y="82" text-anchor="middle" font-size="14" font-weight="600" fill="#0f8f6f">SUBPROBLEM</text>
+        <text x="565" y="106" text-anchor="middle" font-size="13" fill="#1d2433">planı dene, ödülü ölç</text>
+        <text x="565" y="126" text-anchor="middle" font-size="12.5" fill="#0a6f56">(gerçek değer = alt sınır)</text>
+
+        <line x1="330" y1="88" x2="428" y2="88" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar)"/>
+        <text x="379" y="78" text-anchor="middle" font-size="12" fill="#4a5468">saatler</text>
+        <line x1="428" y1="120" x2="332" y2="120" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar)"/>
+        <text x="379" y="138" text-anchor="middle" font-size="12" fill="#4a5468">geri bildirim (cut)</text>
+
+        <!-- two cut types -->
+        <rect x="60" y="180" width="640" height="58" rx="11" fill="#fbefdb" stroke="#f0d9ad"/>
+        <text x="380" y="202" text-anchor="middle" font-size="13.5" font-weight="600" fill="#b9760f">İki tür geri bildirim</text>
+        <text x="80" y="224" font-size="13" fill="#1d2433">• Fizibilite cut: "bu plan dengeyi bozuyor → bir daha aynısını önerme"</text>
+
+        <rect x="60" y="244" width="640" height="32" rx="9" fill="#fbefdb" stroke="#f0d9ad"/>
+        <text x="80" y="265" font-size="13" fill="#1d2433">• Optimalite cut: "bu planın gerçek değeri tahmininden düşük → tahminini düzelt"</text>
+
+        <text x="380" y="300" text-anchor="middle" font-size="13" fill="#5a8a1e" font-weight="600">Üst sınır = alt sınır olunca → optimal, dur. Bu fark = optimality gap.</text>
+      </svg>
+      <figcaption>Master hep "iyimser" tahmin eder (üst sınır), subproblem "gerçekçi" ölçer (alt sınır). İki sınır kapanınca optimal. Bu kapanma eğrisini rapora koymak performans puanına doğrudan kanıt.</figcaption>
+    </figure>
+
+    <div class="callout c-note">
+      <p class="label">Mühendislik notu</p>
+      <p>Bizim problemde "uygun tüm bağlantılar sunulmak zorunda" olduğu için subproblem klasik LP değil, kombinatoryal bir değerlendirme. Bu yüzden literatürdeki tam adı <b>Logic-Based Benders (LBBD)</b>. Geri bildirimler "no-good cut" (bu tam plan bir daha gelmesin) ve "sapma cezası" biçiminde kurulur.</p>
+    </div>
+
+    <h4>Matematiksel gösterim (açıklamalı)</h4>
+    <p><b>Master amaç</b> — pazarların toplam tahmini ödülünü maksimize et:</p>
+    <div class="mathbox">$$\max \sum_{o\neq d}\rho_{od}\sum_h \eta_{od,h}$$</div>
+    <div class="decode">
+      <table>
+        <tr><td class="sym">$\eta_{od,h}$</td><td>Subproblem'in vereceği ödülün master tarafından yapılan <b>tahmini</b> (surrogate). Başta fazla iyimser.</td></tr>
+        <tr><td class="sym">$\rho_{od}$</td><td>Pazarın gelir ağırlığı — yüksek gelirli pazar daha çok önem alır.</td></tr>
+      </table>
+    </div>
+    <p><b>Optimalite cut</b> — master fazla iyimserse gerçeğe çek:</p>
+    <div class="mathbox">$$\eta_{od,h} \le R_{od,h}(\hat{z}) + \Delta_{od,h}\sum_{(r,b)\in\mathcal{R}_{od,h}}\big(1 - z_{r,b}\big)$$</div>
+    <div class="decode">
+      <table>
+        <tr><td class="sym">$R_{od,h}(\hat z)$</td><td>Önerilen plan $\hat z$ ile subproblem'in ölçtüğü <b>gerçek</b> ödül.</td></tr>
+        <tr><td class="sym">$\sum(1-z_{r,b})$</td><td>"Plandan ne kadar saptın" sayacı. Aynı planı tutarsan 0, saparsan ≥1.</td></tr>
+        <tr><td class="sym">$\Delta_{od,h}$</td><td>Pazarın teorik maksimum ödülü. Saparsan tahminin tavana çıkabilir; sapmazsan gerçeğe mıhlanır.</td></tr>
+      </table>
+    </div>
+    <p>Mantık: "Bu plana sadık kalırsan ödül $R(\hat z)$'dir, başka bir şey deneyeceksen tahminin serbest" — döngü ilerledikçe ödül fonksiyonunun gerçek şekli ortaya çıkar.</p>
+  </section>
+
+  <!-- ============ MODÜL 3 ============ -->
+  <section class="module">
+    <span class="module-tag">Modül 3</span>
+    <h2 class="mtitle">Ön-İşleme & Grafik Budama</h2>
+    <p class="subtitle">Modele hiç sokmadan önce imkânsız bağlantıları elemek — en ucuz ve en etkili hız kazancı.</p>
+
+    <p class="lead">Veride binlerce olası bağlantı var. Ama bunların büyük kısmı zaten imkânsız: hangi saati seçersen seç, bağlantı boşluğu asla 60–300 dk aralığına giremiyor. Bunları solver'a hiç göstermemek en kârlı iş.</p>
+
+    <div class="callout c-ml">
+      <p class="label">ML köprüsü</p>
+      <p>Feature selection / data cleaning gibi. Modeli eğitmeden önce gürültülü, bilgisiz örnekleri atarsın. Burada da modeli kurmadan önce "hiçbir koşulda işe yaramayacak" bağlantıları atıyoruz. Daha az değişken = daha küçük model = daha hızlı çözüm.</p>
+    </div>
+
+    <figure>
+      <svg viewBox="0 0 760 280" role="img" aria-label="Bağlantı budama hunisi">
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">Budama hunisi: binlerce aday → birkaç yüz gerçek</text>
+
+        <!-- top wide -->
+        <rect x="230" y="46" width="300" height="40" rx="9" fill="#f6f7fb" stroke="#d3d6e0"/>
+        <text x="380" y="71" text-anchor="middle" font-size="13.5" fill="#1d2433">Tüm olası (r1, r2) çiftleri — binlerce</text>
+
+        <!-- gate 1 -->
+        <line x1="380" y1="86" x2="380" y2="104" stroke="#4a5468" stroke-width="1.4"/>
+        <rect x="170" y="104" width="420" height="36" rx="9" fill="#fbe9e9" stroke="#e9b9b9"/>
+        <text x="380" y="127" text-anchor="middle" font-size="13" fill="#c23b3b">Kapı 1: boşluk hiçbir saatte 60–300'e giremiyor → AT</text>
+
+        <line x1="380" y1="140" x2="380" y2="158" stroke="#4a5468" stroke-width="1.4"/>
+        <rect x="210" y="158" width="340" height="36" rx="9" fill="#fbe9e9" stroke="#e9b9b9"/>
+        <text x="380" y="181" text-anchor="middle" font-size="13" fill="#c23b3b">Kapı 2: pazarın geliri sıfır → AT</text>
+
+        <line x1="380" y1="194" x2="380" y2="212" stroke="#4a5468" stroke-width="1.4"/>
+        <rect x="245" y="212" width="270" height="36" rx="9" fill="#fbe9e9" stroke="#e9b9b9"/>
+        <text x="380" y="235" text-anchor="middle" font-size="13" fill="#c23b3b">Kapı 3: slot penceresi çelişiyor → AT</text>
+
+        <!-- survivors -->
+        <line x1="380" y1="248" x2="380" y2="262" stroke="#5a8a1e" stroke-width="1.6"/>
+        <rect x="290" y="262" width="180" height="14" rx="7" fill="#eef5e0" stroke="#cadda0"/>
+        <text x="640" y="273" text-anchor="middle" font-size="12.5" font-weight="600" fill="#5a8a1e">kalan: gerçek adaylar</text>
+      </svg>
+      <figcaption>Her kapı imkânsız bir grup bağlantıyı eler. Sonunda modele yalnızca gerçekten mümkün olanlar girer. Tipik olarak adayların yarısından fazlası daha en başta düşer.</figcaption>
+    </figure>
+
+    <div class="callout c-key">
+      <p class="label">Puana etkisi</p>
+      <p>"Ön-işleme aday bağlantıların %X'ini eledi, model N→M değişkene düştü" cümlesi raporda <span class="pill score">Yenilikçilik %5</span> ve <span class="pill score">Performans %15</span> için somut kanıttır. Budama istatistiklerini mutlaka yazdır.</p>
+    </div>
+
+    <h4>Çalışma mantığı — fizibilite testi</h4>
+    <p>Bir bağlantının boşluğu pencerelerden şu aralığa düşebilir: en küçük olası boşluk ile en büyük olası boşluk. Eğer bu aralık $[60,300]$ ile <b>hiç kesişmiyorsa</b>, bağlantı imkânsızdır:</p>
+    <div class="mathbox">
+      $$g^{\min}_\pi = \underline{\text{dep}}_{r_2} - \overline{\text{arr}}_{r_1}, \qquad g^{\max}_\pi = \overline{\text{dep}}_{r_2} - \underline{\text{arr}}_{r_1}$$
+      $$\text{Tut} \iff g^{\max}_\pi \ge 60 \;\;\text{VE}\;\; g^{\min}_\pi \le 300$$
+    </div>
+    <div class="decode">
+      <table>
+        <tr><td class="sym">$\underline{\text{dep}}, \overline{\text{dep}}$</td><td>Giden uçuşun kalkış penceresinin en erken / en geç saati.</td></tr>
+        <tr><td class="sym">$\overline{\text{arr}}, \underline{\text{arr}}$</td><td>Gelen uçuşun varış penceresinin en geç / en erken saati.</td></tr>
+        <tr><td class="sym">$g^{\min}, g^{\max}$</td><td>Boşluğun ulaşabileceği en dar ve en geniş değer. İkisi de bir aralık çizer.</td></tr>
+      </table>
+    </div>
+
+    <h4>Python (NetworkX mantığı)</h4>
+    <pre><span class="cm"># Her aday baglanti icin fizibilite kapisi</span>
+<span class="kw">for</span> r1, r2 <span class="kw">in</span> product(inbound, outbound):
+    o, d = inbound[r1][<span class="st">'o'</span>], outbound[r2][<span class="st">'d'</span>]
+    <span class="kw">if</span> o == d <span class="kw">or</span> rho.get((o, d), 0) &lt;= 0:
+        <span class="kw">continue</span>                          <span class="cm"># Kapi 2: sifir gelir</span>
+
+    g_min = outbound[r2][<span class="st">'dep_lb'</span>] - inbound[r1][<span class="st">'arr_ub'</span>]
+    g_max = outbound[r2][<span class="st">'dep_ub'</span>] - inbound[r1][<span class="st">'arr_lb'</span>]
+    <span class="kw">if</span> <span class="kw">not</span> (g_max &gt;= 60 <span class="kw">and</span> g_min &lt;= 300):
+        <span class="kw">continue</span>                          <span class="cm"># Kapi 1: bosluk imkansiz</span>
+
+    G.add_edge(r1, r2, o=o, d=d, g_min=g_min, g_max=g_max)  <span class="cm"># hayatta kalan</span></pre>
+    <p>Aynı aşamada sıkı $M$ değerlerini de hesaplayıp kenarda saklarsın (Modül 1) — model kurulurken yeniden hesaplama yapmazsın.</p>
+  </section>
+
+  <!-- ============ MODÜL 4 ============ -->
+  <section class="module">
+    <span class="module-tag">Modül 4</span>
+    <h2 class="mtitle">ML Destekli Warm-Start</h2>
+    <p class="subtitle">Solver'a sıfırdan değil, akıllı bir tahminden başlatmak — senin ML geçmişinin parladığı yer.</p>
+
+    <p class="lead">Solver'ı boş bir sayfadan başlatmak yerine, küçük bir ML modeli "bu uçuşun saati muhtemelen şu civarda olmalı" diye tahmin eder. Solver bu tahminden devam edince çok daha hızlı yakınsar.</p>
+
+    <div class="callout c-ml">
+      <p class="label">ML köprüsü</p>
+      <p>Bu tam olarak <b>transfer learning / iyi initialization</b> mantığı. Ağırlıkları rastgele başlatmak yerine önceden eğitilmiş bir noktadan başlatırsın, eğitim hızlanır. Burada da solver'ın "ağırlıkları" (IST saatleri) iyi bir tahminle başlatılıyor.</p>
+    </div>
+
+    <figure>
+      <svg viewBox="0 0 760 250" role="img" aria-label="ML warm-start boru hattı">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round"/>
+          </marker>
+        </defs>
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">ML warm-start boru hattı</text>
+
+        <rect x="30" y="60" width="135" height="80" rx="11" fill="#e7f0fd" stroke="#bcd5f7"/>
+        <text x="97" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#2563eb">Öznitelikler</text>
+        <text x="97" y="110" text-anchor="middle" font-size="11.5" fill="#1d2433">gelir, rakip</text>
+        <text x="97" y="126" text-anchor="middle" font-size="11.5" fill="#1d2433">süreleri, kapasite</text>
+
+        <rect x="200" y="60" width="135" height="80" rx="11" fill="#fbefdb" stroke="#f0d9ad"/>
+        <text x="267" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#b9760f">LightGBM</text>
+        <text x="267" y="110" text-anchor="middle" font-size="11.5" fill="#1d2433">saat tahmini</text>
+        <text x="267" y="126" text-anchor="middle" font-size="11.5" fill="#1d2433">(regresyon)</text>
+
+        <rect x="370" y="60" width="135" height="80" rx="11" fill="#fbe9e9" stroke="#e9b9b9"/>
+        <text x="437" y="86" text-anchor="middle" font-size="13" font-weight="600" fill="#c23b3b">Onarım</text>
+        <text x="437" y="106" text-anchor="middle" font-size="11.5" fill="#1d2433">pencere + kova +</text>
+        <text x="437" y="122" text-anchor="middle" font-size="11.5" fill="#1d2433">rotasyona projekte</text>
+
+        <rect x="540" y="60" width="135" height="80" rx="11" fill="#e3f5ef" stroke="#b6e0d2"/>
+        <text x="607" y="90" text-anchor="middle" font-size="13" font-weight="600" fill="#0f8f6f">Solver</text>
+        <text x="607" y="110" text-anchor="middle" font-size="11.5" fill="#1d2433">warmstart=True</text>
+        <text x="607" y="126" text-anchor="middle" font-size="11.5" fill="#1d2433">hızlı yakınsar</text>
+
+        <line x1="165" y1="100" x2="198" y2="100" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar2)"/>
+        <line x1="335" y1="100" x2="368" y2="100" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar2)"/>
+        <line x1="505" y1="100" x2="538" y2="100" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar2)"/>
+
+        <rect x="370" y="170" width="135" height="54" rx="10" fill="#fbe9e9" stroke="#e9b9b9" stroke-dasharray="4 3"/>
+        <text x="437" y="192" text-anchor="middle" font-size="12" font-weight="600" fill="#c23b3b">bu adım şart!</text>
+        <text x="437" y="210" text-anchor="middle" font-size="11.5" fill="#9a3b3b">onarımsız tahmin</text>
+        <line x1="437" y1="168" x2="437" y2="142" stroke="#c23b3b" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#ar2)"/>
+      </svg>
+      <figcaption>Dört adım. Kritik olan üçüncü adım: ham ML tahmini pencere/kova/rotasyon kurallarını ihlal edebilir. Onarmadan enjekte edersen solver reddeder. Fizibıl bir başlangıç, optimal-ama-geçersiz bir tahminden çok daha değerli.</figcaption>
+    </figure>
+
+    <div class="callout c-warn">
+      <p class="label">Sık yapılan hata</p>
+      <p>Ham ML çıktısını doğrudan solver'a vermek. Tahmin neredeyse her zaman bir kuralı ihlal eder (yanlış kovaya düşer, pencereyi aşar). <b>Onarım adımı (repair) olmadan warm-start bir işe yaramaz.</b></p>
+    </div>
+
+    <h4>Öznitelikler nasıl seçilir?</h4>
+    <div class="decode">
+      <table>
+        <tr><td class="sym">$\rho_{od}$</td><td>O-D gelir ağırlığı — yüksekse o uçuşu optimize etmek değerli.</td></tr>
+        <tr><td class="sym">$T^{comp}$ min/medyan</td><td>Rakip süreleri — ne kadar sıkışık bir yarış olduğunu söyler.</td></tr>
+        <tr><td class="sym">$T^{IB}, T^{OB}$</td><td>Blok süreleri — yolculuk süresinin sabit parçaları.</td></tr>
+        <tr><td>aday sayısı</td><td>Bu uçuşu içeren kaç bağlantı var (budanmış graftan) — esneklik göstergesi.</td></tr>
+        <tr><td>rezidüel kapasite</td><td>Hangi kovalar dolu, hangileri boş — nereye atanabilir.</td></tr>
+      </table>
+    </div>
+
+    <h4>Pyomo enjeksiyon şablonu</h4>
+    <pre><span class="cm"># 1) Tahmin et, 2) fizibıl yap, 3) degisken .value'ya yaz</span>
+<span class="kw">for</span> r <span class="kw">in</span> model.AdjFlights:
+    pred = model_dep.predict([extract_features(r)])[0]
+    dep, arr = repair_to_feasible(pred, ..., flight_data[r])   <span class="cm"># SART olan adim</span>
+
+    model.dep[r].value = dep
+    model.arr[r].value = arr
+    b = <span class="kw">int</span>(<span class="kw">round</span>(dep / 10))                <span class="cm"># tahminle TUTARLI kova</span>
+    <span class="kw">for</span> bk <span class="kw">in</span> model.Buckets:
+        model.z[r, bk].value = 1 <span class="kw">if</span> bk == b <span class="kw">else</span> 0
+
+solver = SolverFactory(<span class="st">'gurobi'</span>)
+solver.solve(model, warmstart=<span class="kw">True</span>, tee=<span class="kw">True</span>)   <span class="cm"># Gurobi MIP start olarak okur</span></pre>
+    <div class="callout c-note">
+      <p class="label">Mühendislik notu</p>
+      <p>HiGHS'in MIP warm-start desteği Gurobi kadar olgun değil — bu özellik için Gurobi akademik lisansını kullan, HiGHS'i doğrulama/yedek solver olarak tut. Warm-start'lı ve warm-start'sız çözüm sürelerini karşılaştırıp rapora koy.</p>
+    </div>
+  </section>
+
+  <!-- ============ MODÜL 5 ============ -->
+  <section class="module">
+    <span class="module-tag">Modül 5</span>
+    <h2 class="mtitle">Azalan Getiri İçin Monoton Slot</h2>
+    <p class="subtitle">"İlk bağlantı 1 puan, sonraki yarısı" kuralını solver'ın sevdiği biçimde yazmak.</p>
+
+    <p class="lead">Her yeni bağlantı değer katar ama gittikçe daha az: 1, ½, ¼, ⅛... Bunu modellemenin akıllı yolu, slotları soldan sağa <b>sırayla dolan</b> kutular gibi düşünmek.</p>
+
+    <div class="callout c-ml">
+      <p class="label">ML köprüsü</p>
+      <p>Azalan öğrenme oranı (learning rate decay) gibi: her adım katkı sağlar ama marjinal fayda azalır. Buradaki "slot"lar da öyle — birinci en değerli, sonrakiler giderek daha az.</p>
+    </div>
+
+    <figure>
+      <svg viewBox="0 0 760 230" role="img" aria-label="Monoton slot doldurma">
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">Slotlar soldan sağa, sırayla dolar</text>
+
+        <!-- slots filled -->
+        <rect x="60" y="70" width="100" height="70" rx="10" fill="#5a8a1e" opacity="0.9"/>
+        <text x="110" y="100" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">slot 1</text>
+        <text x="110" y="120" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">+1.0</text>
+
+        <rect x="170" y="70" width="100" height="70" rx="10" fill="#7aa83a" opacity="0.9"/>
+        <text x="220" y="100" text-anchor="middle" font-size="13" font-weight="600" fill="#fff">slot 2</text>
+        <text x="220" y="120" text-anchor="middle" font-size="14" font-weight="700" fill="#fff">+0.5</text>
+
+        <rect x="280" y="70" width="100" height="70" rx="10" fill="#9ac45c" opacity="0.9"/>
+        <text x="330" y="100" text-anchor="middle" font-size="13" font-weight="600" fill="#2a4010">slot 3</text>
+        <text x="330" y="120" text-anchor="middle" font-size="14" font-weight="700" fill="#2a4010">+0.25</text>
+
+        <!-- empty slots -->
+        <rect x="390" y="70" width="100" height="70" rx="10" fill="#f6f7fb" stroke="#d3d6e0" stroke-dasharray="5 4"/>
+        <text x="440" y="100" text-anchor="middle" font-size="13" fill="#9aa0b0">slot 4</text>
+        <text x="440" y="120" text-anchor="middle" font-size="13" fill="#9aa0b0">boş</text>
+
+        <rect x="500" y="70" width="100" height="70" rx="10" fill="#f6f7fb" stroke="#d3d6e0" stroke-dasharray="5 4"/>
+        <text x="550" y="100" text-anchor="middle" font-size="13" fill="#9aa0b0">slot 5</text>
+        <text x="550" y="120" text-anchor="middle" font-size="13" fill="#9aa0b0">boş</text>
+
+        <!-- rule arrow -->
+        <text x="640" y="100" text-anchor="middle" font-size="12.5" fill="#c23b3b" font-weight="600">slot 4</text>
+        <text x="640" y="116" text-anchor="middle" font-size="12.5" fill="#c23b3b" font-weight="600">açılamaz</text>
+        <text x="640" y="132" text-anchor="middle" font-size="11.5" fill="#9a3b3b">slot 3 boşsa</text>
+
+        <text x="330" y="175" text-anchor="middle" font-size="13" fill="#4a5468">Kural: slot j+1 dolmadan önce slot j dolu olmalı (monotonluk)</text>
+        <text x="330" y="198" text-anchor="middle" font-size="13" fill="#4a5468">3 bağlantı sunuldu → toplam ödül = 1.0 + 0.5 + 0.25 = 1.75</text>
+      </svg>
+      <figcaption>Slotlar sırayla dolar; ortada boşluk bırakılamaz. Ödül en büyük katsayılı slottan başlar, böylece azalan getiri doğal olarak ortaya çıkar.</figcaption>
+    </figure>
+
+    <div class="callout c-key">
+      <p class="label">Gizli kazanç — çok önemli</p>
+      <p>Bu slotları <b>ikili (binary) değil, sürekli</b> $[0,1]$ tanımlayabilirsin. Azalan ağırlık + sıralı doldurma + tamsayı toplam üçlüsü, optimal çözümü kendiliğinden 0/1 yapar. Sonuç: çok daha az tamsayı değişken → branch-and-bound ağacı küçülür → solver hızlanır. Bu, "gereksiz tamsayı değişkenden kaçınma" olarak <span class="pill score">Performans %15</span>'e doğrudan kanıt.</p>
+    </div>
+
+    <h4>Matematiksel gösterim (açıklamalı)</h4>
+    <div class="mathbox">
+      $$s_{od,h,j+1} \le s_{od,h,j} \qquad \text{(monotonluk: sıralı dolum)}$$
+      $$\sum_{j} s_{od,h,j} = \sum_{\pi} x_\pi \qquad \text{(dolu slot sayısı = sunulan bağlantı sayısı)}$$
+      $$\text{ödül} = \sum_{j} W^{(c)}_j \, s_{od,h,j}, \quad W^{(c)}_j = 2^{-(j-1)}$$
+    </div>
+    <div class="decode">
+      <table>
+        <tr><td class="sym">$s_{od,h,j}$</td><td>$j.$ slot dolu mu (0–1 arası, sürekli olabilir).</td></tr>
+        <tr><td class="sym">$x_\pi$</td><td>Bağlantı $\pi$ sunuluyor mu (0/1). Toplamları sunulan bağlantı sayısını verir.</td></tr>
+        <tr><td class="sym">$W^{(c)}_j$</td><td>$j.$ slotun ödülü: $1, \tfrac12, \tfrac14, \dots$ — azalan.</td></tr>
+      </table>
+    </div>
+    <p><b>Neden sürekli yeterli:</b> Ağırlıklar azalan + amaç ödülü maksimize ediyor olduğundan, çözücü her zaman önce büyük ağırlıklı (düşük $j$) slotları doldurur. Monotonluk zaten araya boşluk bırakmayı yasakladığından, toplam tamsayı olunca slotlar otomatik olarak $1,1,\dots,1,0,0$ desenine oturur. Yani ikili kısıt koymaya gerek kalmaz.</p>
+  </section>
+
+  <!-- ============ ENTEGRASYON ============ -->
+  <section class="module">
+    <span class="module-tag">Birleştirme</span>
+    <h2 class="mtitle">Beş Modül Nasıl Birlikte Çalışır?</h2>
+    <p class="subtitle">Sıralama önemli — her modül bir öncekinin çıktısını kullanır.</p>
+
+    <figure>
+      <svg viewBox="0 0 760 250" role="img" aria-label="Modüllerin çalışma sırası">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.6" stroke-linecap="round"/>
+          </marker>
+        </defs>
+        <text x="380" y="26" text-anchor="middle" font-size="15" font-weight="600" fill="#1d2433">Çalışma sırası</text>
+
+        <rect x="40" y="56" width="160" height="64" rx="11" fill="#fbe9e9" stroke="#e9b9b9"/>
+        <text x="120" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#c23b3b">1 · Ön-işleme</text>
+        <text x="120" y="102" text-anchor="middle" font-size="11.5" fill="#1d2433">buda + M'leri hesapla</text>
+
+        <rect x="230" y="56" width="160" height="64" rx="11" fill="#eef0fe" stroke="#cfd2f8"/>
+        <text x="310" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#4f46e5">2 · Model kur</text>
+        <text x="310" y="102" text-anchor="middle" font-size="11.5" fill="#1d2433">Modül 1 + 5</text>
+
+        <rect x="420" y="56" width="160" height="64" rx="11" fill="#fbefdb" stroke="#f0d9ad"/>
+        <text x="500" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#b9760f">3 · Warm-start</text>
+        <text x="500" y="102" text-anchor="middle" font-size="11.5" fill="#1d2433">ML tahmini enjekte et</text>
+
+        <rect x="610" y="56" width="120" height="64" rx="11" fill="#e3f5ef" stroke="#b6e0d2"/>
+        <text x="670" y="82" text-anchor="middle" font-size="13" font-weight="600" fill="#0f8f6f">4 · Çöz</text>
+        <text x="670" y="102" text-anchor="middle" font-size="11.5" fill="#1d2433">Gurobi / HiGHS</text>
+
+        <line x1="200" y1="88" x2="228" y2="88" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar3)"/>
+        <line x1="390" y1="88" x2="418" y2="88" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar3)"/>
+        <line x1="580" y1="88" x2="608" y2="88" stroke="#4a5468" stroke-width="1.6" marker-end="url(#ar3)"/>
+
+        <!-- fallback -->
+        <rect x="230" y="160" width="350" height="64" rx="11" fill="#f6f7fb" stroke="#d3d6e0" stroke-dasharray="5 4"/>
+        <text x="405" y="186" text-anchor="middle" font-size="13" font-weight="600" fill="#4a5468">Sadece full data çözülemezse: Benders (Modül 2)</text>
+        <text x="405" y="206" text-anchor="middle" font-size="11.5" fill="#4a5468">zamanlamayı master'a, değerlendirmeyi subproblem'e ayır</text>
+        <line x1="405" y1="158" x2="405" y2="122" stroke="#9aa0b0" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#ar3)"/>
+      </svg>
+      <figcaption>Önce buda, sonra modeli kur, ML ile başlat, çöz. Benders yalnızca "her şey ayarlanabilir" model full veride takılırsa devreye giren güvenli geri çekilme yoludur.</figcaption>
+    </figure>
+
+    <div class="why"><span class="n">1</span><div><b>Ön-işleme</b> en başta çalışır → budanmış graf + önceden hesaplanmış sıkı $M$ değerleri + pazar başına slot üst sınırı.</div></div>
+    <div class="why"><span class="n">2</span><div><b>Modül 1 + 5</b> bu verilerle Pyomo modelini kurar: sıkı Big-M'ler veri olarak gelir, slotlar sürekli tanımlanır.</div></div>
+    <div class="why"><span class="n">3</span><div><b>ML warm-start</b> çözüm öncesi fizibıl başlangıç enjekte eder.</div></div>
+    <div class="why"><span class="n">4</span><div><b>Benders</b> yalnızca tüm-ayarlanabilir model full data'da çözülemezse — güvenli geri çekilme.</div></div>
+
+    <hr class="soft">
+    <p style="font-size:14px; color:var(--ink-soft);">Bu doküman, problem brief'indeki parametrelerle tutarlıdır: $L{=}60$, $U{=}300$, $\tau{=}45$, $\alpha{=}0.20$, $\beta{=}30$, $X_{dev}{=}15$, kapasite 10/15. Tüm $M$ değerleri dakika ölçeğinde ve $\le 1440$ olacak şekilde türetilir. Daha derin matematik için versiyon 1 (markdown) dokümanına bakabilirsin.</p>
+  </section>
+
+</div>
+</body>
+</html>
