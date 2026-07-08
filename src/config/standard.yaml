@@ -1,0 +1,23 @@
+# Standard senaryo parametreleri (plan §6). M0'da yalnızca solver/L/U/seed
+# kullanılıyor; kalan alanlar M1+ kısıt gruplarıyla birlikte devreye girecek.
+solver: highs            # highs | gurobi (soyutlama üzerinden, gurobi test edilmeyecek)
+time_limit_sec: 1800
+mip_gap: 0.01
+seed: 42
+
+adjustable_set: all      # all | subset
+adjustable_window_min: 720   # VARSAYIM: baseline ± bu kadar dakika
+
+bucket_size_min: 10
+capacity_departure: 10
+capacity_arrival: 15
+
+L: 60
+U: 300
+tau: 45
+X_dev: 15
+alpha: 0.20
+gamma: 30
+
+enabled_constraints: [A, B, C, D, E1, E2, F, G]
+max_slots_per_market: 20
