@@ -15,8 +15,13 @@ pytestmark = pytest.mark.unit
 
 
 def _candidate(od, flno1, flno2, gap):
-    return Candidate(od=od, o=od.split("-")[0], d=od.split("-")[1], gun=1,
-                      flno1=flno1, flno2=flno2, arr_time=None, dep_time=None, gap_min=gap)
+    o, d = od.split("-")
+    return Candidate(
+        od=od, o=o, d=d, gun=1, flno1=flno1, flno2=flno2,
+        r1_id=(flno1, 1), r2_id=(flno2, 1),
+        arr_time=None, dep_time=None, gap_min=gap,
+        arr_lo=0, arr_hi=0, dep_lo=gap, dep_hi=gap, gap_lo=gap, gap_hi=gap,
+    )
 
 
 def test_write_output_produces_expected_json_structure(tmp_path):

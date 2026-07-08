@@ -1,13 +1,17 @@
 """Pyomo model construction.
 
-M0 scope: a deliberately trivial model (free x_pi in {0,1}, linear rho-weighted
-reward, no constraints at all) to prove the build->solve->extract chain works
-end-to-end. Real constraints (A-G) and the Modul-5 monotone-slot decreasing-return
-reward (C) land in M1+.
+M0 scope (kept for M0's own tests): a deliberately trivial model (free x_pi in
+{0,1}, linear rho-weighted reward, no constraints) that proved the
+build->solve->extract chain works end-to-end.
+
+M1 scope (build_model): B (bağlantı uygunluğu, bidirectional reification) + C
+(Modul-5 monoton slot). Real constraint groups (A,D-G) land in M2+.
 """
 import pyomo.environ as pyo
 
 from src.candidates.generate import Candidate
+from src.model.constraints_selection import add_b_constraints, add_c_constraints, add_flight_time_variables
+from src.model.objective import add_connection_reward_objective
 
 
 def build_trivial_model(candidates: list[Candidate], rho: dict) -> pyo.ConcreteModel:
@@ -22,5 +26,17 @@ def build_trivial_model(candidates: list[Candidate], rho: dict) -> pyo.ConcreteM
         return sum(rho[(candidates[i].o, candidates[i].d)] * m.x[i] for i in m.CANDIDATES)
 
     model.objective = pyo.Objective(rule=obj_rule, sense=pyo.maximize)
+
+    return model
+
+
+def build_model(candidates: list[Candidate], rho: dict, L: int = 60, U: int = 300) -> pyo.ConcreteModel:
+    model = pyo.ConcreteModel()
+    model._candidates = candidates
+
+    add_flight_time_variables(model, candidates)
+    add_b_constraints(model, candidates, L=L, U=U)
+    add_c_constraints(model, candidates)
+    add_connection_reward_objective(model, rho)
 
     return model

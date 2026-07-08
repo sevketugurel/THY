@@ -143,14 +143,27 @@ bileşeni = 100×1.6321205588285577+50×0.0 = **163.21205588285577**.
 
 ## Test stratejisi notu — solve testleri neden zamanları SABİT tutar
 
-`t_arr`/`t_dep` gerçek modelde **sürekli karar değişkenidir** (baseline±720dk pencere).
-M1–M3 solve testleri (henüz E1/E2/F devrede değilken) bu fixture'ı **`adjustable_set:
-none`** (tüm TK uçuşları `Rfix`) config'iyle çalıştırır — böylece yukarıdaki elle
-hesaplanan değer TEK feasible sonuçtur (x_π, beat, slot, indicator_r zaten B/D/C
-reifikasyonlarıyla zamana göre tam belirlenir, optimizasyon serbestliği yok) ve exact-value
-assert edilebilir. M4/M5'te (E1/E2 devreye girince) zamanlar serbest bırakılır; o
-noktada Gün1 baseline sayıları (2 vs 1 bağlantı) E1'i (α=0.20) **ihlal eder**
-(|2-1|=1 > 0.20×3=0.6) — bu KASITLI: gerçek modelde solver zamanları kaydırarak dengeyi
-sağlamalıdır (ör. MI1'i kaydırıp MO2 ile boşluğu [60,300] dışına iterek 2→1'e düşürmek).
-M4/M5 testleri bu yüzden exact-value değil, **feasibility + bilinen bir alt sınır**
-assert eder.
+`t_arr`/`t_dep` gerçek modelde **integer karar değişkenidir** (M1 kararı — bkz.
+`docs/model.md` §3; VARSAYIM-3'e göre varsayılan pencere ±180dk, ilk planlanan
+±720dk değil). M1–M3 solve testleri (henüz E1/E2/F devrede değilken) bu fixture'ı
+**`adjustable_set: none`** (tüm TK uçuşları `Rfix`) config'iyle çalıştırır — böylece
+yukarıdaki elle hesaplanan değer TEK feasible sonuçtur (x_π, beat, slot, indicator_r
+zaten B/D/C reifikasyonlarıyla zamana göre tam belirlenir, optimizasyon serbestliği
+yok) ve exact-value assert edilebilir. M4/M5'te (E1/E2 devreye girince) zamanlar
+serbest bırakılır; o noktada Gün1 baseline sayıları (2 vs 1 bağlantı) E1'i (α=0.20)
+**ihlal eder** (|2-1|=1 > 0.20×3=0.6) — bu KASITLI: gerçek modelde solver zamanları
+kaydırarak dengeyi sağlamalıdır. M4/M5 testleri bu yüzden exact-value değil,
+**feasibility + bilinen bir alt sınır** assert eder.
+
+## M1 eki — CLI kabul testi (adjustable_set: all, insan doğrulaması BEKLİYOR)
+
+`tests/solve/test_main_cli.py`, config'in gerçek varsayılanıyla (`adjustable_set:
+all`, pencere=180dk) çalıştırıldığında objective=**568.75** buluyor (elle
+optimize edilmiş bir değer DEĞİL — solver'ın bulduğu, bağımsız validator'dan
+sıfır-ihlalle geçen bir sonuç). Bu sayı **insan doğrulaması bekliyor**: RB2×NO2 gibi
+ham veride hiç birlikte listelenmemiş ama achievable-range'i [L,U] ile kesişen
+sentezlenmiş adaylar da devrede (bkz. `docs/decisions.md` 2026-07-09,
+"Independent validator'ın bağlantı-varlık kontrolü"), bu yüzden tam kombinasyon
+elle çıkarılmadı. Test bu değeri **alt sınır olarak KULLANMIYOR** (>=400.0
+assert ediyor, tam değeri değil) — 568.75'in kendisi doğrulanana kadar sadece
+gözlemlenen/loglanan bir referans noktasıdır.

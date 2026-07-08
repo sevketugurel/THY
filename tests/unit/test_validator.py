@@ -1,9 +1,11 @@
 """Unit tests for src.validate.independent_validator.
 
 This module must be independently verifiable of src.model.* / src.candidates.* --
-it re-derives gap validity from raw arr_time/dep_time itself rather than trusting
-any value the model already computed. See plan §1 "validate/ modelin Pyomo
-kodundan hiç import almayan ayrı bir mantık yolu" (diskalifiye sigortası).
+it re-derives gap validity from the OUTPUT's own reported adjusted_flight_times
+(never a connection's claimed gap_min display field) and checks those reported
+times against a legal window independently re-derived from raw data. See plan
+§1 "validate/ modelin Pyomo kodundan hiç import almayan ayrı bir mantık yolu"
+(diskalifiye sigortası).
 
 marker: unit (solver-free, pure logic).
 """
@@ -20,10 +22,11 @@ pytestmark = pytest.mark.unit
 L, U = 60, 300
 
 
-def _write_output(tmp_path, connections):
+def _write_output(tmp_path, connections, adjusted_times):
     data = {
         "objective_value": 0.0,
         "selected_connections": connections,
+        "adjusted_flight_times": adjusted_times,
         "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
     }
     path = tmp_path / "output.json"
@@ -32,41 +35,98 @@ def _write_output(tmp_path, connections):
 
 
 def test_validate_passes_for_hand_verified_valid_connections(tmp_path):
-    # MI1xMO2 (gap=60) and NI1xNO2 (gap=205) from fixtures/README.md.
-    output_path = _write_output(tmp_path, [
-        {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
-        {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
-    ])
+    # MI1xMO2 (baseline gap=60) and NI1xNO2 (baseline gap=205) from
+    # fixtures/README.md, reported at their exact baseline (Rfix) times.
+    output_path = _write_output(
+        tmp_path,
+        connections=[
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+    )
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert result.is_valid
     assert result.violations == []
 
 
 def test_validate_catches_gap_below_l(tmp_path):
-    # MI1xMO1 has gap=-360 (deliberately invalid per fixtures/README.md).
-    output_path = _write_output(tmp_path, [
-        {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9111, "gun": 1, "gap_min": -360},
-    ])
+    # MI1xMO1 has baseline gap=-360 (deliberately invalid per fixtures/README.md).
+    output_path = _write_output(
+        tmp_path,
+        connections=[{"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9111, "gun": 1, "gap_min": -360}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9111, "gun": 1, "time_min": 480},
+        ],
+    )
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert not result.is_valid
-    assert len(result.violations) == 1
-    assert "gap" in result.violations[0].lower()
+    assert any("gap" in v.lower() for v in result.violations)
 
 
-def test_validate_recomputes_gap_independently_ignoring_claimed_value(tmp_path):
-    # Output CLAIMS gap_min=60 (valid) but the real flights (9101 x 9111) actually
-    # have gap=-360 -- validator must recompute from raw data, not trust the claim.
-    output_path = _write_output(tmp_path, [
-        {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9111, "gun": 1, "gap_min": 60},
-    ])
+def test_validate_ignores_claimed_gap_min_and_recomputes_from_adjusted_times(tmp_path):
+    # Output CLAIMS gap_min=60 (valid) via the display field, but the reported
+    # adjusted_flight_times actually give gap=-360 (MI1xMO1's real gap) --
+    # validator must use the TIMES, not the claimed display value.
+    output_path = _write_output(
+        tmp_path,
+        connections=[{"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9111, "gun": 1, "gap_min": 60}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9111, "gun": 1, "time_min": 480},
+        ],
+    )
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert not result.is_valid
+
+
+def test_validate_accepts_synthesized_pairing_of_two_real_legs(tmp_path):
+    # RB2(9401, inbound leg of ZZB-ZZA) and NO2(9212, outbound leg of ZZB-ZZA)
+    # each individually exist as real TK flights on Gün=1, but the raw O&D
+    # table never lists them PAIRED TOGETHER in one row (confirmed by
+    # inspection). The model's candidate generation is a full inbound x
+    # outbound cross-product (plan §4) -- a synthesized pairing of two real
+    # legs is a legitimate candidate, not a fabrication. Baseline: RB2 arr=555,
+    # NO2 dep=1000 -> gap=445 (invalid at baseline, but a real pairing).
+    output_path = _write_output(
+        tmp_path,
+        connections=[{"od": "ZZB-ZZA", "flno1": 9401, "flno2": 9212, "gun": 1, "gap_min": 445}],
+        adjusted_times=[
+            {"role": "IB", "flno": 9401, "gun": 1, "time_min": 555},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
+    assert not any("not found" in v.lower() for v in result.violations), result.violations
+    # (still correctly flagged for gap=445 > U=300, just NOT as "not found")
+    assert any("gap" in v.lower() for v in result.violations)
 
 
 def test_validate_catches_nonexistent_flight_reference(tmp_path):
-    output_path = _write_output(tmp_path, [
-        {"od": "ZZA-ZZB", "flno1": 99999, "flno2": 88888, "gun": 1, "gap_min": 100},
-    ])
+    output_path = _write_output(
+        tmp_path,
+        connections=[{"od": "ZZA-ZZB", "flno1": 99999, "flno2": 88888, "gun": 1, "gap_min": 100}],
+        adjusted_times=[],
+    )
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert not result.is_valid
     assert any("not found" in v.lower() for v in result.violations)
+
+
+def test_validate_catches_reported_time_outside_legal_window(tmp_path):
+    # Rfix (adjustable_set defaults to "none") -- reported time must equal
+    # baseline EXACTLY; a claimed deviation must be flagged.
+    output_path = _write_output(
+        tmp_path,
+        connections=[],
+        adjusted_times=[{"role": "IB", "flno": 9101, "gun": 1, "time_min": 840 + 500}],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
+    assert not result.is_valid
+    assert any("window" in v.lower() for v in result.violations)

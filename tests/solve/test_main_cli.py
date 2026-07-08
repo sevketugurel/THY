@@ -1,6 +1,15 @@
-"""M0 walking-skeleton acceptance test: the literal single-command deliverable
+"""Walking-skeleton acceptance test: the literal single-command deliverable
 (plan §3 M0 DoD: "python main.py --config config/standard.yaml tek komutla
 koşar, pytest -m unit yeşil") run via subprocess exactly as a user would invoke it.
+
+M1: config's adjustable_set=all is now genuinely active (free integer time
+vars), so the exact M0-era hand-calc (500.0) no longer applies -- the solver
+can shift times to admit MORE candidates than the fixed-baseline scenario.
+This test asserts a data-derived LOWER BOUND (the fixed-time value, exactly
+hand-calculated in tests/fixtures/README.md and re-verified in
+tests/solve/test_m1_constraints_c.py) plus end-to-end validity; the exact
+free-time optimum is not hand-calculated here on purpose (see
+test_m1_constraints_c.py for the hand-calculable adjustable_set="none" case).
 
 marker: solve (small HiGHS solve against synthetic fixture).
 """
@@ -28,10 +37,11 @@ def test_main_cli_runs_end_to_end_against_fixture(tmp_path):
     assert "valid=True" in result.stdout
 
     data = json.loads(output_path.read_text())
-    # Gün1 (250.0) + Gün2 (250.0) per fixtures/README.md hand calc, doubled since
-    # both days share the same valid-candidate structure.
-    assert data["objective_value"] == pytest.approx(500.0)
-    assert len(data["selected_connections"]) == 6
+    # Lower bound: free time can only do at least as well as the fixed-time
+    # scenario (400.0, hand-calculated in tests/fixtures/README.md).
+    assert data["objective_value"] >= 400.0 - 1e-6
+    assert len(data["selected_connections"]) >= 3
+    assert len(data["adjusted_flight_times"]) > 0
 
 
 def test_main_cli_requires_exactly_one_data_source(tmp_path):

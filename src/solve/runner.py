@@ -18,6 +18,9 @@ class SolveResult:
     objective_value: float
     selected: dict
     solve_time_sec: float
+    gap_values: dict = None
+    arr_times: dict = None
+    dep_times: dict = None
 
 
 def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: int) -> SolveResult:
@@ -44,16 +47,30 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
         status = str(term)
 
     selected = {}
+    gap_values = {}
+    arr_times = {}
+    dep_times = {}
     objective_value = None
     if status in ("optimal", "time_limit"):
         objective_value = pyo.value(model.objective)
         for i in model.CANDIDATES:
             candidate = model._candidates[i]
             selected[candidate] = int(round(pyo.value(model.x[i])))
+            if hasattr(model, "gap"):
+                gap_values[candidate] = int(round(pyo.value(model.gap[i])))
+        if hasattr(model, "t_arr"):
+            for r in model.ARR_INSTANCES:
+                arr_times[r] = int(round(pyo.value(model.t_arr[r])))
+        if hasattr(model, "t_dep"):
+            for r in model.DEP_INSTANCES:
+                dep_times[r] = int(round(pyo.value(model.t_dep[r])))
 
     return SolveResult(
         status=status,
         objective_value=objective_value,
         selected=selected,
         solve_time_sec=solve_time_sec,
+        gap_values=gap_values,
+        arr_times=arr_times,
+        dep_times=dep_times,
     )

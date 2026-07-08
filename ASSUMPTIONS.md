@@ -81,9 +81,26 @@ yoksa bu satırları atlamamız mı bekleniyor?"
 
 ---
 
-## VARSAYIM-3 (M1'de eklenecek): adjustable_window_min varsayılan değeri
+## VARSAYIM-3: adjustable_window_min = 180 dk (Standard senaryo)
 
-Brief Standard senaryoda ayarlanabilir saatler için "herhangi bir sınır yok, gerekirse
-tanımlanabilir" diyor — pratik/sonlu bir MIP için bir pencere config'ten tanımlanmak
-zorunda. M1 tasarım notunda Big-M sıkılığı ile bu pencere boyutu arasındaki ilişki
-türetildi; kesin varsayılan değer M1 onayıyla birlikte buraya işlenecek.
+**Bulgu**: Brief Standard senaryoda ayarlanabilir saatler için "herhangi bir sınır
+yok, gerekirse tanımlanabilir" diyor — pratik/sonlu bir MIP için bir pencere
+config'ten tanımlanmak zorunda. B kısıtının per-candidate Big-M türetimi
+($M\approx O(4w)$, $w$=pencere) ile plan'ın kendi Big-M disiplini ("hiçbir M
+1440'ı aşmamalı") arasında gerilim var: $w=720$ (ilk VARSAYIM) bazı adaylarda
+$M>1440$ üretiyordu.
+
+**Karar**: $w=180$ dk (3 saat) — hem Big-M'i güvenle $\le 1440$ tutuyor (elle
+doğrulandı: `tests/unit/test_big_m.py::test_ms_never_exceed_1440_for_recommended_window`,
+model kurulumunda da otomatik assert var) hem operasyonel olarak gerçekçi
+(tarife redesign'da uçuşlar genelde birkaç saatten fazla kaymaz).
+
+**Etki alanı**: `src/config/standard.yaml::adjustable_window_min`, tek nokta.
+Organizatörden farklı bir pencere beklentisi gelirse (ör. "6 saat serbestlik
+istiyoruz") sadece bu config değeri değişir; Big-M formülü otomatik olarak
+yeni pencereye göre yeniden türetilir (data-derived, hardcode yok), sadece
+$\le 1440$ assert'i o durumda tekrar kontrol edilmeli.
+
+**Organizatöre soru**: "Ayarlanabilir saatler için pratik bir hareket penceresi
+öngörüyor musunuz (ör. baseline ±kaç saat), yoksa bizim seçtiğimiz makul bir
+varsayım (3 saat) kabul edilebilir mi?"
