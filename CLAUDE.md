@@ -45,3 +45,36 @@ pytest -m solve           # küçük HiGHS solve
 Her yeşil milestone sonunda: commit + tag (`m<N>-<kısa-ad>`), `docs/model.md`
 güncelle (kümeler/parametreler/kısıtlar formel gösterim — kod↔doküman tutarsızlığı
 diskalifiye sebebi), gerekirse `ASSUMPTIONS.md`'ye yeni VARSAYIM ekle.
+
+## Aktif Otonom Tur (2026-07-09) — context sıkışırsa buradan devam et
+
+Kullanıcı, M1→M2→(ritüel tamsa)M3'ü bitirip, M4'ün TASARIM NOTUNU yazıp
+**M4 koduna başlamadan** durmamı istedi. Tam protokol kullanıcı mesajında;
+özet:
+
+- **TDD sırası bozulmaz**: kırmızı→minimum yeşil→refactor.
+- **Her kısıt formülasyonundan önce ultrathink**: 3-5 satır yazılı doğruluk
+  argümanı, sonra kod. (M2'de b_od derivasyonunda tam bu yüzden bir hata
+  yakalandı — bkz. `docs/decisions.md`.)
+- **Validator her kısıtla aynı milestone'da büyür**, model kodundan bağımsız.
+  Kısıt başına 3 test: bağlayıcı / bağlayıcı-değil / kasıtlı-ihlal-yakalanıyor.
+- **docs/model.md + ASSUMPTIONS.md + docs/decisions.md** ilgili kodla AYNI
+  commit'te güncellenir.
+- **Solve testlerine 60sn limit.** Full data'da MIP çözme YOK bu turda (M5 işi)
+  — full data'ya sadece hızlı pandas kontrolleri için dokunulur.
+- **Dur-ve-sor eşiği** (bunlar dışında otonom ilerle): brief yorumunu değiştiren
+  keşif; skoru etkileyen yeni veri-yorumu kararı; 45dk'da çözülemeyen
+  infeasibility; 1440 altında türetilemeyen Big-M; remote/config'e dokunan git
+  işlemi. Diğer her şey: kendi kararımı ver, `docs/decisions.md`'ye tek satır
+  gerekçeyle logla, devam et.
+- **Milestone kapanış ritüeli**: tüm suite yeşil → validator sıfır ihlal →
+  docs güncel → commit+tag (`m1-core-objective`, `m2-competition`,
+  `m3-operations`) → CLAUDE.md Durum güncelle → 10 satır özet → dur madan
+  devam.
+
+M1 tasarım notu onaylandı (bu conversation'ın önceki turunda) — ek şartlar:
+integer zaman değişkenleri (continuous+epsilon=1 kombinasyonu (L-1,L) ve
+(U,U+1) gap aralıklarını YASAKLAR, meşru çözüm keser — bkz. docs/decisions.md),
+per-candidate Big-M M1'den itibaren, adjustable_window_min=180 (720 değil,
+Big-M≤1440 disiplinini korumak için), J_max(od,h)=|candidates(od,h)| (veri-
+türetilmiş, sabit değil).

@@ -8,3 +8,6 @@ venv/
 runs/*.json
 !runs/.gitkeep
 *.log
+
+# Competition data usage terms prohibit redistribution -- kept local only.
+data_raw/
