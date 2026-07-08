@@ -11,14 +11,15 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   validator.
 - **M1 tamam** (tag: `m1-core-objective`) — B (bağlantı uygunluğu, bidirectional
   reification, per-candidate Big-M) + C (Modül-5 monoton slot). Integer zaman
-  değişkenleri. `main.py` artık `build_model` (gerçek model) kullanıyor,
-  `build_trivial_model` yalnızca M0'ın kendi testleri için duruyor.
-  65/65 test yeşil (49 unit + 16 solve). CLI: `python main.py --config
-  src/config/standard.yaml --fixture` → objective=568.75, valid=True
-  (568.75 **insan doğrulaması bekliyor** — bkz. `tests/fixtures/README.md`
-  "M1 eki").
-- **M2 sırada** — D (rakip yenme + sıralama), b_od derivasyonu (bkz. aşağıdaki
-  "Aktif Otonom Tur" notundaki önceden-tespit-edilmiş b_od tutarsızlığı).
+  değişkenleri.
+- **M2 tamam** (tag: `m2-competition`) — D (rakip yenme + sıralama). N_od/T_comp
+  derivation (rakip=taşıyıcı, min-konsolidasyon), W(r) monotonluk kontrolü
+  (gerçek veri: 0/820 ihlal → forward-only forcing güvenli), b_od derivasyonu,
+  rank one-hot (kritik infeasibility-tuzağı düzeltmesiyle — bkz. Kilit Kararlar).
+  `main.py` artık `build_model_with_competition` kullanıyor. 96/96 test yeşil.
+  CLI: objective=668.75, valid=True (668.75 **insan doğrulaması bekliyor**).
+- **M3 sırada** — A (rotasyon, Flight Pair) + G (gün-içi tutarlılık). Kullanıcının
+  M3 ek şartları aşağıda ("Aktif Otonom Tur").
 
 ## Kilit Kararlar
 
@@ -45,10 +46,20 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   genelleştirildi). `r1_id`/`r2_id` rol-namespaced (`"IB"|"OB"`, flno, gün) —
   26 gerçek uçuş numarası hem inbound hem outbound rolünde görünüyor.
 - **Big-M**: per-candidate, `src/model/big_m.py`, model kurulumunda
-  otomatik `<=1440` assert. `adjustable_window_min=180` (720 değil —
-  `ASSUMPTIONS.md` VARSAYIM-3).
+  otomatik `<=1440` assert (B ve D için ayrı fonksiyonlar). `adjustable_window_min=180`
+  (720 değil — `ASSUMPTIONS.md` VARSAYIM-3).
 - **Gerçek veri bulguları**: Yolcu Verisi'nde 12 duplicate (orig,dest) satırı (toplanıyor)
   ve 3 eksik-dest satırı (reddediliyor) — ayrıntı `ASSUMPTIONS.md`.
+- **D / rakip tanımı** (`src/data/competitors.py`): bir "rakip" TEK BİR
+  TAŞIYICI (Cr1), o taşıyıcının o pazardaki TÜM itineraryleri min T_comp'a
+  konsolide edilir — `ASSUMPTIONS.md` VARSAYIM-4.
+- **Rank one-hot linking EŞİTSİZLİK, EŞİTLİK DEĞİL** (`add_rank_onehot`):
+  $r=N-$beaten $[0,N]$ üretebilir ama onehot $[1,N]$ — eşitlik solver'ı
+  beaten=N'e ulaşmaktan YAPISAL OLARAK engelliyordu (kritik bug, CLI testiyle
+  yakalandı). `>=` + W monotonluğu otomatik $r=\max(1,N-$beaten$)$'e oturtuyor.
+- **Under-claim toleransı**: validator D'de under-claim'i (gerçekte yenilen
+  ama raporlanmayan rakip) violation SAYMAZ — forward-only forcing bunu
+  yapısal olarak ZARARSIZ kılıyor (claimed⊆actual her zaman, ödül asla şişmez).
 
 ## Çalıştırma
 
@@ -93,20 +104,21 @@ Kullanıcı, M1→M2→(ritüel tamsa)M3'ü bitirip, M4'ün TASARIM NOTUNU yazı
   `m3-operations`) → CLAUDE.md Durum güncelle → 10 satır özet → dur madan
   devam.
 
-**M2 ek şartları** (kullanıcı mesajından, henüz uygulanmadı):
-- W(r) tablosu monotonluğu (sabit N,b için son-rank arttıkça artmayan) YÜKLEME
-  sırasında assert edilir; geçerse tek-yönlü forcing (over-claim engellenir,
-  under-claim asla optimal olamaz — monotonluk garantisi), düşerse otomatik
-  çift-yönlü fallback (ikisi de kodda hazır olmalı).
-- Yenme Big-M'i candidate-tight: $M_{\pi,k}=\max(0,J_{hi}(\pi)-T_{comp,k})$,
-  $J_{hi}(\pi)=K_{od}+gap_{hi}(\pi)$.
-- **b_od derivasyonunda ÖNCEDEN TESPİT EDİLEN tutarsızlık** (bu tur içinde,
-  kod yazılmadan önce ultrathink ile bulundu): fixture README'sindeki ilk
-  b_od=2 (ZZA-ZZB) değeri HAND-PICKED'di (M0'da lookup satırını test etmek
-  için), gerçek derivasyon formülü (N − baseline'da yenilen rakip sayısı,
-  D'nin ≤ kuralıyla TUTARLI) uygulanınca b_od=1 çıkıyor. M2'de b_od
-  derivasyon fonksiyonu YAZILDIKTAN SONRA fixture'ın b_od'si YENİDEN
-  hesaplanmalı (hardcode değil, fonksiyondan), ve W(2,1,1) lookup satırı
-  kullanılacak (W(2,2,1) değil) — hand-calc'ı buna göre YENİDEN yaz.
-- Aynı rakibin (od,h) içinde birden çok bağlantısı varsa T_comp=rakibin EN
-  İYİ (min) süresi — VARSAYIM, organizatör sorusuna eklenecek.
+**M3 ek şartları** (kullanıcı mesajından, henüz uygulanmadı):
+- **A rotasyon**: Flight Pair eşleşmesiyle, dönüş IST varışı ≥ gidiş IST
+  kalkışı + R_o (block-time sağlayıcıdan, T_OB+T_IB zaten birleşik) + τ.
+  3+ üyeli Pair grupları ardışık işlenir (plan §4, zaten sentetik fixture'da
+  ROT-A/ROT-B ile 2-üyeli test edilebilir durumda).
+- **G düzenlilik**: gün-çifti mutlak farkları yerine REFERANS-ZAMAN
+  formülasyonu — serbest $T^{dep}_f$ ve $T^{arr}_f$, $t_{f,h}\in[T_f,T_f+X_{dev}]$.
+  Aynı semantik (max−min ≤ X_dev), O(H) kısıt (H=gün sayısı), daha sıkı
+  gevşetme (mutlak-fark formülasyonundan daha az Big-M). Doğruluk argümanı
+  model.md'ye yazılacak.
+- Üçlü test standardı + validator genişletmesi (A/G için de bağlayıcı/
+  bağlayıcı-değil/kasıtlı-ihlal-yakalanıyor) burada da geçerli.
+
+**M3 ritüeli bitince**: M4 (E1/E2 koşullu aktivasyon + F kova bağlama) için
+TASARIM NOTU yaz (değişkenler, kısıtlar, Big-M türetimleri, E2 doğruluk
+tablosu test planı, fixture genişletme planı) ama **M4 KODUNA BAŞLAMA** —
+orada dur, tek rapor bırak (biten milestone'lar, insan doğrulaması
+bekleyenler, mikro-kararlar, M4 notu, organizatör soruları).
