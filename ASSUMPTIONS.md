@@ -74,6 +74,15 @@ değerini fark edilir şekilde etkileyebilir; organizatör onayı olmadan atlama
 "düşür" derse, `SchemaError` yerine `logger.warning` + drop'a çevrilir; (b) düzeltilmiş
 resmi dosya gelirse loader değişmeden çalışır.
 
+**UYGULANDI (2026-07-09, M5)**: organizatör cevabı gelmeden deadline'a
+yetişmek için, önceden planlanmış (a) seçeneği uygulandı — `load_yolcu_verisi`
+artık bir `strict: bool = True` parametresi alıyor. **Varsayılan (strict=True)
+DEĞİŞMEDİ** — tüm mevcut çağıranlar (testler, `--fixture`) hâlâ SchemaError ile
+loudly reddediyor. `main.py`'nin `--full-data` yolu AÇIKÇA `strict=False`
+geçiyor — 3 satır `logging.warning` ile (sessiz DEĞİL, görünür) atılıyor. Bu,
+organizatör cevabı gelene kadar geçici bir köprü; cevap gelirse (b)'ye veya
+farklı bir karara geçilecek.
+
 **Organizatöre soru**: "Yolcu Verisi dosyasında 3 satırda Dest Airport Code alanı boş
 (Orig: AGP, VCE, PEK — rho: 931, 427, 356). Bu satırlar veri hatası mı, yoksa resmi
 (maskelenmemiş) veri setinde dolduruluyor mu? Düzeltilmiş dosya paylaşılabilir mi,

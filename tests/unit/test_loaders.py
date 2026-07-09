@@ -139,6 +139,29 @@ def test_load_yolcu_verisi_rejects_missing_orig_or_dest(tmp_path):
         load_yolcu_verisi(path)
 
 
+def test_load_yolcu_verisi_strict_false_drops_missing_dest_with_warning(tmp_path, caplog):
+    # M5: VARSAYIM-2's pre-planned opt-in escape hatch -- real full-data has
+    # 3 rows with missing Dest (AGP/VCE/PEK, rho 931/427/356). strict=True
+    # (default, all other callers) still fails loudly; strict=False (the
+    # explicit --full-data path only) drops them with a LOGGED warning, never
+    # silently.
+    import logging
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Yolcu Verisi Son 1 Yıl"
+    ws.append(["Orig Airport Code", "Dest Airport Code", "OD importance factor"])
+    ws.append(["ZZA", None, 100])
+    ws.append(["ZZC", "ZZD", 50])
+    path = tmp_path / "missing_dest_yv.xlsx"
+    wb.save(path)
+    with caplog.at_level(logging.WARNING):
+        df = load_yolcu_verisi(path, strict=False)
+    assert len(df) == 1
+    assert df.iloc[0]["orig"] == "ZZC"
+    assert any("missing" in rec.message.lower() for rec in caplog.records)
+
+
 def test_load_yolcu_verisi_rejects_nonpositive_rho(tmp_path):
     wb = openpyxl.Workbook()
     ws = wb.active

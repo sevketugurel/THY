@@ -54,7 +54,12 @@ def main(argv=None) -> int:
 
     od_table = load_od_table(od_path)
     tk = od_table[od_table.cr1 == "TK"]
-    yolcu = load_yolcu_verisi(yv_path)
+    # VARSAYIM-2 (ASSUMPTIONS.md): real full-data has 3 rows with a missing
+    # Dest Airport Code -- strict=False (only for --full-data) drops them
+    # with a logged warning rather than blocking the pipeline entirely while
+    # organizer clarification is pending. The synthetic fixture has no such
+    # rows, so strict stays True there (no behavior change for --fixture).
+    yolcu = load_yolcu_verisi(yv_path, strict=not args.full_data)
     rho = {(r.orig, r.dest): r.rho for r in yolcu.itertuples()}
     ranking_table = load_change_ranking(cr_path)
     pairs_df = load_flight_pairs(fp_path)

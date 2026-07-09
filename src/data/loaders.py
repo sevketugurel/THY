@@ -4,6 +4,7 @@ Each loader normalizes columns to snake_case and asserts the invariants observed
 in the real data (see plan §2.1). Violations raise SchemaError with a message
 naming the offending field, per the "anlamlı hata mesajıyla düşer" requirement.
 """
+import logging
 from pathlib import Path
 
 import pandas as pd
@@ -51,7 +52,7 @@ def load_od_table(path: Path) -> pd.DataFrame:
                "gate_to_gate_min", "od", "gun"]]
 
 
-def load_yolcu_verisi(path: Path) -> pd.DataFrame:
+def load_yolcu_verisi(path: Path, strict: bool = True) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name=0)
     df = df.rename(columns={
         "Orig Airport Code": "orig", "Dest Airport Code": "dest",
@@ -60,7 +61,19 @@ def load_yolcu_verisi(path: Path) -> pd.DataFrame:
 
     missing = df[df.orig.isna() | df.dest.isna()]
     if len(missing):
-        raise SchemaError(f"orig/dest missing in {len(missing)} row(s)")
+        if strict:
+            raise SchemaError(f"orig/dest missing in {len(missing)} row(s)")
+        # M5 VARSAYIM-2 (ASSUMPTIONS.md): organizer clarification pending
+        # (Kayıt & Soru-Cevap penceresi 2026-07-16'ya kadar açık); dropping
+        # loudly (not silently) is the pre-planned fallback so --full-data can
+        # actually run before the deadline. rho values are non-trivial
+        # (356-931) -- this is a LOGGED, visible decision, not a silent one.
+        logging.warning(
+            "load_yolcu_verisi: dropping %d row(s) with missing orig/dest "
+            "(strict=False, VARSAYIM-2): %s",
+            len(missing), missing[["orig", "dest", "rho"]].to_dict("records"),
+        )
+        df = df[~(df.orig.isna() | df.dest.isna())]
 
     # Real full-data file has ~12 duplicate (orig,dest) rows (confirmed by inspection);
     # treated as split rho contributions for the same market and summed.
