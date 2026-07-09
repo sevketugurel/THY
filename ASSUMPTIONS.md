@@ -352,3 +352,72 @@ bilinen bir pratik mi? G'nin (düzenlilik) gün-varyantlarına TAM olarak nasıl
 uygulanması bekleniyor — TÜM operasyon günleri KOŞULSUZ tek bir X_dev bandına
 mı sığmalı (ki bu durumda TK2841 problemi çözümsüz kılar), yoksa bizim
 kümeli yaklaşımımıza benzer bir ayrım kabul edilebilir mi?"
+
+## VARSAYIM-10: A'nın OB/IB eşleştirmesi "aynı gun" DEĞİL, baseline kronolojisine dayanıyor
+
+**Bulgu**: M5 full-data solve merdiveni TÜM adımlarda (F devre dışı, A+G,
+yalnızca B+C+D+G ile bile) HIZLI infeasible verdi. Kök neden izolasyonu:
+B+C+D TEK BAŞINA (A/G'siz) infeasible DEĞİL — A ve/veya G'nin varlığı
+sorunun kaynağı (G, VARSAYIM-9 ile çözüldü; A AYRI bir sorundu). A'nın
+"aynı gun" OB/IB eşleştirmesi test edildi: gerçek TK174(OB,IST→KUL)/
+TK175(IB,KUL→IST) çifti incelendiğinde, TK174 gün1'de 15:50'de kalkıyor,
+"aynı gun" kuralı bunu gün1'in 11:00 TK175 varışıyla eşliyordu — ama bu
+varış, kalkıştan ÖNCE (aynı gün, ~5 saat önce)! Gerçek fiziksel dönüş
+(R_o(KUL)≈20.9 saat round-trip) gün1'in kalkışından SONRAKİ EN YAKIN
+TK175 varışı olan gün3'ün 11:00'ıydı (~2590dk sonra, uzlaştırılabilir).
+Full veri taraması: 1496 rotasyon-çift örneğinin **818'i (%54.7) baseline'da
+uzlaştırılamaz**, **%45.3'ü kronolojik olarak TERS** (IB varışı OB
+kalkışından ÖNCE, aynı gün).
+
+**Karar**: OB/IB eşleştirmesi artık "AYNI GUN" DEĞİL, BASELINE
+KRONOLOJİSİNE dayanıyor (`src/model/rotation_matching.py::match_rotation_legs`,
+$R_o$'nun KENDİSİNE değil, yalnızca kısıtın sağ tarafına bağlı — $R_o$'nun
+LS-tahmin hatasından bağımsız, veri-sadık bir kural). Her OB kalkışının
+partneri, baseline saat-of-day'e göre KENDİSİNDEN SONRAKİ EN YAKIN IB
+varışı — dairesel (Gün haftalık tekrarlanan desen, Gün=7'den Gün=1'e
+sarar), açgözlü ve BİREBİR eşleştirme. Kısa menzilde (round-trip aynı gün
+içinde tamamlanıyorsa) bu kural zaten "aynı gun" ile AYNI sonucu verir —
+M3 davranışı DEĞİŞMEDEN korunur (elle doğrulandı: `test_short_haul_matches_same_gun`).
+
+**Neden**: Flight Pair'deki (OB_flno,IB_flno) çifti "aynı uçak gidip-döner"
+fiziksel ilişkisini ifade ediyor — doğru eşleştirme R_o'nun (dolaylı,
+LS-tahminli) DEĞİL, doğrudan GÖZLEMLENEN baseline kronolojisinin işi olmalı.
+Sarma (Gün=7→Gün=1) durumunda kısıtın ham epoch kıyası bir HAFTA
+(10080dk) ileri kaydırılır, aksi halde önceki haftanın (yanlış) değeriyle
+sessizce yanlış kıyaslanırdı.
+
+**Etki**: `independent_validator.py::_match_rotation_legs_independent` AYNI
+algoritmayı bağımsız (import etmeden) yeniden uygular.
+
+**Organizatöre soru**: "Flight Pair tablosundaki (OB,IB) uçuş numarası
+çiftleri için gün eşleştirmesi nasıl yorumlanmalı? Uzun menzilli
+rotasyonlarda (R_o saatler mertebesinde) hangi IB varışı, hangi OB
+kalkışının GERÇEK partneri sayılmalı — bizim baseline-kronoloji
+yaklaşımımız (kalkıştan sonraki en yakın varış) doğru mu, yoksa farklı bir
+resmi eşleştirme kuralı mı var?"
+
+## VARSAYIM-11: doğru eşleştirmeyle bile uzlaştırılamayan rotasyon çiftleri MUAF tutuluyor
+
+**Bulgu**: VARSAYIM-10'un baseline-kronoloji düzeltmesi A'nın infeasibility'sinin
+BÜYÜK kısmını çözüyor, ama full data'da **382/1571 (%24.3) rotasyon çifti**
+DOĞRU eşleştirmeyle bile, her bacağın KENDİ en-iyi-durum ayarlamasında
+(dep en erken, arr en geç) hâlâ uzlaştırılamaz — G'nin TK2841 durumuyla
+YAPISAL OLARAK AYNI senaryo (bkz. VARSAYIM-9).
+
+**Karar**: bir çift, $t^{arr}_{hi}+\text{week\_offset} \ge t^{dep}_{lo}+R_o+\tau_o$
+testini (her bacağın KENDİ $[t_{lo},t_{hi}]$ Var bounds'u kullanılarak)
+GEÇEMEZSE A kısıtından MUAF tutulur (loglanır — `add_a_constraints`
+`WARNING: A rotation -- N pair(s) exempted (VARSAYIM-11)` çıktısı verir,
+sessizce atlanmaz).
+
+**Neden**: G'yle AYNI mantık — brief'in kendi tutarlılığı gereği (yarışma
+çözümsüz bir problem kurgulamaz), gerçek veride yapısal olarak
+uzlaştırılamayan bir kısıt YOK SAYILMALI, tüm modeli infeasible yapmamalı.
+Bu istisna A'nın DİĞER TÜM (yaklaşık %75'lik çoğunluk) rotasyon çiftlerine
+uygulanmasını ETKİLEMİYOR — yalnızca genuinely-imkansız çiftler için.
+
+**Organizatöre soru**: "Rotasyon kısıtı (A), baseline tarifede zaten fiziksel
+olarak imkansız olan (R_o+tau, mevcut ayarlanabilir pencereyle
+karşılanamayan) OB-IB çiftleri için nasıl ele alınmalı — bu tür çiftler
+istisna mı tutulmalı, yoksa R_o tahminimizde ya da eşleştirme kuralımızda
+bir hata olabilir mi?"

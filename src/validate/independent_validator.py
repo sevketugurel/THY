@@ -111,6 +111,33 @@ def _rotation_subpairs(pairs_df):
     return subpairs
 
 
+WEEK_PERIOD_MIN = 7 * 1440
+
+
+def _match_rotation_legs_independent(ob_occurrences, ib_occurrences):
+    """Bağımsız yeniden-uygulama (src.model.rotation_matching.match_rotation_legs
+    ile BİREBİR aynı algoritma, kasıtlı olarak KOPYALANMIŞ -- diskalifiye
+    sigortası). M5 VARSAYIM-10 (ASSUMPTIONS.md): OB/IB eşleştirmesi "aynı gun"
+    DEĞİL, baseline kronolojisine (dairesel, haftalık) dayanır."""
+    if not ob_occurrences or not ib_occurrences:
+        return []
+
+    def position(gun, tod_min):
+        return (gun - 1) * 1440 + tod_min
+
+    ob_sorted = sorted(ob_occurrences, key=lambda o: position(*o))
+    ib_available = {ib: position(*ib) for ib in ib_occurrences}
+    matches = []
+    for ob in ob_sorted:
+        if not ib_available:
+            break
+        ob_pos = position(*ob)
+        best_ib = min(ib_available, key=lambda ib: (ib_available[ib] - ob_pos) % WEEK_PERIOD_MIN)
+        matches.append((ob[0], best_ib[0]))
+        del ib_available[best_ib]
+    return matches
+
+
 def validate_output(
     output_path: Path, od_table_path: Path, L: int, U: int,
     adjustable_window_min: int = 0, adjustable_set: str = "none",
@@ -352,25 +379,49 @@ def validate_output(
                     )
 
     if flight_pairs_path is not None:
+        # M5 VARSAYIM-10 (ASSUMPTIONS.md): OB/IB eşleştirmesi "aynı gun" DEĞİL,
+        # BASELINE kronolojisine (dairesel, haftalık) dayanır -- validator bu
+        # eşleştirme kararını modelin KENDİSİNden BAĞIMSIZ olarak, ham TK
+        # tablosundaki baseline saat-of-day'lerden yeniden hesaplar (raporlanan
+        # zamanlardan DEĞİL -- eşleştirme kararının kendisi baseline'a dayalı,
+        # sonradan ayarlanan zamanlara değil).
         pairs_df = load_flight_pairs(flight_pairs_path)
         provider_a = BlockTimeProvider(tk, L=L, U=U)
+
+        def _tk_epoch_tod(role, flno):
+            rows = tk[tk.flno1 == flno] if role == "IB" else tk[tk.flno2 == flno]
+            col = "arr_time" if role == "IB" else "dep_time"
+            occ = {}
+            for row in rows.itertuples():
+                gun = int(row.gun)
+                ts = getattr(row, col)
+                occ[gun] = _epoch_min(ts, ts.normalize())
+            return occ
+
         for ob_flno, ib_flno, station in _rotation_subpairs(pairs_df):
             try:
                 r_o = provider_a.get_rotation_constant(station)
             except KeyError:
                 continue
-            for gun in set(g for (_, f, g) in reported_times if f == ob_flno) | \
-                       set(g for (_, f, g) in reported_times if f == ib_flno):
-                dep_key = ("OB", ob_flno, gun)
-                arr_key = ("IB", ib_flno, gun)
+            ob_tod = _tk_epoch_tod("OB", ob_flno)
+            ib_tod = _tk_epoch_tod("IB", ib_flno)
+            for (ob_gun, ib_gun) in _match_rotation_legs_independent(
+                list(ob_tod.items()), list(ib_tod.items()),
+            ):
+                dep_key = ("OB", ob_flno, ob_gun)
+                arr_key = ("IB", ib_flno, ib_gun)
                 if dep_key not in reported_times or arr_key not in reported_times:
                     continue
-                min_arr = reported_times[dep_key] + r_o + tau
+                ob_pos = (ob_gun - 1) * 1440 + ob_tod[ob_gun]
+                ib_pos = (ib_gun - 1) * 1440 + ib_tod[ib_gun]
+                week_offset = WEEK_PERIOD_MIN if ib_pos < ob_pos else 0
+                min_arr = reported_times[dep_key] + r_o + tau - week_offset
                 if reported_times[arr_key] < min_arr:
                     violations.append(
-                        f"rotation FlNo(OB)={ob_flno} FlNo(IB)={ib_flno} Gün={gun}: "
+                        f"rotation FlNo(OB)={ob_flno} Gün={ob_gun} FlNo(IB)={ib_flno} Gün={ib_gun}: "
                         f"IST arrival {reported_times[arr_key]} < required minimum "
-                        f"{min_arr} (dep {reported_times[dep_key]} + R_o({station})={r_o} + tau={tau})"
+                        f"{min_arr} (dep {reported_times[dep_key]} + R_o({station})={r_o} + tau={tau}"
+                        f"{' - week_offset(' + str(week_offset) + ')' if week_offset else ''})"
                     )
 
     ranking_results = data.get("ranking_results", [])

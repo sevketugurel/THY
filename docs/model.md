@@ -191,6 +191,37 @@ IST→MEX→CUN→IST) — bu ara bacaklar modelin $t^{arr}/t^{dep}$ değişken
 kapsamı DIŞINDA (yalnızca IST-tarafı zamanlar modelleniyor), o gruplar
 için kısıt EKSİK kalıyor (bilinçli, dokümante edilmiş sınırlama).
 
+**Eşleştirme kuralı — BASELINE KRONOLOJİSİ (M5 VARSAYIM-10)**: yukarıdaki
+formülün $flno_{gidiş}$/$flno_{dönüş}$ eşleştirmesi (hangi OB kalkışının
+hangi IB varışıyla eşleştiği) M3'te "AYNI GUN" varsayımıyla yapılıyordu.
+Gerçek veride bu YANLIŞ: $R_o$ genellikle SAATLER mertebesinde (uzun
+menzilde 6-21 saat) olduğundan, aynı gün'ün IB'si çoğu zaman GERÇEK dönüş
+bacağı değil, TAMAMEN ALAKASIZ bir rotasyon. Full data'da 1496 rotasyon-çift
+örneğinin 818'i (%54.7) baseline'da uzlaştırılamaz, %45.3'ü KRONOLOJİK
+OLARAK TERS (IB varışı OB kalkışından ÖNCE) çıktı.
+
+Düzeltme (`src/model/rotation_matching.py::match_rotation_legs`): her OB
+kalkışının partneri, BASELINE saat-of-day'e göre KENDİSİNDEN SONRAKİ EN
+YAKIN IB varışı — dairesel (Gün haftalık tekrarlanan desen, Gün=7'den
+Gün=1'e sarar), açgözlü ve BİREBİR. Kısa menzilde (aynı gün içinde döner)
+bu kural zaten "aynı gun" ile AYNI sonucu verir — M3 davranışı korunur.
+Sarma (Gün=7→Gün=1) durumunda kısıtın ham epoch kıyası bir HAFTA
+(`WEEK_PERIOD_MIN=10080`) ileri kaydırılır, aksi halde önceki haftanın
+(yanlış) değeriyle kıyaslanır:
+
+$$t^{arr}_{ib\_gun} + \text{week\_offset} \ge t^{dep}_{ob\_gun} + R_o + \tau_o$$
+
+**Kalıcı istisna — VARSAYIM-11**: doğru eşleştirmeyle bile full data'nın
+%24.3'ü (382/1571) KENDİ en-iyi-durum ayarlamasında bile uzlaştırılamaz
+(G'nin TK2841 durumuyla AYNI yapısal senaryo). Bu çiftler, her bacağın
+KENDİ $[t_{lo},t_{hi}]$ penceresi kullanılarak ($t^{arr}_{hi}+
+\text{week\_offset} \ge t^{dep}_{lo}+R_o+\tau_o$ testiyle) tespit edilip A
+kısıtından MUAF tutulur (loglanır, sessizce atlanmaz).
+
+**Bağımsız doğrulama**: `independent_validator.py::_match_rotation_legs_independent`
+AYNI algoritmayı bağımsız (import etmeden) yeniden uygular, baseline
+kronolojisini ham TK tablosundan (raporlanan zamanlardan DEĞİL) türetir.
+
 ### G — Tarife Düzenliliği (M3)
 
 **Doğruluk argümanı — referans-zaman formülasyonu**: brief

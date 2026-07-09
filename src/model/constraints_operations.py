@@ -19,39 +19,66 @@ girdisiyle -- bkz. `src.model.constraints_capacity.compute_out_of_scope_baseline
 import pyomo.environ as pyo
 
 from src.model.day_clustering import cluster_flight_days
+from src.model.rotation_matching import WEEK_PERIOD_MIN, match_rotation_legs
 
 
-def build_rotation_pairs(model, pairs_df, out_of_scope_baselines: dict = None):
+def build_rotation_pairs(model, candidates, pairs_df, out_of_scope_baselines: dict = None):
     """Pair grubu içindeki ardışık (OB->IB, IST üzerinden) alt-çiftlerini
-    ikiye ayırır:
+    eşleştirir. M5 VARSAYIM-10 (ASSUMPTIONS.md): eşleştirme artık "AYNI GUN"
+    DEĞİL, BASELINE KRONOLOJİSİNE dayanıyor (`src.model.rotation_matching.match_rotation_legs`)
+    -- gerçek veride her OB kalkışının GERÇEK partneri, o kalkıştan SONRAKİ
+    EN YAKIN IB varışıdır (Gün haftalık tekrarlanan desen olduğundan
+    dairesel/wrap-around dahil). "Aynı gun" varsayımı, R_o çoğunlukla
+    saatler mertebesinde olan uzun menzilli rotasyonlarda GERÇEK dönüş
+    bacağını değil TAMAMEN ALAKASIZ bir rotasyonu eşliyordu (%54.7'si
+    baseline'da uzlaştırılamaz, %45.3'ü kronolojik olarak TERS çıktı).
+
+    İki listeye ayrılır:
 
     full_pairs: HER İKİ bacağın da modelde (ARR_INSTANCES/DEP_INSTANCES)
-      bulunduğu ortak günler -- list of (ob_flno, ib_flno, gun, station).
+      bulunduğu eşleşmeler -- list of (ob_flno, ib_flno, ob_gun, ib_gun, station).
 
     partial_pairs: yalnızca BİR bacağın modelde olduğu, DİĞER bacağın
       `out_of_scope_baselines`'ta (ham TK baseline, model değişkeni DEĞİL --
       bkz. src.model.constraints_capacity.compute_out_of_scope_baselines)
-      bulunduğu günler -- list of (ob_flno, ib_flno, gun, station,
-      fixed_side, fixed_baseline_min). VARSAYIM (ASSUMPTIONS.md, F ile
-      birlikte): kapsam-dışı ortağın kendi baseline'ında SABİT çalıştığı
-      varsayılır (modelin onu hareket ettirecek bir kolu yok, hiç candidate
-      bacağı olarak üretilmedi) -- rotasyon fiziksel kuralı yine de o SABİT
-      zamana karşı in-scope bacağa uygulanır.
+      bulunduğu eşleşmeler -- list of (ob_flno, ib_flno, ob_gun, ib_gun,
+      station, fixed_side, fixed_baseline_min). VARSAYIM (F ile birlikte):
+      kapsam-dışı ortağın kendi baseline'ında SABİT çalıştığı varsayılır --
+      rotasyon fiziksel kuralı yine de o SABİT zamana karşı in-scope bacağa
+      uygulanır.
 
-    Her iki bacağı da kapsam dışı olan (full_pairs'e de partial_pairs'e de
-    girmeyen) çiftler zaten modelin karar değişkeni kapsamı tamamen dışında
-    -- kısıt kurulacak bir şey yok, sessizce atlanır."""
+    Her iki bacağı da kapsam dışı olan eşleşmeler (kısıt kurulacak bir şey
+    yok) sessizce atlanır."""
     if out_of_scope_baselines is None:
         out_of_scope_baselines = {}
 
-    ob_guns = {}
-    ib_guns = {}
+    baseline_tod = _baseline_tod(candidates)
+
+    ob_in_scope = {}
+    ib_in_scope = {}
     for (role, flno, gun) in model.DEP_INSTANCES:
         if role == "OB":
-            ob_guns.setdefault(flno, set()).add(gun)
+            ob_in_scope.setdefault(flno, set()).add(gun)
     for (role, flno, gun) in model.ARR_INSTANCES:
         if role == "IB":
-            ib_guns.setdefault(flno, set()).add(gun)
+            ib_in_scope.setdefault(flno, set()).add(gun)
+
+    out_of_scope_ob = {}
+    out_of_scope_ib = {}
+    for (role, flno, gun), baseline_min in out_of_scope_baselines.items():
+        target = out_of_scope_ob if role == "OB" else out_of_scope_ib
+        target.setdefault(flno, {})[gun] = baseline_min
+
+    def _occurrences(flno, role, in_scope_index, out_of_scope_index):
+        occ = []
+        source = {}
+        for gun in in_scope_index.get(flno, set()):
+            occ.append((gun, baseline_tod[role, flno, gun]))
+            source[gun] = ("in_scope", None)
+        for gun, baseline_min in out_of_scope_index.get(flno, {}).items():
+            occ.append((gun, baseline_min % 1440))
+            source[gun] = ("out_of_scope", baseline_min)
+        return occ, source
 
     full_pairs = []
     partial_pairs = []
@@ -63,25 +90,40 @@ def build_rotation_pairs(model, pairs_df, out_of_scope_baselines: dict = None):
                 continue
             station = leg1["dest"]
             ob_flno, ib_flno = leg1["flno"], leg2["flno"]
-            ob_gun_set = ob_guns.get(ob_flno, set())
-            ib_gun_set = ib_guns.get(ib_flno, set())
 
-            for gun in ob_gun_set & ib_gun_set:
-                full_pairs.append((ob_flno, ib_flno, gun, station))
+            ob_occ, ob_source = _occurrences(ob_flno, "OB", ob_in_scope, out_of_scope_ob)
+            ib_occ, ib_source = _occurrences(ib_flno, "IB", ib_in_scope, out_of_scope_ib)
 
-            for gun in ob_gun_set - ib_gun_set:
-                baseline_key = ("IB", ib_flno, gun)
-                if baseline_key in out_of_scope_baselines:
+            ob_tod_by_gun = dict(ob_occ)
+            ib_tod_by_gun = dict(ib_occ)
+            for (ob_gun, ib_gun) in match_rotation_legs(ob_occ, ib_occ):
+                # Haftalık sarma düzeltmesi: eşleştirme dairesel (mod
+                # WEEK_PERIOD_MIN) yapıldığından, ib_gun'ün DOĞAL (aynı hafta)
+                # pozisyonu ob_gun'unkinden ÖNCE geliyorsa (ör. ob=gün6,
+                # ib=gün1) gerçek partner "BİR SONRAKİ tekrar eden haftanın"
+                # aynı gün'üdür -- t_arr KENDİSİ (o gün'ün her hafta aynı
+                # şekilde tekrarlanan değeri) DEĞİŞMEZ, ama kısıtın karşılaştırdığı
+                # ham epoch bir hafta (WEEK_PERIOD_MIN) ileri kaydırılmalı,
+                # yoksa ham epoch kıyası SESSİZCE yanlış (önceki) haftanın
+                # değerini kullanır (elle inşa edilmiş KUL-şekilli testte
+                # yakalandı bir infeasibility olarak).
+                ob_pos = (ob_gun - 1) * 1440 + ob_tod_by_gun[ob_gun]
+                ib_pos = (ib_gun - 1) * 1440 + ib_tod_by_gun[ib_gun]
+                week_offset = WEEK_PERIOD_MIN if ib_pos < ob_pos else 0
+
+                ob_kind, ob_baseline = ob_source[ob_gun]
+                ib_kind, ib_baseline = ib_source[ib_gun]
+                if ob_kind == "in_scope" and ib_kind == "in_scope":
+                    full_pairs.append((ob_flno, ib_flno, ob_gun, ib_gun, station, week_offset))
+                elif ob_kind == "in_scope" and ib_kind == "out_of_scope":
                     partial_pairs.append(
-                        (ob_flno, ib_flno, gun, station, "IB_fixed", out_of_scope_baselines[baseline_key])
+                        (ob_flno, ib_flno, ob_gun, ib_gun, station, "IB_fixed", ib_baseline, week_offset)
                     )
-
-            for gun in ib_gun_set - ob_gun_set:
-                baseline_key = ("OB", ob_flno, gun)
-                if baseline_key in out_of_scope_baselines:
+                elif ob_kind == "out_of_scope" and ib_kind == "in_scope":
                     partial_pairs.append(
-                        (ob_flno, ib_flno, gun, station, "OB_fixed", out_of_scope_baselines[baseline_key])
+                        (ob_flno, ib_flno, ob_gun, ib_gun, station, "OB_fixed", ob_baseline, week_offset)
                     )
+                # both out_of_scope: neither leg is a model variable, nothing to constrain
     return full_pairs, partial_pairs
 
 
@@ -245,7 +287,7 @@ def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
 
 
 def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int, out_of_scope_baselines: dict = None):
-    full_pairs, partial_pairs = build_rotation_pairs(model, pairs_df, out_of_scope_baselines)
+    full_pairs, partial_pairs = build_rotation_pairs(model, candidates, pairs_df, out_of_scope_baselines)
 
     # VARSAYIM ("rotasyon verisi olmayan istasyon icin A atlanir", ASSUMPTIONS.md):
     # r_o_lookup only covers stations where get_rotation_constant succeeded
@@ -253,43 +295,98 @@ def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int, o
     # must ALSO apply here, at constraint-build time, or a station present
     # in pairs_df but absent from r_o_lookup crashes with a raw KeyError
     # (found on real full data) instead of being silently exempted.
-    full_pairs = [(ob, ib, gun, station) for (ob, ib, gun, station) in full_pairs if station in r_o_lookup]
+    full_pairs = [
+        (ob, ib, ob_gun, ib_gun, station, week_offset)
+        for (ob, ib, ob_gun, ib_gun, station, week_offset) in full_pairs if station in r_o_lookup
+    ]
     partial_pairs = [
-        (ob, ib, gun, station, fixed_side, baseline)
-        for (ob, ib, gun, station, fixed_side, baseline) in partial_pairs if station in r_o_lookup
+        (ob, ib, ob_gun, ib_gun, station, fixed_side, baseline, week_offset)
+        for (ob, ib, ob_gun, ib_gun, station, fixed_side, baseline, week_offset) in partial_pairs
+        if station in r_o_lookup
     ]
 
-    index = [(ob, ib, gun) for (ob, ib, gun, station) in full_pairs]
-    station_by_pair = {(ob, ib, gun): station for (ob, ib, gun, station) in full_pairs}
-
-    model.ROTATION_PAIRS = pyo.Set(initialize=index, dimen=3, ordered=True)
-
-    def rotation_rule(m, ob_flno, ib_flno, gun):
-        station = station_by_pair[ob_flno, ib_flno, gun]
+    # VARSAYIM-11 (ASSUMPTIONS.md, M5): baseline-chronology matching (VARSAYIM-10)
+    # fixes most of A's real-data infeasibility, but 382/1571 (24.3%) real
+    # pairs remain genuinely UNRECONCILABLE even at their OWN best-case
+    # adjustment (single occurrence each, no alternative match, achievable
+    # gap far below R_o+tau) -- same structural situation as G's TK2841
+    # (VARSAYIM-9). A pair is reconcilable iff SOME (dep,arr) within each
+    # leg's OWN window satisfies arr+week_offset>=dep+R_o+tau; best case is
+    # dep at its lowest achievable value and arr at its highest.
+    exempted_count = 0
+    reconcilable_full = []
+    for (ob, ib, ob_gun, ib_gun, station, week_offset) in full_pairs:
         r_o = r_o_lookup[station]
-        return m.t_arr["IB", ib_flno, gun] >= m.t_dep["OB", ob_flno, gun] + r_o + tau
+        dep_lo = model.t_dep["OB", ob, ob_gun].lb
+        arr_hi = model.t_arr["IB", ib, ib_gun].ub
+        if arr_hi + week_offset >= dep_lo + r_o + tau:
+            reconcilable_full.append((ob, ib, ob_gun, ib_gun, station, week_offset))
+        else:
+            exempted_count += 1
+    full_pairs = reconcilable_full
+
+    reconcilable_partial = []
+    for (ob, ib, ob_gun, ib_gun, station, fixed_side, baseline, week_offset) in partial_pairs:
+        r_o = r_o_lookup[station]
+        if fixed_side == "IB_fixed":
+            dep_lo = model.t_dep["OB", ob, ob_gun].lb
+            arr_hi = baseline
+        else:
+            dep_lo = baseline
+            arr_hi = model.t_arr["IB", ib, ib_gun].ub
+        if arr_hi + week_offset >= dep_lo + r_o + tau:
+            reconcilable_partial.append((ob, ib, ob_gun, ib_gun, station, fixed_side, baseline, week_offset))
+        else:
+            exempted_count += 1
+    partial_pairs = reconcilable_partial
+
+    if exempted_count:
+        print(
+            f"WARNING: A rotation -- {exempted_count} pair(s) exempted (VARSAYIM-11): "
+            f"baseline unreconcilable even at best-case adjustment."
+        )
+
+    index = [(ob, ib, ob_gun, ib_gun) for (ob, ib, ob_gun, ib_gun, station, week_offset) in full_pairs]
+    full_info = {
+        (ob, ib, ob_gun, ib_gun): (station, week_offset)
+        for (ob, ib, ob_gun, ib_gun, station, week_offset) in full_pairs
+    }
+
+    model.ROTATION_PAIRS = pyo.Set(initialize=index, dimen=4, ordered=True)
+
+    def rotation_rule(m, ob_flno, ib_flno, ob_gun, ib_gun):
+        station, week_offset = full_info[ob_flno, ib_flno, ob_gun, ib_gun]
+        r_o = r_o_lookup[station]
+        # week_offset (M5 VARSAYIM-10): eşleştirme haftalık-dairesel yapıldığından
+        # (Gün=7'den Gün=1'e sarabilir), sarma durumunda ib_gun'ün ham epoch'u
+        # BİR HAFTA (WEEK_PERIOD_MIN) ileri kaydırılmadan ham kıyas SESSİZCE
+        # önceki haftanın (yanlış) değerini kullanır.
+        return m.t_arr["IB", ib_flno, ib_gun] + week_offset >= m.t_dep["OB", ob_flno, ob_gun] + r_o + tau
     model.a_rotation = pyo.Constraint(model.ROTATION_PAIRS, rule=rotation_rule)
 
-    partial_index = [(ob, ib, gun) for (ob, ib, gun, station, fixed_side, baseline) in partial_pairs]
+    partial_index = [
+        (ob, ib, ob_gun, ib_gun)
+        for (ob, ib, ob_gun, ib_gun, station, fixed_side, baseline, week_offset) in partial_pairs
+    ]
     partial_info = {
-        (ob, ib, gun): (station, fixed_side, baseline)
-        for (ob, ib, gun, station, fixed_side, baseline) in partial_pairs
+        (ob, ib, ob_gun, ib_gun): (station, fixed_side, baseline, week_offset)
+        for (ob, ib, ob_gun, ib_gun, station, fixed_side, baseline, week_offset) in partial_pairs
     }
-    model.ROTATION_PARTIAL_PAIRS = pyo.Set(initialize=partial_index, dimen=3, ordered=True)
+    model.ROTATION_PARTIAL_PAIRS = pyo.Set(initialize=partial_index, dimen=4, ordered=True)
 
-    def partial_rotation_rule(m, ob_flno, ib_flno, gun):
-        station, fixed_side, baseline = partial_info[ob_flno, ib_flno, gun]
+    def partial_rotation_rule(m, ob_flno, ib_flno, ob_gun, ib_gun):
+        station, fixed_side, baseline, week_offset = partial_info[ob_flno, ib_flno, ob_gun, ib_gun]
         r_o = r_o_lookup[station]
         if fixed_side == "IB_fixed":
             # Dönüş bacağı (IB) kapsam dışı, kendi baseline'ında SABİT --
             # gidiş (OB, model değişkeni) o sabit varıştan en az R_o+tau
             # ÖNCE kalkmış olmalı (rotasyon eşitsizliğinin tersine çevrilmiş
             # hali: arr>=dep+R_o+tau -> dep<=arr_fixed-R_o-tau).
-            return m.t_dep["OB", ob_flno, gun] <= baseline - r_o - tau
+            return m.t_dep["OB", ob_flno, ob_gun] <= baseline + week_offset - r_o - tau
         # OB_fixed: gidiş bacağı kapsam dışı, kendi baseline'ında SABİT --
         # dönüş (IB, model değişkeni) o sabit kalkıştan en az R_o+tau SONRA
         # varmış olmalı.
-        return m.t_arr["IB", ib_flno, gun] >= baseline + r_o + tau
+        return m.t_arr["IB", ib_flno, ib_gun] + week_offset >= baseline + r_o + tau
     model.a_rotation_partial = pyo.Constraint(model.ROTATION_PARTIAL_PAIRS, rule=partial_rotation_rule)
 
     return full_pairs, partial_pairs

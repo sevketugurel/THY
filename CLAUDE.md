@@ -99,6 +99,16 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   Pair grubundaki ARDIŞIK (Orig==IST→Dest==IST) bacaklara uygulanır — IST'e
   değmeyen ara bacaklar (ör. IST→MEX→CUN→IST, ~50/707 gerçek grup) modelin
   değişken kapsamı dışında, kısıt EKSİK kalır (`ASSUMPTIONS.md` VARSAYIM-5).
+- **A OB/IB eşleştirmesi BASELINE KRONOLOJİSİ (M5, VARSAYIM-10/11)**: "aynı
+  gun" eşleştirmesi gerçek veride %54.7 uzlaştırılamaz, %45.3 kronolojik
+  TERS çıktı (R_o saatler mertebesinde, uzun menzilde aynı-gün IB çoğu
+  zaman alakasız bir rotasyon). Artık `src/model/rotation_matching.py::match_rotation_legs`
+  ile OB kalkışının partneri, baseline saat-of-day'e göre KENDİSİNDEN
+  SONRAKİ EN YAKIN IB varışı (dairesel-haftalık, açgözlü-birebir). Sarma
+  (Gün7→Gün1) durumunda kısıt bir HAFTA (10080dk) ileri kaydırılır
+  (`week_offset`). Doğru eşleştirmeyle bile uzlaştırılamayan %24.3'lük
+  kesim (382/1571) G'nin TK2841 mantığıyla MUAF tutulur (VARSAYIM-11).
+  Validator aynı algoritmayı bağımsız yeniden uyguluyor.
 - **G gün-içi normalizasyon ZORUNLU** (`constraints_operations.py::_day_offsets`):
   farklı `gun` değerleri GLOBAL epoch'ta ~1440dk farklı ham değerlere sahip
   (farklı takvim günü) — normalize etmeden `max(t)-min(t)<=X_dev` kontrolü
