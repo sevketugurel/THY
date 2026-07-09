@@ -13,6 +13,8 @@ from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
+from src.model.build import build_model_with_operations
+from src.model.constraints_operations import add_a_constraints
 from src.model.build import build_model_with_competition
 from src.solve.runner import solve
 
@@ -25,6 +27,7 @@ def main():
     yolcu = load_yolcu_verisi("data_raw/Yolcu Verisi_masked.xlsx", strict=False)
     rho = {(r.orig, r.dest): r.rho for r in yolcu.itertuples()}
     ranking_table = load_change_ranking("data_raw/change_ranking_input.xlsx")
+    pairs_df = load_flight_pairs("data_raw/Flight Pairs.xlsx")
     anchor = compute_epoch_anchor(tk)
 
     candidates = []
@@ -60,14 +63,22 @@ def main():
             b_od_data[(c.o, c.d)] = derive_b_od(od_table, c.o, c.d, c.gun, bj) if bj is not None else 0
 
     monotonic = is_ranking_monotonic(ranking_table)
+    rotation_stations = set(row["dest"] for row in pairs_df.to_dict("records") if row["orig"] == "IST")
+    r_o_lookup = {}
+    for station in rotation_stations:
+        try:
+            r_o_lookup[station] = provider.get_rotation_constant(station)
+        except KeyError:
+            continue
     print("monotonic=", monotonic, "candidates=", len(candidates), flush=True)
 
-    print("=== TEST: B+C+D only (no A, no G) ===", flush=True)
+    print("=== TEST: B+C+D+A only (no G) ===", flush=True)
     t0 = time.time()
     model = build_model_with_competition(
         candidates, rho, journey_constants, rival_data, b_od_data, ranking_table,
         L=L, U=U, monotonic=monotonic,
     )
+    add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau=45)
     print("build time:", round(time.time() - t0, 1), flush=True)
     t1 = time.time()
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
