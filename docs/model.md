@@ -227,6 +227,32 @@ gerçek örnek doğrulandı) — her rol KENDİ ayrı $T_{role,flno}$'suna sahip
 (brief "kalkış VE varış saatleri" diyerek zaten ayrı ele alıyor). Yalnızca
 2+ farklı günde modelde bulunan (role,flno) çiftleri için kısıt kurulur.
 
-### E, F
+### E1 — Yönsel Sayı Dengesi (M4)
 
-*(M4'te eklenecek — bkz. M4 tasarım notu.)*
+**Doğruluk argümanı**: $n_{fwd}=\sum_\pi x_\pi$ (o,d,h pazarı),
+$n_{bwd}=\sum_\pi x_\pi$ (d,o,h pazarı) zaten LİNEER ifadeler (C'nin
+market-grouping'inden) — reifikasyon/Big-M GEREKMİYOR:
+
+$$n_{fwd}-n_{bwd}\le\alpha(n_{fwd}+n_{bwd}) \qquad n_{bwd}-n_{fwd}\le\alpha(n_{fwd}+n_{bwd})$$
+
+İki yön de boş → $0\le0$ her ikisinde, otomatik sağlanır. Formül VARSAYIM
+(`ASSUMPTIONS.md` VARSAYIM-6) — brief kesin formül vermiyor. Yalnızca HER
+İKİ yönde de candidate'ı olan pazar çiftlerine uygulanır (tek-yönlü
+pazarları zorlamak modelin KAPSAM sınırlamasından kaynaklanan yapay bir
+kısıtlama olurdu).
+
+**Kritik davranışsal etki**: B'nin "$gap\in[L,U]\Rightarrow x=1$ ZORUNLU"
+kuralı, E1'i sağlamanın YEGANE yolunun bir bağlantıyı KISMEN gizlemek değil
+(B tarafından yapısal olarak engelleniyor), zamanı kaydırıp $gap$'i
+$[L,U]$ dışına iterek bağlantıyı TAMAMEN ÖLDÜRMEK olduğu anlamına gelir.
+Küçük/asimetrik pazarlarda (ör. bir yönde zaten 1-2 candidate varsa) bu,
+E1'i bir **amaç bastırıcı** yapabilir: solver tek bir fazla bağlantıyı
+dengelemek yerine TÜM pazarı sıfırlamayı (n_fwd=n_bwd=0, kendiliğinden
+sağlanan durum) tercih edebilir, eğer bu objektif açısından daha "ucuzsa".
+`src/model/constraints_balance.py::e1_diagnostics` bu davranışı post-solve
+izler (her pazar çifti için n_fwd/n_bwd + sıfıra-inme bayrağı, rapora
+girecek metrik).
+
+### E2, F
+
+*(Aşağıda eklenecek.)*

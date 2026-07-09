@@ -78,6 +78,7 @@ def validate_output(
     output_path: Path, od_table_path: Path, L: int, U: int,
     adjustable_window_min: int = 0, adjustable_set: str = "none",
     flight_pairs_path: Path = None, tau: int = None, x_dev: int = None,
+    alpha: float = None,
 ) -> ValidationResult:
     data = json.loads(Path(output_path).read_text())
     od_table = load_od_table(od_table_path)
@@ -137,6 +138,24 @@ def validate_output(
                 f"connection {conn['od']} FlNo1={conn['flno1']} FlNo2={conn['flno2']} "
                 f"Gün={conn['gun']}: gap={actual_gap}min outside [{L},{U}]"
             )
+
+    if alpha is not None:
+        counts = {}
+        for conn in data["selected_connections"]:
+            o, d = conn["od"].split("-")
+            counts[(o, d, conn["gun"])] = counts.get((o, d, conn["gun"]), 0) + 1
+        checked = set()
+        for (o, d, gun) in list(counts.keys()):
+            if (o, d, gun) in checked or (d, o, gun) not in counts:
+                continue
+            checked.add((o, d, gun))
+            checked.add((d, o, gun))
+            n_fwd, n_bwd = counts[(o, d, gun)], counts[(d, o, gun)]
+            if abs(n_fwd - n_bwd) > alpha * (n_fwd + n_bwd):
+                violations.append(
+                    f"E1 {o}-{d} Gün={gun}: |n_fwd({n_fwd})-n_bwd({n_bwd})| "
+                    f"exceeds alpha({alpha})*(n_fwd+n_bwd)"
+                )
 
     if x_dev is not None:
         # Kritik: reported_times ayni GLOBAL epoch_anchor'da (compute_epoch_anchor,

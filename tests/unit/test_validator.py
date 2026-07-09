@@ -220,6 +220,49 @@ def test_validate_catches_rank_inconsistent_with_beaten_count(tmp_path):
     assert any("rank" in v.lower() for v in result.violations)
 
 
+def test_validate_catches_e1_imbalance(tmp_path):
+    # ZZA-ZZB has 2 selected connections (MI1xMO2, MI2xMO2), ZZB-ZZA has 1
+    # (NI1xNO2) -- |2-1|=1 > 0.2*3=0.6, violates E1.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZA-ZZB", "flno1": 9102, "flno2": 9112, "gun": 1, "gap_min": 300},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "IB", "flno": 9102, "gun": 1, "time_min": 600},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, alpha=0.20)
+    assert not result.is_valid
+    assert any("E1" in v for v in result.violations)
+
+
+def test_validate_passes_e1_balanced_market(tmp_path):
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, alpha=0.20)
+    assert not any("E1" in v for v in result.violations)
+
+
 def test_recompute_objective_matches_m2_hand_calc(tmp_path):
     # adjustable_set:none baseline scenario (fixtures/README.md M2 eki):
     # connection_reward=400.0 (200x2 days), ranking_reward=100.0 (Gün1 only,

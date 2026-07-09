@@ -168,3 +168,39 @@ sessizce atlıyor (ne kısıt kuruluyor ne ihlal raporlanıyor).
 gerçek çoklu-duraklı rotasyonlar mı? Bu durumda ara bacağın (MEX→CUN) zamanı
 sabit mi kabul edilmeli, yoksa bu tip rotasyonlar için ayrı bir modelleme
 yaklaşımı mı bekleniyor?"
+
+---
+
+## VARSAYIM-6: E1 "bağıl dengesizlik" formülü
+
+**Bulgu**: Brief "İki yöndeki sunulan bağlantı sayıları arasındaki bağıl
+dengesizlik α eşiğini aşmamalı" diyor ama KESİN formülü vermiyor.
+
+**Karar**: $|n_{fwd} - n_{bwd}| \le \alpha \cdot (n_{fwd}+n_{bwd})$, her
+$(o,d,h)$ vs $(d,o,h)$ çifti için AYRI AYRI (gün bazında, TOPLAM değil).
+Yalnızca HER İKİ yönde de en az bir candidate'ı olan pazar çiftlerine
+uygulanır — tek-yönlü pazarlar (bwd modelin kapsamı dışındaysa) atlanır
+(aksi halde fwd'nin de SIFIRA zorlanması gerekirdi, ki bu modelin kendi
+kapsam sınırlamasından kaynaklanan YAPAY bir kısıtlama olurdu, gerçek bir
+dengesizlik değil).
+
+**Neden**: "Bağıl dengesizlik" (relative imbalance) ifadesi standart
+$|a-b|/(a+b) \le \alpha$ formuna en yakın yorum; iki-yönlü lineer eşitsizliğe
+(Big-M gerekmeden) doğrudan çevrilebiliyor. Gün bazında (toplam değil) seçimi,
+brief'in $r_{od,h}$ gibi diğer TÜM formüllerinin de $h$ indeksli olmasıyla
+tutarlı.
+
+**Kritik davranışsal etki** (`docs/model.md` E1 bölümüne işlendi): B'nin
+"gap∈[L,U] ise x=1 ZORUNLU" kuralı nedeniyle, E1'i sağlamanın YEGANE yolu
+bir bağlantıyı KISMEN gizlemek DEĞİL (B tarafından yasaklı), zamanı kaydırıp
+gap'i [L,U] dışına iterek bağlantıyı TAMAMEN ÖLDÜRMEKTİR. Küçük/asimetrik
+pazarlarda bu, E1'in bir "amaç bastırıcı" olmasına yol açabilir — solver tek
+bir fazla bağlantıyı dengelemek yerine TÜM pazarı sıfırlamayı (kendiliğinden
+sağlanan durum) tercih edebilir. `e1_diagnostics` bu davranışı post-solve
+izler (kaç pazar sıfıra indi).
+
+**Organizatöre soru**: "E1'in kesin formülü nedir — bağıl dengesizlik
+$|n_{fwd}-n_{bwd}|/(n_{fwd}+n_{bwd})$ mi, yoksa farklı bir tanım mı? Gün
+bazında mı yoksa dönem toplamında mı uygulanmalı? Yalnızca tek yönde
+candidate'ı olan pazarlar (modelin kapsam sınırlaması nedeniyle) E1'den
+muaf mı sayılmalı?"
