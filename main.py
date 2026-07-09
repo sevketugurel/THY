@@ -75,7 +75,30 @@ def main(argv=None) -> int:
     candidates = [c for c in candidates if (c.o, c.d) in rho]
 
     provider = BlockTimeProvider(tk, L=L, U=U)
-    journey_constants = {(c.o, c.d): provider.get_journey_constant(c.o, c.d) for c in candidates}
+    # VARSAYIM-8 (ASSUMPTIONS.md): direct median K_od needs >=1 baseline row
+    # with a valid [L,U] gap; real full-data has markets with none (only
+    # reachable via the adjustable window). Fall back to the LS-estimated
+    # T_IB_o+T_OB_d (shift-invariant, same proof as R_o); if even THAT fails
+    # (station never seen in any role), drop that market's candidates --
+    # D/E2 have no way to score them without a journey-time constant.
+    journey_constants = {}
+    dropped_markets = set()
+    for c in candidates:
+        market = (c.o, c.d)
+        if market in journey_constants or market in dropped_markets:
+            continue
+        try:
+            journey_constants[market] = provider.get_journey_constant(c.o, c.d)
+        except KeyError:
+            try:
+                journey_constants[market] = provider.get_journey_constant_estimate(c.o, c.d)
+            except KeyError:
+                dropped_markets.add(market)
+    if dropped_markets:
+        print(f"WARNING: dropping {len(dropped_markets)} market(s) with no derivable "
+              f"K_od (direct or LS-estimated): {sorted(dropped_markets)[:10]}"
+              f"{'...' if len(dropped_markets) > 10 else ''}")
+        candidates = [c for c in candidates if (c.o, c.d) not in dropped_markets]
 
     rival_data = {}
     b_od_data = {}

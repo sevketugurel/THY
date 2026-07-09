@@ -249,3 +249,45 @@ ortağın SABİT baseline'ına karşı kurulur — `build_rotation_pairs`'in
 için hub kapasitesi hesabında nasıl bir varsayım yapılmalı — kendi mevcut
 tarifelerinde sabit mi kabul edilmeli, yoksa organizatörün başka bir resmi
 kapasite-tahsis verisi mi var?"
+
+## VARSAYIM-8: K_od yoksa T_IB+T_OB LS-tahminine düşülüyor (575/1329 pazar full data'da doğrudan gözlenemiyor)
+
+**Bulgu**: `BlockTimeProvider.get_journey_constant(o,d)`, o pazar için EN AZ
+BİR TK satırının geçerli ([L,U]) gap'e sahip olmasını gerektiriyor (medyan
+alınacak kaynak satır). Full data'da (M5 boyut bütçesi sırasında bulundu)
+805 TK O-D pazarının 1.329 aday-pazarından (candidate generation sonrası,
+ρ-filtresi öncesi) **575'inde HİÇBİR baseline satırı [L,U] içinde değil**
+(o pazar yalnızca ayarlanabilir pencere sayesinde bir aday üretiyor) — bu
+pazarlarda `get_journey_constant` `KeyError` fırlatıyor, D/E2'nin objektifi
+hesaplayamamasına yol açıyor.
+
+**Karar**: `R_o`'nun kendi LS sistemi zaten HER istasyon için `T_IB_x`/`T_OB_x`
+BİREYSEL tahminlerini üretiyor (önceden yalnızca `R_o=T_IB_x+T_OB_x`
+toplamı için kullanılıyordu, ayrı raporlanmıyordu). Yeni
+`get_journey_constant_estimate(o,d) = T_IB_o + T_OB_d` bu tahminleri
+doğrudan pazar-kombinasyonu için kullanıyor. `main.py`, direkt medyan
+başarısız olursa (KeyError) bu fallback'e düşüyor; o da başarısız olursa
+(istasyon LS ağında HİÇ görülmemiş) o pazarın candidate'ları modelden
+düşürülüyor (VARSAYIM, aşağıda).
+
+**Neden matematiksel olarak sağlam**: `T_IB_o+T_OB_d` kombinasyonu, `R_o`'nun
+KENDİ shift-invariance kanıtıyla AYNI mantıkla shift-invariant — bağlı bir
+bileşende TÜM `T_IB_x`'lere `+c`, TÜM `T_OB_x`'lere `-c` uygulamak HER satır
+denklemini (`T_IB_o+T_OB_d=k`) değişmez bırakıyor, bu yüzden `o+d`
+kombinasyonu `o+o` (R_o) kombinasyonu kadar KESİN kurtarılabilir (ridge
+pinleme'nin BİREYSEL değerleri etkilemesi R_o için zararsız olduğu gibi,
+burada da zararsız — toplam/kombinasyon değişmiyor). Doğrudan gözlemlenen
+bir pazarda fallback tahmini medyan-bazlı K_od ile UYUŞUYOR (test:
+`test_journey_constant_estimate_matches_direct_when_directly_observed`).
+
+**Etki**: fallback'in KENDİSİ de başarısız olursa (istasyon hiçbir role'de
+hiç LS ağında yoksa) o pazarın TÜM candidate'ları D/E2 hesaplayamayacağından
+modelden düşürülüyor — VARSAYIM, bu pazarların connection_reward'ı (B/C,
+K_od'a bağlı değil) da kaybediliyor demek, ama bu istisna full data'da
+NADİR (ağ neredeyse tamamen bağlı, bkz. `runs/`'daki full-data log'u).
+
+**Organizatöre soru**: "775 O-D pazarının 575'i için gate-to-gate uçuş
+süresi hiçbir mevcut tarifede [L,U] penceresine denk gelmiyor (yalnızca
+ayarlanabilir senaryoda ulaşılabilir). Bu pazarlar için resmi bir K_od
+(gate-to-gate uçuş süresi sabiti) verisi var mı, yoksa ağ-genelinde
+istasyon-bazlı bir tahmin (bizim LS yaklaşımımız gibi) kabul edilebilir mi?"

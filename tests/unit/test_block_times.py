@@ -73,6 +73,45 @@ def test_journey_constant_raises_for_unknown_market():
         provider.get_journey_constant("XX", "YY")
 
 
+def test_journey_constant_estimate_matches_direct_when_directly_observed(connected_pqr_rows):
+    # Doğruluk argümanı (M5, full-data'da bulundu -- 575/1329 pazarda K_od
+    # DOĞRUDAN gözlemlenmiyor, hiçbir baseline satırı [L,U] içinde değil).
+    # T_IB_o+T_OB_d, R_o'nun AYNI kanıtıyla (global shift T_IB+=c,T_OB-=c
+    # HER satır denklemini korur) shift-invariant -- bu yüzden fallback
+    # tahmini, doğrudan gözlemlenen bir pazarda medyan-bazlı K_od ile
+    # UYUMLU olmalı (aynı LS sisteminin bir yan ürünü).
+    provider = BlockTimeProvider(connected_pqr_rows, L=L, U=U)
+    direct = provider.get_journey_constant("P", "Q")
+    estimate = provider.get_journey_constant_estimate("P", "Q")
+    assert estimate == pytest.approx(direct, abs=1e-6)
+
+
+def test_journey_constant_estimate_recovers_never_directly_paired_market():
+    # S only ever appears paired with P (never with Q) -- P-S and S-Q markets
+    # have ZERO direct rows, but S/P/Q are all in the SAME connected
+    # bipartite component, so T_IB_S and T_OB_S are still recoverable.
+    def r(o, d, k):
+        return _row(o, d, 0, 100, 100 + k)
+
+    rows = pd.DataFrame([
+        r("P", "Q", 105), r("Q", "P", 130), r("Q", "R", 115),
+        r("R", "Q", 95), r("P", "R", 95), r("R", "P", 100),
+        r("S", "P", 90),  # connects S into the component (T_IB_S + T_OB_P = 90)
+    ])
+    provider = BlockTimeProvider(rows, L=L, U=U)
+    with pytest.raises(KeyError):
+        provider.get_journey_constant("S", "Q")  # never directly observed
+    estimate = provider.get_journey_constant_estimate("S", "Q")
+    assert estimate is not None
+
+
+def test_journey_constant_estimate_raises_when_station_never_seen_at_all():
+    rows = pd.DataFrame([_row("AA", "BB", 0, 100, 320)])
+    provider = BlockTimeProvider(rows, L=L, U=U)
+    with pytest.raises(KeyError):
+        provider.get_journey_constant_estimate("AA", "ZZ_NEVER_SEEN")
+
+
 @pytest.fixture
 def connected_pqr_rows():
     # A minimal-but-connected 3-station bipartite system (unlike the 2-station

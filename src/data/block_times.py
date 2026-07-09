@@ -33,12 +33,26 @@ class BlockTimeProvider:
             valid.groupby(["dep1", "arr2"])["implied_k"].median().to_dict()
         )
 
-        self._rotation_constants, self._residuals, self._single_role = self._solve_rotation_ls(
-            valid, ridge
+        self._rotation_constants, self._t_ib, self._t_ob, self._residuals, self._single_role = (
+            self._solve_rotation_ls(valid, ridge)
         )
 
     def get_journey_constant(self, o: str, d: str) -> float:
         return self._journey_constants[(o, d)]
+
+    def get_journey_constant_estimate(self, o: str, d: str) -> float:
+        """M5 fallback (VARSAYIM-8, ASSUMPTIONS.md): direct median-based K_od
+        needs at least one TK row with a VALID ([L,U]) gap for that exact
+        (o,d) pair -- real full data has 575/1329 markets with none (every
+        baseline row for that pair is invalid, only reachable via the
+        adjustable window). K_od=T_IB_o+T_OB_d is estimated instead from
+        R_o's OWN least-squares system (T_IB_o, T_OB_d individually) --
+        shift-invariant by the SAME proof as R_o (a global T_IB+=c,T_OB-=c
+        shift across a connected component leaves every row equation
+        T_IB_o+T_OB_d=k unchanged, so this specific o+d combination is
+        exactly as recoverable as the o+o combination R_o uses). Raises
+        KeyError only if either station was never observed in ANY role."""
+        return self._t_ib[o] + self._t_ob[d]
 
     def get_rotation_constant(self, o: str) -> float:
         return self._rotation_constants[o]
@@ -84,8 +98,10 @@ class BlockTimeProvider:
         t_ob = solution[n:]
 
         rotation_constants = {s: t_ib[idx[s]] + t_ob[idx[s]] for s in stations}
+        t_ib_by_station = {s: t_ib[idx[s]] for s in stations}
+        t_ob_by_station = {s: t_ob[idx[s]] for s in stations}
 
         row_residuals = A[:n_rows] @ solution - b[:n_rows]
         residuals = pd.Series(row_residuals, index=valid.index, name="rotation_ls_residual_min")
 
-        return rotation_constants, residuals, single_role
+        return rotation_constants, t_ib_by_station, t_ob_by_station, residuals, single_role

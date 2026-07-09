@@ -59,8 +59,19 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
     rank_values = {}
     beaten_rivals = {}
     objective_value = None
+    has_incumbent = True
     if status in ("optimal", "time_limit"):
-        model.solutions.load_from(result)
+        try:
+            model.solutions.load_from(result)
+        except RuntimeError:
+            # maxTimeLimit can be reached with ZERO feasible incumbent found
+            # yet (a real risk for a heavily-reified, large-scale M5 model) --
+            # appsi_highs raises the SAME "no solution to load" RuntimeError
+            # as the genuinely-infeasible case rather than returning cleanly.
+            # Treat this as "no incumbent yet" (status stays time_limit,
+            # objective_value stays None) instead of crashing the caller.
+            has_incumbent = False
+    if status in ("optimal", "time_limit") and has_incumbent:
         objective_value = pyo.value(model.objective)
         if hasattr(model, "CANDIDATES"):
             for i in model.CANDIDATES:

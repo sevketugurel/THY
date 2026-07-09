@@ -196,6 +196,18 @@ def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
 def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int, out_of_scope_baselines: dict = None):
     full_pairs, partial_pairs = build_rotation_pairs(model, pairs_df, out_of_scope_baselines)
 
+    # VARSAYIM ("rotasyon verisi olmayan istasyon icin A atlanir", ASSUMPTIONS.md):
+    # r_o_lookup only covers stations where get_rotation_constant succeeded
+    # (main.py already skips the rest at population time) -- this exemption
+    # must ALSO apply here, at constraint-build time, or a station present
+    # in pairs_df but absent from r_o_lookup crashes with a raw KeyError
+    # (found on real full data) instead of being silently exempted.
+    full_pairs = [(ob, ib, gun, station) for (ob, ib, gun, station) in full_pairs if station in r_o_lookup]
+    partial_pairs = [
+        (ob, ib, gun, station, fixed_side, baseline)
+        for (ob, ib, gun, station, fixed_side, baseline) in partial_pairs if station in r_o_lookup
+    ]
+
     index = [(ob, ib, gun) for (ob, ib, gun, station) in full_pairs]
     station_by_pair = {(ob, ib, gun): station for (ob, ib, gun, station) in full_pairs}
 

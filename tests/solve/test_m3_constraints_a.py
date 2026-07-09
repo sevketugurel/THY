@@ -114,6 +114,28 @@ def test_rotation_non_binding_when_gap_already_sufficient():
     assert pyo.value(model.t_arr["IB", 2, 1]) == pytest.approx(1000.0)  # window min, unrestricted
 
 
+def test_rotation_skips_station_missing_from_r_o_lookup():
+    # M5 edge case (found on real full data): r_o_lookup only covers
+    # stations where get_rotation_constant succeeded (main.py already
+    # catches KeyError there and skips -- VARSAYIM "rotasyon verisi olmayan
+    # istasyon icin A atlanir"). But add_a_constraints itself didn't apply
+    # this exemption at constraint-build time -- a station present in
+    # pairs_df's Flight Pairs but ABSENT from r_o_lookup crashed with a raw
+    # KeyError instead of being silently skipped, both legs otherwise fully
+    # in-scope.
+    candidates = _rotation_candidates(
+        dep_lo=0, dep_hi=1000, dep_baseline=0, arr_lo=0, arr_hi=1000, arr_baseline=0,
+        gidis_flno=1, donus_flno=2,
+    )
+    model = _build(candidates, _pairs_df(1, 2), r_o_lookup={}, tau=45)  # ZZA missing
+    model._candidates = candidates
+    model.objective = pyo.Objective(expr=model.t_dep["OB", 1, 1], sense=pyo.maximize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    # No rotation constraint should have been built at all for this pair.
+    assert len(model.ROTATION_PAIRS) == 0
+
+
 def test_rotation_applies_against_out_of_scope_ib_partner_baseline():
     # M4/F edge case: donus (IB, flno=2) never became a candidate leg at all
     # (out of the model's variable scope -- e.g. no pairing survived the
