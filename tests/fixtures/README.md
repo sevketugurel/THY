@@ -247,5 +247,20 @@ getirirdi).
 
 **CLI sonucu** (M3 dahil, `adjustable_set: all`): objective=**668.75**
 (M2'yle AYNI — A/G kısıtları bu fixture için mevcut optimumu BOZMADI,
-solver'ın zaten seçtiği tarife A/G'yi de sağlıyormuş). 668.75 hâlâ **insan
-doğrulaması bekliyor** (M1 ekinden beri aynı durum).
+solver'ın zaten seçtiği tarife A/G'yi de sağlıyormuş).
+
+## Doğrulama borcu eki — 668.75 ARTIK BAĞIMSIZ DOĞRULANDI (elle değil, kod ile)
+
+`src/validate/independent_validator.py::recompute_objective` — CLI çıktısını
+`src.model`/`src.candidates`'a hiç dokunmadan, ham veriden yeniden hesaplayan
+bir fonksiyon — **668.75'i birebir doğruladı** (18 bağlantı: 4+4+5+5,
+connection_reward=568.75, ranking_reward=100.0 — sadece ZZA-ZZB Gün1 katkı
+veriyor, ZZB-ZZA Gün1 rank=1'e ulaşsa da b_od zaten 1 olduğundan ödül 0).
+Bu, M1'den beri "insan doğrulaması bekliyor" etiketli 668.75 için **yeterli
+bağımsız kanıt** sayılabilir — artık elle çarpı-yaz doğrulaması gerekmiyor.
+
+Ayrıca `tests/slow/test_bruteforce_oracle.py`: B+C+D reifikasyonlarının
+doğruluğunu, Pyomo'ya hiç dokunmayan saf-Python 10-dk grid brute-force ile
+CAPRAZ doğruluyor (küçük, izole bir senaryo — ZZQ-IST tek pazar, tek aday,
+2 rakip). Solver'a "t mod 10==0" ek kısıtıyla brute-force'la TAM eşleşme,
+kısıtsız solver'la ≥ ilişkisi — ikisi de PASSED.

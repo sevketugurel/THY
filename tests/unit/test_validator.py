@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from src.validate.independent_validator import validate_output
+from src.validate.independent_validator import recompute_objective, validate_output
 
 FIXDIR = Path(__file__).parent.parent / "fixtures"
 pytestmark = pytest.mark.unit
@@ -218,3 +218,50 @@ def test_validate_catches_rank_inconsistent_with_beaten_count(tmp_path):
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert not result.is_valid
     assert any("rank" in v.lower() for v in result.violations)
+
+
+def test_recompute_objective_matches_m2_hand_calc(tmp_path):
+    # adjustable_set:none baseline scenario (fixtures/README.md M2 eki):
+    # connection_reward=400.0 (200x2 days), ranking_reward=100.0 (Gün1 only,
+    # Gün2 has no rival data), total=500.0.
+    data = {
+        "objective_value": 500.0,
+        "selected_connections": [
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZA-ZZB", "flno1": 9102, "flno2": 9112, "gun": 1, "gap_min": 300},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 2, "gap_min": 85},
+            {"od": "ZZA-ZZB", "flno1": 9102, "flno2": 9112, "gun": 2, "gap_min": 300},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 2, "gap_min": 200},
+        ],
+        "adjusted_flight_times": [
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "IB", "flno": 9102, "gun": 1, "time_min": 600},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+            {"role": "IB", "flno": 9101, "gun": 2, "time_min": 1440 + 815},
+            {"role": "IB", "flno": 9102, "gun": 2, "time_min": 1440 + 600},
+            {"role": "OB", "flno": 9112, "gun": 2, "time_min": 1440 + 900},
+            {"role": "IB", "flno": 9201, "gun": 2, "time_min": 1440 + 800},
+            {"role": "OB", "flno": 9212, "gun": 2, "time_min": 1440 + 1000},
+        ],
+        "ranking_results": [],
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps(data))
+    breakdown_path = tmp_path / "breakdown.json"
+
+    total, breakdown = recompute_objective(
+        output_path, FIXDIR / "synthetic_od_table.xlsx",
+        FIXDIR / "synthetic_yolcu_verisi.xlsx", FIXDIR / "synthetic_change_ranking_input.xlsx",
+        L=L, U=U, breakdown_path=breakdown_path,
+    )
+
+    assert total == pytest.approx(500.0)
+    assert breakdown["connection_reward"] == pytest.approx(400.0)
+    assert breakdown["ranking_reward"] == pytest.approx(100.0)
+    assert breakdown_path.exists()
+    written = json.loads(breakdown_path.read_text())
+    assert written["total"] == pytest.approx(500.0)

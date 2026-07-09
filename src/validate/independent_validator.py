@@ -24,7 +24,8 @@ from pathlib import Path
 
 from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
-from src.data.loaders import load_flight_pairs, load_od_table
+from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
+from src.data.ranking import compute_baseline_best_journey, derive_b_od
 
 
 @dataclass
@@ -241,3 +242,91 @@ def validate_output(
                 )
 
     return ValidationResult(is_valid=not violations, violations=violations)
+
+
+def recompute_objective(
+    output_path: Path, od_table_path: Path, yolcu_path: Path, ranking_path: Path,
+    L: int, U: int, breakdown_path: Path = None,
+):
+    """Doğruluk borcu: CLI'ın raporladığı objective_value'yu, output.json'un
+    selected_connections + adjusted_flight_times alanlarından ve HAM veriden
+    (src.model/src.candidates'a hiç dokunmadan) tamamen BAĞIMSIZ olarak
+    yeniden hesaplar -- ranking_results'ın CLAIM ettiği rank'e bile güvenmez,
+    beaten/rank'i kendi taze hesaplar (validate_output'un D-check'iyle aynı
+    mantık, ama TAMAMEN ayrı bir giriş noktasından, ranking_results
+    olmadan da çalışır).
+
+    b_od per-(o,d) pazar sabiti main.py'nin KENDİ davranışıyla TUTARLI
+    hesaplanır: main.py candidates'ı gün-sıralı üretir ve b_od'yi İLK
+    karşılaşılan gün için hesaplar (bkz. main.py rival_data/b_od_data döngüsü)
+    -- burada da aynı tutarlılık için EN KÜÇÜK gun değeri kullanılır."""
+    data = json.loads(Path(output_path).read_text())
+    od_table = load_od_table(od_table_path)
+    tk = od_table[od_table.cr1 == "TK"]
+    yolcu = load_yolcu_verisi(yolcu_path)
+    rho = {(r.orig, r.dest): r.rho for r in yolcu.itertuples()}
+    ranking_table = load_change_ranking(ranking_path)
+    weight_lookup = {(row.n, row.b, row.r): row.weight for row in ranking_table.itertuples()}
+    provider = BlockTimeProvider(tk, L=L, U=U)
+
+    reported_times = {
+        (e["role"], e["flno"], e["gun"]): e["time_min"]
+        for e in data.get("adjusted_flight_times", [])
+    }
+
+    gaps_by_market = {}
+    for conn in data["selected_connections"]:
+        o, d = conn["od"].split("-")
+        arr_key = ("IB", conn["flno1"], conn["gun"])
+        dep_key = ("OB", conn["flno2"], conn["gun"])
+        gap = reported_times[dep_key] - reported_times[arr_key]
+        gaps_by_market.setdefault((o, d, conn["gun"]), []).append(gap)
+
+    b_od_cache = {}
+
+    def b_od_for(o, d):
+        if (o, d) not in b_od_cache:
+            gun0 = min(gun for (mo, md, gun) in gaps_by_market if (mo, md) == (o, d))
+            baseline_j = compute_baseline_best_journey(od_table, o, d, gun0, L=L, U=U)
+            b_od_cache[(o, d)] = derive_b_od(od_table, o, d, gun0, baseline_j) if baseline_j is not None else 0
+        return b_od_cache[(o, d)]
+
+    connection_reward = 0.0
+    ranking_reward = 0.0
+    breakdown = {"markets": []}
+
+    for (o, d, gun), gaps in sorted(gaps_by_market.items()):
+        r = rho.get((o, d))
+        if r is None:
+            continue
+        count = len(gaps)
+        conn_component = r * sum(2 ** -(j - 1) for j in range(1, count + 1))
+        connection_reward += conn_component
+
+        rivals = derive_rival_best_times(od_table, o, d, gun)
+        rank_component = 0.0
+        rank = None
+        if rivals:
+            journey_const = provider.get_journey_constant(o, d)
+            journeys = [journey_const + g for g in gaps]
+            beaten = {k for k, tc in rivals.items() if any(j <= tc for j in journeys)}
+            rank = max(1, len(rivals) - len(beaten))
+            weight = weight_lookup.get((len(rivals), b_od_for(o, d), rank), 0.0)
+            rank_component = r * weight
+        ranking_reward += rank_component
+
+        breakdown["markets"].append({
+            "o": o, "d": d, "gun": gun, "count": count, "rank": rank,
+            "connection_component": conn_component, "ranking_component": rank_component,
+        })
+
+    total = connection_reward + ranking_reward
+    breakdown["connection_reward"] = connection_reward
+    breakdown["ranking_reward"] = ranking_reward
+    breakdown["total"] = total
+    breakdown["claimed_objective_value"] = data.get("objective_value")
+
+    if breakdown_path is not None:
+        Path(breakdown_path).write_text(json.dumps(breakdown, indent=2, sort_keys=True, default=str))
+
+    return total, breakdown
