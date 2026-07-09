@@ -34,8 +34,12 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
         opt.config.stream_solver = False
         opt.highs_options = {"random_seed": seed}
 
+    # load_solutions=False: an infeasible/unbounded model has no solution to
+    # load -- letting the default (True) crash with a RuntimeError instead of
+    # a clean TerminationCondition would make it impossible for callers (and
+    # the M4/F/G solve tests) to assert on result.status=="infeasible".
     t0 = time.time()
-    result = opt.solve(model)
+    result = opt.solve(model, load_solutions=False)
     solve_time_sec = time.time() - t0
 
     term = result.solver.termination_condition
@@ -56,12 +60,14 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
     beaten_rivals = {}
     objective_value = None
     if status in ("optimal", "time_limit"):
+        model.solutions.load_from(result)
         objective_value = pyo.value(model.objective)
-        for i in model.CANDIDATES:
-            candidate = model._candidates[i]
-            selected[candidate] = int(round(pyo.value(model.x[i])))
-            if hasattr(model, "gap"):
-                gap_values[candidate] = int(round(pyo.value(model.gap[i])))
+        if hasattr(model, "CANDIDATES"):
+            for i in model.CANDIDATES:
+                candidate = model._candidates[i]
+                selected[candidate] = int(round(pyo.value(model.x[i])))
+                if hasattr(model, "gap"):
+                    gap_values[candidate] = int(round(pyo.value(model.gap[i])))
         if hasattr(model, "t_arr"):
             for r in model.ARR_INSTANCES:
                 arr_times[r] = int(round(pyo.value(model.t_arr[r])))
@@ -69,8 +75,20 @@ def solve(model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: in
             for r in model.DEP_INSTANCES:
                 dep_times[r] = int(round(pyo.value(model.t_dep[r])))
         if hasattr(model, "rank"):
+            # model.rank is the RAW N-beaten Expression -- can be 0 when ALL
+            # rivals are beaten, but the real change_ranking_input.xlsx table
+            # never defines an r=0 row (min observed r is always 1). Clamp to
+            # the SAME max(1,.) floor add_rank_onehot's linking constraint and
+            # the validator's expected_rank both already use -- but only for
+            # markets that HAVE rivals (N=0 markets correctly report 0,
+            # un-clamped).
+            n_by_market = {}
+            if hasattr(model, "MARKET_RIVALS"):
+                for (o, d, gun, k) in model.MARKET_RIVALS:
+                    n_by_market[o, d, gun] = n_by_market.get((o, d, gun), 0) + 1
             for market in model.MARKETS:
-                rank_values[market] = int(round(pyo.value(model.rank[market])))
+                raw_rank = int(round(pyo.value(model.rank[market])))
+                rank_values[market] = max(1, raw_rank) if n_by_market.get(market, 0) > 0 else raw_rank
         if hasattr(model, "beaten"):
             for (o, d, gun, k) in model.MARKET_RIVALS:
                 if int(round(pyo.value(model.beaten[o, d, gun, k]))) == 1:

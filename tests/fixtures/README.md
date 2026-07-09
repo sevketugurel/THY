@@ -264,3 +264,28 @@ doğruluğunu, Pyomo'ya hiç dokunmayan saf-Python 10-dk grid brute-force ile
 CAPRAZ doğruluyor (küçük, izole bir senaryo — ZZQ-IST tek pazar, tek aday,
 2 rakip). Solver'a "t mod 10==0" ek kısıtıyla brute-force'la TAM eşleşme,
 kısıtsız solver'la ≥ ilişkisi — ikisi de PASSED.
+
+## M4 eki — E1+E2+F wiring, ve runner'ın rank clamp bug'ı (KRİTİK, CLI ile yakalandı)
+
+`build_model_m4` main.py'ye bağlandıktan sonra ilk CLI koşusu
+`valid=False` verdi: `ranking_results ZZB-ZZA Gün=1: claimed rank=0
+inconsistent with max(1,N(3)-beaten(3))=1`. Kaynak M4'ün YENİ kısıtlarında
+DEĞİL — E1'in yönsel dengeleme baskısı, solver'ı bu fixture'da İLK KEZ
+ZZB-ZZA pazarının TÜM (3/3) rakiplerini yenmeye zorladı; bu, `runner.py`'nin
+`rank_values` çıkarımındaki GİZLİ bir bug'ı açığa çıkardı: `model.rank[market]`
+ham `N-beaten` Expression'ı taşıyor (tüm rakipler yenilirse 0'a inebilir),
+ama gerçek `change_ranking_input.xlsx` tablosu r=0 için HİÇBİR satır
+tanımlamıyor — `add_rank_onehot`'un linking kısıtı zaten bunu r>=1'e
+clamp'liyordu (bkz. Kilit Kararlar, M2'nin kritik rank one-hot düzeltmesi)
+ama `runner.py` ham (clamp'lenmemiş) değeri DOĞRUDAN output.json'a
+yazıyordu — validator'ın (ve objektifin kendisinin) beklediği max(1,·)
+semantiğiyle çelişiyordu. Bu, M2'den beri var olan GİZLİ bir bug'dı, hiçbir
+önceki fixture senaryosu bir pazarın TÜM rakiplerini yenmediği için hiç
+tetiklenmemişti. Düzeltme: `runner.py` artık N>0 olan pazarlar için
+`max(1, raw_rank)` uyguluyor (N=0 pazarlar clamp'siz 0 raporluyor —
+`tests/solve/test_runner_rank_clamp.py`, ikisi de ayrı test).
+
+**CLI sonucu** (M4 dahil, tüm A-G aktif, `adjustable_set: all`):
+objective=**668.75** (M2/M3'le AYNI — E1/E2/F bu fixture için mevcut
+optimumu BOZMADI, solver'ın zaten seçtiği tarife hepsini de sağlıyormuş),
+selected=18, valid=True.

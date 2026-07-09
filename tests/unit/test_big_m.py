@@ -15,7 +15,7 @@ marker: unit (solver-free, pure arithmetic).
 import pytest
 
 from src.candidates.generate import Candidate
-from src.model.big_m import derive_b_big_ms, derive_d_big_ms
+from src.model.big_m import derive_b_big_ms, derive_d_big_ms, derive_e2_candidate_big_ms, derive_e2_pair_big_m
 
 pytestmark = pytest.mark.unit
 
@@ -89,3 +89,43 @@ def test_d_zero_forcing_when_always_beats():
     c = _candidate(gap_lo=0, gap_hi=10)
     m_fwd, _ = derive_d_big_ms(c, journey_const=100, t_comp=1000)
     assert m_fwd == 0
+
+
+# --- E2 (Jbest sandwich) Big-M ---
+
+def test_e2_candidate_big_ms_worked_example():
+    # c: gap_lo=-300,gap_hi=420, journey_const=220 -> J_lo=-80, J_hi=640.
+    # Market aggregate (other candidates in the same market widen the range):
+    # market_j_lo=-100, market_j_hi=700.
+    # m_up = max(0, market_j_hi - J_lo) = max(0, 700-(-80)) = 780
+    # m_down = max(0, J_hi - market_j_lo) = max(0, 640-(-100)) = 740
+    c = _candidate(gap_lo=-300, gap_hi=420)
+    m_up, m_down = derive_e2_candidate_big_ms(c, journey_const=220, market_j_lo=-100, market_j_hi=700)
+    assert (m_up, m_down) == (780, 740)
+
+
+def test_e2_candidate_big_ms_zero_when_fixed_and_sole_in_market():
+    # Fixed gap (Rfix, gap_lo==gap_hi=100) and sole candidate in its market ->
+    # J is a single point (320) and market bounds collapse to that same point
+    # -> both Ms are exactly 0 (no slack needed; x is mandatorily 1 anyway).
+    c = _candidate(gap_lo=100, gap_hi=100)
+    m_up, m_down = derive_e2_candidate_big_ms(c, journey_const=220, market_j_lo=320, market_j_hi=320)
+    assert (m_up, m_down) == (0, 0)
+
+
+def test_e2_candidate_big_ms_are_nonnegative():
+    c = _candidate(gap_lo=-300, gap_hi=420)
+    m_up, m_down = derive_e2_candidate_big_ms(c, journey_const=220, market_j_lo=-100, market_j_hi=700)
+    assert m_up >= 0 and m_down >= 0
+
+
+def test_e2_pair_big_m_worked_example():
+    # jd_hi_side=700, jd_lo_other=-50, gamma=30 -> m=max(0,700-(-50)-30)=720.
+    m = derive_e2_pair_big_m(jd_hi_side=700, jd_lo_other=-50, gamma=30)
+    assert m == 720
+
+
+def test_e2_pair_big_m_zero_when_ranges_already_within_gamma():
+    # jd_hi_side - jd_lo_other = 20 <= gamma=30 -> no forcing ever needed.
+    m = derive_e2_pair_big_m(jd_hi_side=20, jd_lo_other=0, gamma=30)
+    assert m == 0

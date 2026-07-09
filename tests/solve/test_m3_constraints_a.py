@@ -114,6 +114,63 @@ def test_rotation_non_binding_when_gap_already_sufficient():
     assert pyo.value(model.t_arr["IB", 2, 1]) == pytest.approx(1000.0)  # window min, unrestricted
 
 
+def test_rotation_applies_against_out_of_scope_ib_partner_baseline():
+    # M4/F edge case: donus (IB, flno=2) never became a candidate leg at all
+    # (out of the model's variable scope -- e.g. no pairing survived the
+    # achievable-range gate) -- it has a raw TK baseline arrival of 900
+    # (epoch-min), no Pyomo t_arr variable. gidis (OB, flno=1) IS in scope,
+    # free in [0,1000]. R_o=250,tau=45 -> gidis dep must be <=900-250-45=605
+    # even though the rotation constraint can't reference donus as a
+    # variable at all. Adversarial objective wants dep as LARGE as possible.
+    c_ob = Candidate(
+        od="IST-ZZA", o="IST", d="ZZA", gun=1, flno1=99999, flno2=1,
+        r1_id=("IB", 99999, 1), r2_id=("OB", 1, 1),
+        arr_time=None, dep_time=None, gap_min=100,
+        arr_lo=0, arr_hi=0, dep_lo=0, dep_hi=1000,
+        gap_lo=0, gap_hi=1000,
+    )
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c_ob])
+    add_b_constraints(model, [c_ob], L=L, U=U)
+    add_c_constraints(model, [c_ob])
+    add_a_constraints(
+        model, [c_ob], _pairs_df(1, 2), {"ZZA": 250}, tau=45,
+        out_of_scope_baselines={("IB", 2, 1): 900},
+    )
+    model._candidates = [c_ob]
+    model.objective = pyo.Objective(expr=model.t_dep["OB", 1, 1], sense=pyo.maximize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    assert pyo.value(model.t_dep["OB", 1, 1]) == pytest.approx(605.0)
+
+
+def test_rotation_applies_against_out_of_scope_ob_partner_baseline():
+    # Mirror: gidis (OB, flno=1) out of scope, raw baseline dep=100. donus
+    # (IB, flno=2) in scope, free in [0,1000]. R_o=250,tau=45 -> donus arr
+    # must be >=100+250+45=395. Adversarial objective wants arr as SMALL as
+    # possible.
+    c_ib = Candidate(
+        od="ZZA-IST", o="ZZA", d="IST", gun=1, flno1=2, flno2=99998,
+        r1_id=("IB", 2, 1), r2_id=("OB", 99998, 1),
+        arr_time=None, dep_time=None, gap_min=100,
+        arr_lo=0, arr_hi=1000, dep_lo=0, dep_hi=0,
+        gap_lo=-1000, gap_hi=0,
+    )
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c_ib])
+    add_b_constraints(model, [c_ib], L=L, U=U)
+    add_c_constraints(model, [c_ib])
+    add_a_constraints(
+        model, [c_ib], _pairs_df(1, 2), {"ZZA": 250}, tau=45,
+        out_of_scope_baselines={("OB", 1, 1): 100},
+    )
+    model._candidates = [c_ib]
+    model.objective = pyo.Objective(expr=model.t_arr["IB", 2, 1], sense=pyo.minimize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    assert pyo.value(model.t_arr["IB", 2, 1]) == pytest.approx(395.0)
+
+
 def test_rotation_violation_caught_by_validator():
     from src.validate.independent_validator import validate_output
     import json

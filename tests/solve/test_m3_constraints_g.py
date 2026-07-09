@@ -24,12 +24,14 @@ saatleri" diyerek zaten ayrı ele alıyor).
 
 marker: solve (small HiGHS solve, <60s).
 """
+import datetime as dt
 from pathlib import Path
 
+import pandas as pd
 import pyomo.environ as pyo
 import pytest
 
-from src.candidates.generate import compute_epoch_anchor, generate_candidates
+from src.candidates.generate import Candidate, compute_epoch_anchor, generate_candidates
 from src.data.loaders import load_od_table
 from src.model.constraints_operations import add_g_constraints
 from src.model.constraints_selection import add_b_constraints, add_c_constraints, add_flight_time_variables
@@ -129,3 +131,112 @@ def test_g_violation_caught_by_validator():
         assert not result.is_valid
         assert any("x_dev" in v.lower() or "düzenlilik" in v.lower() or "regularity" in v.lower()
                    for v in result.violations)
+
+
+# --- M4 "G check": gece yarısı sarma (midnight wraparound) ---
+
+def _midnight_candidate(gun, arr_tod_min, anchor, flno=9301):
+    # Rfix (arr_lo=arr_hi=arr_tod_min-anchored epoch) -- deterministic,
+    # isolates the test to G's own day-offset arithmetic (no solver freedom
+    # to dodge a broken formulation).
+    ts = anchor + pd.Timedelta(days=gun - 1, minutes=arr_tod_min)
+    epoch = int((ts - anchor).total_seconds() // 60)
+    return Candidate(
+        od="ZZM-IST", o="ZZM", d="IST", gun=gun, flno1=flno, flno2=80000 + gun,
+        r1_id=("IB", flno, gun), r2_id=("OB", 80000 + gun, gun),
+        arr_time=ts, dep_time=ts, gap_min=0,
+        arr_lo=epoch, arr_hi=epoch, dep_lo=0, dep_hi=0,
+        gap_lo=-epoch, gap_hi=-epoch,
+    )
+
+
+def test_g_no_false_violation_at_midnight_wraparound():
+    # Gün1 baseline arr=23:55 (day-of-day=1435), Gün2 baseline arr=00:05
+    # (day-of-day=5) -- REAL clock difference is 10min, well within
+    # X_dev=15. Pure-midnight day-offset anchoring would normalize these to
+    # 1435 and 5 -- a FAKE ~1430min spread that makes G (wrongly)
+    # infeasible even though the true schedule is fully compliant.
+    anchor = pd.Timestamp("2024-01-01")
+    c1 = _midnight_candidate(gun=1, arr_tod_min=1435, anchor=anchor)
+    c2 = _midnight_candidate(gun=2, arr_tod_min=5, anchor=anchor)
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c1, c2])
+    add_g_constraints(model, [c1, c2], anchor, x_dev=15)
+    model._candidates = [c1, c2]
+    model.objective = pyo.Objective(expr=0, sense=pyo.maximize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+
+
+def test_g_still_catches_genuine_violation_near_midnight():
+    # Gün1 baseline arr=23:00 (1380), Gün2 baseline arr=01:00 next day
+    # (1440+60=1500) -- REAL clock difference is 120min > X_dev=15, a
+    # genuine violation. The wraparound fix must not swallow real
+    # violations near midnight along with fixing the false ones.
+    anchor = pd.Timestamp("2024-01-01")
+    c1 = _midnight_candidate(gun=1, arr_tod_min=1380, anchor=anchor, flno=9302)
+    c2 = _midnight_candidate(gun=2, arr_tod_min=60, anchor=anchor, flno=9302)
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c1, c2])
+    add_g_constraints(model, [c1, c2], anchor, x_dev=15)
+    model._candidates = [c1, c2]
+    model.objective = pyo.Objective(expr=0, sense=pyo.maximize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "infeasible"
+
+
+def test_validate_no_false_x_dev_violation_at_midnight_wraparound(tmp_path):
+    # Same scenario as the model-side test, verified independently through
+    # the validator: TK flno=9301 baseline arr=23:55 (Gün1) / 00:05 (Gün2)
+    # -- real clock difference 10min, well within X_dev=15. A self-contained
+    # tiny od_table fixture (the shared synthetic fixture has no near-midnight
+    # flights) with both legs present so load_od_table's own invariants
+    # (Cr1==Cr2, Dep2==Arr1) are satisfied.
+    import json
+
+    import openpyxl
+
+    from src.data.loaders import load_od_table
+    from src.validate.independent_validator import validate_output
+
+    # pandas.DataFrame.to_excel() round-trips datetime.time/Timedelta cells
+    # as plain strings/floats through openpyxl in this environment (verified
+    # -- not a real-data concern, since load_od_table works correctly against
+    # the checked-in fixtures/real files, which are written via a direct
+    # openpyxl.Workbook() like this one, matching tests/fixtures/build_fixture.py's
+    # own convention).
+    anchor = dt.datetime(2024, 1, 1)
+    arr1 = anchor + dt.timedelta(minutes=1435)  # Gün1 23:55
+    arr2 = anchor + dt.timedelta(days=1, minutes=5)  # Gün2 00:05
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "Arr Time",
+               "Cr2", "Dep2", "Arr2", "FlNo2", "Dep Time",
+               "Gate-to-Gate Uçuş Süresi", "O&D", "Gün"])
+    ws.append(["TK", "Turkish Airlines", "ZZM", "IST", 9301, arr1,
+               "TK", "IST", "ZZN", 80001, arr1 + dt.timedelta(minutes=100),
+               dt.time(3, 20), "ZZM-ZZN", 1])
+    ws.append(["TK", "Turkish Airlines", "ZZM", "IST", 9301, arr2,
+               "TK", "IST", "ZZN", 80002, arr2 + dt.timedelta(minutes=100),
+               dt.time(3, 20), "ZZM-ZZN", 2])
+    od_path = tmp_path / "od_table.xlsx"
+    wb.save(od_path)
+    load_od_table(od_path)  # sanity: fixture satisfies the loader's own invariants
+
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({
+        "objective_value": 0.0,
+        "selected_connections": [],
+        "adjusted_flight_times": [
+            {"role": "IB", "flno": 9301, "gun": 1, "time_min": 1435},
+            {"role": "IB", "flno": 9301, "gun": 2, "time_min": 1445},
+        ],
+        "ranking_results": [],
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }))
+    result = validate_output(
+        output_path, od_path, L=L, U=U,
+        adjustable_window_min=180, adjustable_set="all", x_dev=15,
+    )
+    assert not any("x_dev" in v.lower() or "regularity" in v.lower() for v in result.violations), result.violations

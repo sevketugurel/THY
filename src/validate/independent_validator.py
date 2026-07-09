@@ -78,7 +78,8 @@ def validate_output(
     output_path: Path, od_table_path: Path, L: int, U: int,
     adjustable_window_min: int = 0, adjustable_set: str = "none",
     flight_pairs_path: Path = None, tau: int = None, x_dev: int = None,
-    alpha: float = None,
+    alpha: float = None, gamma: int = None,
+    bucket_size_min: int = None, capacity_departure: int = None, capacity_arrival: int = None,
 ) -> ValidationResult:
     data = json.loads(Path(output_path).read_text())
     od_table = load_od_table(od_table_path)
@@ -157,22 +158,132 @@ def validate_output(
                     f"exceeds alpha({alpha})*(n_fwd+n_bwd)"
                 )
 
+    if gamma is not None:
+        # Bağımsız Jbest: model.py'nin argmin-sandviç MIP mekanizmasına hiç
+        # gerek yok -- validator saf Python'da min() alabilir (solver'ın
+        # aksine, burada "hangi candidate seçilecek" diye bir karar değil,
+        # zaten SEÇİLMİŞ (offered) bağlantıların arasından minimum bulmak
+        # yeterli). E2 check bilerek ranking_results/provider'dan bağımsız,
+        # kendi BlockTimeProvider'ını kurar.
+        provider_e2 = BlockTimeProvider(tk, L=L, U=U)
+        journeys_by_market = {}
+        for conn in data["selected_connections"]:
+            o, d = conn["od"].split("-")
+            arr_key = ("IB", conn["flno1"], conn["gun"])
+            dep_key = ("OB", conn["flno2"], conn["gun"])
+            if arr_key not in reported_times or dep_key not in reported_times:
+                continue
+            gap = reported_times[dep_key] - reported_times[arr_key]
+            try:
+                journey = provider_e2.get_journey_constant(o, d) + gap
+            except KeyError:
+                continue
+            journeys_by_market.setdefault((o, d, conn["gun"]), []).append(journey)
+
+        checked_e2 = set()
+        for (o, d, gun) in list(journeys_by_market.keys()):
+            if (o, d, gun) in checked_e2 or (d, o, gun) not in journeys_by_market:
+                continue
+            checked_e2.add((o, d, gun))
+            checked_e2.add((d, o, gun))
+            jbest_fwd = min(journeys_by_market[(o, d, gun)])
+            jbest_bwd = min(journeys_by_market[(d, o, gun)])
+            if abs(jbest_fwd - jbest_bwd) > gamma:
+                violations.append(
+                    f"E2 {o}-{d} Gün={gun}: |Jbest_fwd({jbest_fwd})-Jbest_bwd({jbest_bwd})| "
+                    f"exceeds Gamma({gamma})"
+                )
+
+    if bucket_size_min is not None:
+        # F: bağımsız kova-doluluk kontrolü. src.model.constraints_capacity'nin
+        # MIP z-binary mekanizmasına gerek yok -- validator sadece reported_times'ın
+        # KENDİ 10dk kovasını (t//bucket_size_min) sayar. Kapsam-dışı (modelin
+        # hiç değişkeni olmayan, yani reported_times'ta OLMAYAN) TK bacakları
+        # kendi ham baseline zamanlarında SABİT işgal ettikleri kabul edilir
+        # (VARSAYIM, src.model.constraints_capacity.compute_residual_capacity
+        # ile BİREBİR aynı mantık -- model tarafıyla tutarlı olmak ZORUNLU).
+        dep_occupancy = {}
+        arr_occupancy = {}
+        seen_out_of_scope = set()
+        for row in tk.itertuples():
+            arr_key = ("IB", int(row.flno1), int(row.gun))
+            if arr_key not in reported_times and arr_key not in seen_out_of_scope:
+                seen_out_of_scope.add(arr_key)
+                b = _epoch_min(row.arr_time, anchor) // bucket_size_min
+                arr_occupancy[b] = arr_occupancy.get(b, 0) + 1
+            dep_key = ("OB", int(row.flno2), int(row.gun))
+            if dep_key not in reported_times and dep_key not in seen_out_of_scope:
+                seen_out_of_scope.add(dep_key)
+                b = _epoch_min(row.dep_time, anchor) // bucket_size_min
+                dep_occupancy[b] = dep_occupancy.get(b, 0) + 1
+
+        dep_counts = {}
+        arr_counts = {}
+        for (role, flno, gun), t in reported_times.items():
+            b = t // bucket_size_min
+            if role == "OB":
+                dep_counts[b] = dep_counts.get(b, 0) + 1
+            else:
+                arr_counts[b] = arr_counts.get(b, 0) + 1
+
+        for b, count in dep_counts.items():
+            cap = max(0, capacity_departure - dep_occupancy.get(b, 0))
+            if count > cap:
+                violations.append(
+                    f"F kova(departure) bucket={b}: {count} uçuş, kalan kapasite {cap} "
+                    f"(taban={capacity_departure}, kapsam-dışı işgal={dep_occupancy.get(b, 0)})"
+                )
+        for b, count in arr_counts.items():
+            cap = max(0, capacity_arrival - arr_occupancy.get(b, 0))
+            if count > cap:
+                violations.append(
+                    f"F kova(arrival) bucket={b}: {count} uçuş, kalan kapasite {cap} "
+                    f"(taban={capacity_arrival}, kapsam-dışı işgal={arr_occupancy.get(b, 0)})"
+                )
+
     if x_dev is not None:
-        # Kritik: reported_times ayni GLOBAL epoch_anchor'da (compute_epoch_anchor,
+        # Kritik #1: reported_times ayni GLOBAL epoch_anchor'da (compute_epoch_anchor,
         # candidates/generate.py ile ayni sozlesme) -- farkli gun'ler ~1440dk
         # farkli epoch degerlerine sahip (farkli takvim gunu). Ham degerleri
         # dogrudan karsilastirmak, ayni saat-of-day'e sahip GECERLI bir cozumu
         # bile ~1440dk'lik SAHTE bir ihlal olarak bayraklardi -- her (role,flno,gun)
-        # KENDI takvim gununun gece yarisina gore normalize edilir once
-        # (constraints_operations.py::_day_offsets ile ayni mantik).
-        by_role_flno = {}
-        for (role, flno, gun), t in reported_times.items():
+        # KENDI takvim gununun bir referans noktasina gore normalize edilir once.
+        #
+        # Kritik #2 (gece yarisi sarmasi -- "G check"): referans noktasi olarak
+        # GERCEK gece yarisi (00:00) kullanmak, KENDI saati gece yarisina YAKIN
+        # olan bir ucus icin YANLIS -- 23:55 (gun-ici=1435) ile 00:05 (gun-ici=5)
+        # arasindaki GERCEK fark 10dk'dir ama gece-yarisi-capali temsilde
+        # |1435-5|=1430, SAHTE bir ihlal. Referans noktasi bunun yerine o
+        # ucusun KENDI baseline saatinin TAM 12 SAAT KARSISINA kaydirilir
+        # (constraints_operations.py::_day_offsets / _flight_cut_points ile
+        # BIREBIR ayni mantik, model tarafiyla tutarli olmasi ZORUNLU).
+        baseline_ts = {}
+        for (role, flno, gun) in reported_times:
             match = tk[(tk.flno1 == flno) & (tk.gun == gun)] if role == "IB" else tk[(tk.flno2 == flno) & (tk.gun == gun)]
             if match.empty:
                 continue
             ref_col = "arr_time" if role == "IB" else "dep_time"
-            day_offset = _epoch_min(match.iloc[0][ref_col].normalize(), anchor)
+            baseline_ts[(role, flno, gun)] = match.iloc[0][ref_col]
+
+        cuts = {}
+        for (role, flno, gun), ts in baseline_ts.items():
+            key = (role, flno)
+            if key in cuts:
+                continue
+            tod = _epoch_min(ts, ts.normalize())
+            cuts[key] = (tod + 720) % 1440
+
+        by_role_flno = {}
+        for (role, flno, gun), t in reported_times.items():
+            if (role, flno, gun) not in baseline_ts:
+                continue
+            ts = baseline_ts[(role, flno, gun)]
+            cut = cuts[(role, flno)]
+            day_midnight = _epoch_min(ts.normalize(), anchor)
+            tod = _epoch_min(ts, ts.normalize())
+            day_offset = day_midnight + cut if tod >= cut else day_midnight + cut - 1440
             by_role_flno.setdefault((role, flno), {})[gun] = t - day_offset
+
         for (role, flno), by_gun in by_role_flno.items():
             if len(by_gun) < 2:
                 continue

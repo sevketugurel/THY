@@ -29,8 +29,32 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   düzeldi ve gerçek infeasibility'ler bu şekilde ortaya çıktı/düzeltildi.
   102/102 test yeşil. CLI: objective=668.75 (M2'yle aynı — A/G mevcut
   optimumu bozmadı), valid=True.
-- **M4 sırada** — E1/E2 (koşullu aktivasyon) + F (kova bağlama). Kullanıcının
-  M4 talimatı: TASARIM NOTU yaz, KODA BAŞLAMA, orada dur.
+- **M4 tamam** (tag: `m4-directional-capacity`) — E1 (yönsel sayı dengesi,
+  VARSAYIM-6): n_fwd/n_bwd lineer, Big-M gerekmiyor. E2 (yön-arası
+  seyahat-süresi farkı, argmin sandviç): $a_{dir}$ (D'nin OR-aggregation'ıyla
+  aynı desen), $w_\pi$ argmin seçici, $J_{best}$ sandviç (candidate-bazlı +
+  pazar-çifti-bazlı Big-M, `src/model/big_m.py`), adversarial "sahte-düşük
+  Jbest" testi, 4 satırlık aktivasyon tablosu ayrı testler, validator
+  bağımsız Jbest recompute + Gamma kontrolü. F (kova/kapasite bağlama,
+  VARSAYIM-7): pencere-ulaşılabilir kova kısıtlaması (144 DEĞİL), ayrı
+  departure/arrival z-aileleri (10/15 kapasite), kapsam-dışı TK bacakları
+  için rezidüel kapasite precompute (`src/model/constraints_capacity.py`),
+  sıkı-kapasite fixture'ı + validator bağımsız kova-sayım kontrolü. **3 ek
+  kritik bug F tasarımı sırasında bulundu ve düzeltildi** (hepsi
+  RED→GREEN kanıtlandı, bkz. `docs/decisions.md`): (1) A'nın rotasyon
+  kısıtı bir Flight Pair bacağı kapsam-dışıysa SESSİZCE atlıyordu —
+  `out_of_scope_baselines` ile düzeltildi; (2) G'nin gün-içi
+  normalizasyonu gerçek gece yarısına yakın uçuşlarda (23:55 vs 00:05)
+  ~1430dk'lık SAHTE ihlal üretiyordu ("G check") — referans noktası her
+  uçuşun kendi baseline'ının 12 saat karşısına kaydırılarak düzeltildi;
+  (3) `runner.py`'nin rank_values çıkarımı `add_rank_onehot`'un [1,N]
+  clamp'ini yok sayıyordu (M2'den beri gizli, E1'in dengeleme baskısı bir
+  pazarı ilk kez TÜM rakiplerini yenmeye zorlayınca CLI'da `valid=False`
+  olarak ortaya çıktı) — `max(1,raw_rank)` ile düzeltildi. `build_model_m4`
+  artık A-G'nin TÜMÜNÜ içeriyor, `main.py` buna bağlandı (tek entegrasyon
+  geçişi). 147/147 test yeşil. CLI (full A-G, `adjustable_set: all`):
+  objective=668.75 (M2/M3'le AYNI — E1/E2/F fixture'ın mevcut optimumunu
+  bozmadı), selected=18, valid=True.
 
 ## Kilit Kararlar
 

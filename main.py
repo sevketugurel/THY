@@ -3,8 +3,9 @@
 
 M1 scope: B (bağlantı uygunluğu) + C (Modül-5 monoton slot).
 M2 scope: + D (rakip yenme ve sıralama).
-M3 scope: + A (rotasyon) + G (düzenlilik). Real constraint groups E,F land
-in M4.
+M3 scope: + A (rotasyon) + G (düzenlilik).
+M4 scope: + E1 (yönsel sayı dengesi) + E2 (JT-farkı) + F (kova/kapasite
+bağlama). Tüm kısıt grupları (A-G) artık aktif -- build_model_m4.
 """
 import argparse
 import sys
@@ -17,7 +18,7 @@ from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
-from src.model.build import build_model_with_operations
+from src.model.build import build_model_m4
 from src.output.writer import write_output
 from src.solve.runner import solve
 from src.validate.independent_validator import validate_output
@@ -95,10 +96,13 @@ def main(argv=None) -> int:
         except KeyError:
             continue  # VARSAYIM: rotasyon verisi olmayan istasyon icin A atlanir
 
-    model = build_model_with_operations(
+    model = build_model_m4(
         candidates, rho, journey_constants, rival_data, b_od_data, ranking_table,
         pairs_df, r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
-        epoch_anchor=anchor, L=L, U=U, monotonic=monotonic,
+        epoch_anchor=anchor, alpha=config["alpha"], gamma=config["gamma"],
+        tk_rows=tk, bucket_size_min=config["bucket_size_min"],
+        capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
+        L=L, U=U, monotonic=monotonic,
     )
     result = solve(model, solver=config["solver"], time_limit_sec=config["time_limit_sec"], seed=config["seed"])
 
@@ -111,6 +115,9 @@ def main(argv=None) -> int:
         adjustable_window_min=config["adjustable_window_min"],
         adjustable_set=config["adjustable_set"],
         flight_pairs_path=fp_path, tau=config["tau"], x_dev=config["X_dev"],
+        alpha=config["alpha"], gamma=config["gamma"],
+        bucket_size_min=config["bucket_size_min"],
+        capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
     )
 
     n_selected = sum(result.selected.values()) if result.selected else 0

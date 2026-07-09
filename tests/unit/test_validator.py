@@ -263,6 +263,92 @@ def test_validate_passes_e1_balanced_market(tmp_path):
     assert not any("E1" in v for v in result.violations)
 
 
+def test_validate_catches_e2_gamma_violation(tmp_path):
+    # Journey constants (fixture, verified via BlockTimeProvider):
+    # K_od(ZZA,ZZB)=220, K_od(ZZB,ZZA)=240. ZZA-ZZB offers gap=60 (J=280) and
+    # gap=300 (J=520) -> Jbest_fwd=280. ZZB-ZZA offers gap=205 (J=445) ->
+    # Jbest_bwd=445. |445-280|=165 > Gamma=30.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZA-ZZB", "flno1": 9102, "flno2": 9112, "gun": 1, "gap_min": 300},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "IB", "flno": 9102, "gun": 1, "time_min": 600},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, gamma=30)
+    assert not result.is_valid
+    assert any("E2" in v for v in result.violations)
+
+
+def test_validate_passes_e2_within_gamma(tmp_path):
+    # gap_fwd=120 (J=220+120=340), gap_bwd=100 (J=240+100=340) -> diff=0.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 120},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 100},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 800},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 920},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 700},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 800},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, gamma=30)
+    assert not any("E2" in v for v in result.violations), result.violations
+
+
+def test_validate_catches_f_capacity_violation(tmp_path):
+    # OB legs 9112 (baseline 900) and 9212 (baseline 1000) reported at 900
+    # and 905 -- same 10-min bucket (90), capacity_departure=1 forces at
+    # most one flight per bucket.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[],
+        adjusted_times=[
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 905},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(
+        output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U,
+        adjustable_window_min=180, adjustable_set="all",
+        bucket_size_min=10, capacity_departure=1, capacity_arrival=15,
+    )
+    assert not result.is_valid
+    assert any("F kova" in v for v in result.violations), result.violations
+
+
+def test_validate_passes_f_within_capacity(tmp_path):
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[],
+        adjusted_times=[
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 905},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(
+        output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U,
+        adjustable_window_min=180, adjustable_set="all",
+        bucket_size_min=10, capacity_departure=10, capacity_arrival=15,
+    )
+    assert not any("F kova" in v for v in result.violations), result.violations
+
+
 def test_recompute_objective_matches_m2_hand_calc(tmp_path):
     # adjustable_set:none baseline scenario (fixtures/README.md M2 eki):
     # connection_reward=400.0 (200x2 days), ranking_reward=100.0 (Gün1 only,

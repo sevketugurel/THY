@@ -204,3 +204,39 @@ $|n_{fwd}-n_{bwd}|/(n_{fwd}+n_{bwd})$ mi, yoksa farklı bir tanım mı? Gün
 bazında mı yoksa dönem toplamında mı uygulanmalı? Yalnızca tek yönde
 candidate'ı olan pazarlar (modelin kapsam sınırlaması nedeniyle) E1'den
 muaf mı sayılmalı?"
+
+## VARSAYIM-7: F rezidüel kapasite -- kapsam-dışı TK bacakları kendi baseline'ında SABİT kabul edilir
+
+**Bulgu**: Hub kapasitesi (F, kova/kapasite bağlama) TÜM TK trafiğini
+paylaşıyor — hem modelin ayarlanabilir değişkeni OLAN uçuşları hem de
+OLMAYANLARI (ör. achievable-range kapısını hiçbir eşleşmede geçemeyen bir
+flno, ya da M5'in adjustable-subset modunda dışarıda bırakılan uçuşlar).
+İkinci grup modelin hiç `t_arr`/`t_dep` değişkeni değil — kapasiteye
+katkılarını nasıl hesaba katacağımız açık değil.
+
+**Karar**: kapsam-dışı her TK bacağı, kendi HAM (baseline) O&D tablosu
+zamanında SABİT olarak hub kapasitesini işgal ettiği kabul edilir —
+`src/model/constraints_capacity.py::compute_out_of_scope_baselines` (ham
+tabloyu tam tarar, model kurulmadan önce BİR KEZ) +
+`compute_residual_capacity` (o zamana denk gelen kovadan kapasiteyi düşer).
+Bu rezidüel kapasite, F'in z-binary'lerinin karşılaştığı GERÇEK kapasite
+tavanı olur (`capacity_departure`/`capacity_arrival` - kapsam-dışı işgal).
+
+**Neden**: Kapsam-dışı bir uçuşun GERÇEKTE modelin hiç dokunmadığı (ayarlama
+kolu olmayan) bir zamanı var — onu "yok" saymak (kapasiteden hiç düşmemek)
+hub'ın fiziksel doluluğunu hafife alır ve modelin GERÇEKTE ulaşılamaz
+kapasiteyi ayarlanabilir uçuşlara vaat etmesine yol açar (aşırı-iyimser,
+gerçek dünyada uygulanamaz bir çözüm). Baseline'da sabit kabul etmek en
+muhafazakar/doğru varsayım — modelin bilmediği bir şeyi TAHMİN etmiyor,
+sadece VERİDEKİ GÖZLEMLENMİŞ değeri kullanıyor.
+
+**Etki**: A'nın rotasyon kısıtı da AYNI kapsam-dışı-baseline verisini
+paylaşıyor (edge case: bir Flight Pair alt-çiftinin bacaklarından biri
+kapsam dışıysa, rotasyon kısıtı yine de in-scope bacağa, kapsam-dışı
+ortağın SABİT baseline'ına karşı kurulur — `build_rotation_pairs`'in
+`partial_pairs` çıktısı, bkz. `tests/solve/test_m3_constraints_a.py::test_rotation_applies_against_out_of_scope_*`).
+
+**Organizatöre soru**: "Modelin ayarlayamadığı (kapsam dışı) TK uçuşları
+için hub kapasitesi hesabında nasıl bir varsayım yapılmalı — kendi mevcut
+tarifelerinde sabit mi kabul edilmeli, yoksa organizatörün başka bir resmi
+kapasite-tahsis verisi mi var?"

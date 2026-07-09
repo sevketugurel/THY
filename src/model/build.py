@@ -12,12 +12,15 @@ M2 scope (build_model_with_competition): + D (rakip yenme ve sıralama).
 M3 scope (build_model_with_operations): + A (rotasyon) + G (düzenlilik).
 
 M4 scope (build_model_m4): + E1 (yönsel sayı dengesi) + E2 (JT-farkı,
-koşullu aktivasyon) + F (kova bağlama). Full model.
+koşullu aktivasyon) + F (kova bağlama, rezidüel kapasite). Full model
+(A-G tamamı). main.py henüz bu fonksiyonu KULLANMIYOR -- tek entegrasyon
+geçişi bekleniyor (bkz. CLAUDE.md Durum).
 """
 import pyomo.environ as pyo
 
 from src.candidates.generate import Candidate
-from src.model.constraints_balance import add_e1_constraints
+from src.model.constraints_balance import add_e1_constraints, add_e2_constraints
+from src.model.constraints_capacity import add_f_constraints, compute_out_of_scope_baselines, compute_residual_capacity
 from src.model.constraints_competition import add_d_constraints, add_rank_onehot
 from src.model.constraints_operations import add_a_constraints, add_g_constraints
 from src.model.constraints_selection import add_b_constraints, add_c_constraints, add_flight_time_variables
@@ -97,7 +100,9 @@ def build_model_with_operations(
 def build_model_m4(
     candidates: list[Candidate], rho: dict, journey_constants: dict, rival_data: dict,
     b_od_data: dict, ranking_table, pairs_df, r_o_lookup: dict, tau: int, x_dev: int,
-    epoch_anchor, alpha: float, L: int = 60, U: int = 300, monotonic: bool = True,
+    epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
+    capacity_departure: int, capacity_arrival: int,
+    L: int = 60, U: int = 300, monotonic: bool = True,
 ) -> pyo.ConcreteModel:
     model = pyo.ConcreteModel()
     model._candidates = candidates
@@ -111,9 +116,19 @@ def build_model_m4(
     add_rank_onehot(model, n_by_market)
     add_ranking_reward_objective(model, rho, b_od_data, ranking_table, n_by_market)
 
-    add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau)
+    # F'in rezidüel kapasitesi VE A'nın kısmi-kapsam rotasyon edge-case'i
+    # AYNI kaynağı paylaşır (bir kez hesaplanır -- VARSAYIM, ASSUMPTIONS.md).
+    out_of_scope_baselines = compute_out_of_scope_baselines(tk_rows, model, epoch_anchor)
+
+    add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau, out_of_scope_baselines)
     add_g_constraints(model, candidates, epoch_anchor, x_dev)
 
     add_e1_constraints(model, candidates, alpha)
+    add_e2_constraints(model, candidates, journey_constants, gamma)
+
+    residual_dep, residual_arr = compute_residual_capacity(
+        out_of_scope_baselines, bucket_size_min, capacity_departure, capacity_arrival,
+    )
+    add_f_constraints(model, bucket_size_min, capacity_departure, capacity_arrival, residual_dep, residual_arr)
 
     return model

@@ -38,3 +38,35 @@ def derive_d_big_ms(candidate: Candidate, journey_const: int, t_comp: int) -> tu
     m_fwd = max(0, j_hi - t_comp)
     m_bwd = max(0, (t_comp + 1) - j_lo)
     return m_fwd, m_bwd
+
+
+def derive_e2_candidate_big_ms(candidate: Candidate, journey_const: int, market_j_lo: int, market_j_hi: int) -> tuple:
+    """Returns (M_up, M_down) for E2's Jbest argmin sandwich, per candidate pi
+    in its (o,d,gun) market:
+    M_up:   slackens "Jbest<=J_pi" to a no-op when pi isn't offered (x_pi=0) --
+            sized to the market's OWN worst-case ceiling (market_j_hi) against
+            pi's best-case floor (J_lo(pi)), never a global constant.
+    M_down: slackens "Jbest>=J_pi" to a no-op when pi isn't the argmin selection
+            (w_pi=0) -- sized to pi's worst-case ceiling against the market's
+            own best-case floor (market_j_lo).
+    market_j_lo/market_j_hi = min/max of (journey_const+gap_lo/gap_hi) across
+    ALL candidates in the market (not just pi) -- this is what makes M
+    candidate-tight rather than a blanket per-market constant: a candidate
+    near the market's own extreme gets an M near 0.
+    """
+    j_lo = journey_const + candidate.gap_lo
+    j_hi = journey_const + candidate.gap_hi
+    m_up = max(0, market_j_hi - j_lo)
+    m_down = max(0, j_hi - market_j_lo)
+    return m_up, m_down
+
+
+def derive_e2_pair_big_m(jd_hi_side: int, jd_lo_other: int, gamma: int) -> int:
+    """Returns M for one direction of E2's cross-market Gamma-bound:
+    Jbest_side - Jbest_other <= gamma + M*(2-a_side-a_other).
+    M sized so the constraint is a no-op (always true by the variables' own
+    declared bounds) whenever EITHER side is inactive: M = max(0, jd_hi_side
+    - jd_lo_other - gamma). Call twice (swap side/other) for both directions
+    of a pair.
+    """
+    return max(0, jd_hi_side - jd_lo_other - gamma)

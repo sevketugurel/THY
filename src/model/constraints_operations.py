@@ -7,14 +7,41 @@ R_o+tau kadar sonra olmalı. Yalnızca Pair grubundaki ARDIŞIK (Orig==IST
 sonra Dest==IST) alt-çiftlere uygulanır -- IST'e değmeyen ara bacaklar
 (ör. IST->MEX->CUN->IST'teki MEX->CUN) modelin değişken kapsamı dışında,
 bu grup için hiç kısıt kurulmaz (VARSAYIM, bkz. ASSUMPTIONS.md).
+
+Edge case (M4/F ile birlikte bulundu): bir Pair alt-çiftinin bacaklarından
+BİRİ modelin candidate üretiminde hiç yer almamışsa (kapsam dışı -- ör.
+achievable-range kapısını hiçbir eşleşmede geçemedi), rotasyon kuralı
+SESSİZCE atlanmamalı -- kapsam dışı bacak kendi ham baseline zamanında
+SABİT kabul edilip (VARSAYIM), in-scope bacağa karşı kısıt yine kurulur
+(`build_rotation_pairs`'in `partial_pairs` çıktısı, `out_of_scope_baselines`
+girdisiyle -- bkz. `src.model.constraints_capacity.compute_out_of_scope_baselines`).
 """
 import pyomo.environ as pyo
 
 
-def build_rotation_pairs(model, pairs_df):
-    """Pair grubu içindeki ardışık (OB->IB, IST üzerinden) alt-çiftleri,
-    HER İKİ bacağın da modelde (ARR_INSTANCES/DEP_INSTANCES) bulunduğu
-    ortak günlerle birlikte döner: list of (ob_flno, ib_flno, gun, station)."""
+def build_rotation_pairs(model, pairs_df, out_of_scope_baselines: dict = None):
+    """Pair grubu içindeki ardışık (OB->IB, IST üzerinden) alt-çiftlerini
+    ikiye ayırır:
+
+    full_pairs: HER İKİ bacağın da modelde (ARR_INSTANCES/DEP_INSTANCES)
+      bulunduğu ortak günler -- list of (ob_flno, ib_flno, gun, station).
+
+    partial_pairs: yalnızca BİR bacağın modelde olduğu, DİĞER bacağın
+      `out_of_scope_baselines`'ta (ham TK baseline, model değişkeni DEĞİL --
+      bkz. src.model.constraints_capacity.compute_out_of_scope_baselines)
+      bulunduğu günler -- list of (ob_flno, ib_flno, gun, station,
+      fixed_side, fixed_baseline_min). VARSAYIM (ASSUMPTIONS.md, F ile
+      birlikte): kapsam-dışı ortağın kendi baseline'ında SABİT çalıştığı
+      varsayılır (modelin onu hareket ettirecek bir kolu yok, hiç candidate
+      bacağı olarak üretilmedi) -- rotasyon fiziksel kuralı yine de o SABİT
+      zamana karşı in-scope bacağa uygulanır.
+
+    Her iki bacağı da kapsam dışı olan (full_pairs'e de partial_pairs'e de
+    girmeyen) çiftler zaten modelin karar değişkeni kapsamı tamamen dışında
+    -- kısıt kurulacak bir şey yok, sessizce atlanır."""
+    if out_of_scope_baselines is None:
+        out_of_scope_baselines = {}
+
     ob_guns = {}
     ib_guns = {}
     for (role, flno, gun) in model.DEP_INSTANCES:
@@ -24,7 +51,8 @@ def build_rotation_pairs(model, pairs_df):
         if role == "IB":
             ib_guns.setdefault(flno, set()).add(gun)
 
-    rotation_pairs = []
+    full_pairs = []
+    partial_pairs = []
     for _, group in pairs_df.groupby("pair"):
         rows = group.to_dict("records")
         for i in range(len(rows) - 1):
@@ -33,30 +61,88 @@ def build_rotation_pairs(model, pairs_df):
                 continue
             station = leg1["dest"]
             ob_flno, ib_flno = leg1["flno"], leg2["flno"]
-            common_guns = ob_guns.get(ob_flno, set()) & ib_guns.get(ib_flno, set())
-            for gun in common_guns:
-                rotation_pairs.append((ob_flno, ib_flno, gun, station))
-    return rotation_pairs
+            ob_gun_set = ob_guns.get(ob_flno, set())
+            ib_gun_set = ib_guns.get(ib_flno, set())
+
+            for gun in ob_gun_set & ib_gun_set:
+                full_pairs.append((ob_flno, ib_flno, gun, station))
+
+            for gun in ob_gun_set - ib_gun_set:
+                baseline_key = ("IB", ib_flno, gun)
+                if baseline_key in out_of_scope_baselines:
+                    partial_pairs.append(
+                        (ob_flno, ib_flno, gun, station, "IB_fixed", out_of_scope_baselines[baseline_key])
+                    )
+
+            for gun in ib_gun_set - ob_gun_set:
+                baseline_key = ("OB", ob_flno, gun)
+                if baseline_key in out_of_scope_baselines:
+                    partial_pairs.append(
+                        (ob_flno, ib_flno, gun, station, "OB_fixed", out_of_scope_baselines[baseline_key])
+                    )
+    return full_pairs, partial_pairs
+
+
+def _flight_cut_points(candidates):
+    """(role,flno) -> "gün sınırı" saat-of-day dakikası, gerçek gece yarısı
+    (00:00) DEĞİL -- o uçağın KENDİ baseline saat-of-day'inin TAM 12 SAAT
+    KARŞISI ((tod+720) mod 1440). Bkz. _day_offsets docstring: neden gerçek
+    gece yarısı güvenli bir çapa DEĞİL."""
+    cuts = {}
+    for c in candidates:
+        for role, flno, ts in (("IB", c.flno1, c.arr_time), ("OB", c.flno2, c.dep_time)):
+            key = (role, flno)
+            if key in cuts:
+                continue
+            tod = int((ts - ts.normalize()).total_seconds() // 60)
+            cuts[key] = (tod + 720) % 1440
+    return cuts
 
 
 def _day_offsets(candidates, epoch_anchor):
-    """(role,flno,gun) -> epoch-minute of THAT INSTANCE'S OWN calendar-day
-    midnight, relative to the shared global epoch_anchor.
+    """(role,flno,gun) -> epoch-minute of THAT INSTANCE'S OWN "gün sınırı"
+    (bkz. _flight_cut_points -- gerçek gece yarısı DEĞİL, o uçuşun kendi
+    baseline saatinin 12 saat karşısı), relative to the shared global
+    epoch_anchor.
 
-    Kritik düzeltme (ultrathink sonrası bulunamayan, İLK solve denemesinde
-    infeasibility olarak yakalanan bug): epoch_anchor TÜM veri kümesi için
-    TEK bir GLOBAL referans (compute_epoch_anchor, plan §Context) -- Gün=2'nin
-    zamanları Gün=1'inkinden ~1440dk daha BÜYÜK epoch-değerlere sahip (farklı
-    takvim günü). G'nin "spread" kontrolü bu HAM epoch değerlerini doğrudan
-    karşılaştırırsa, aynı saat-of-day'e sahip iki gün bile ~1440dk'lık SAHTE
-    bir farkla karşılaşır (X_dev=15 ile ASLA uzlaştırılamaz -> infeasible).
-    Çözüm: her (role,flno,gun)'u KENDİ takvim gününün gece yarısına göre
-    normalize et (day_offset çıkar) -- T_ref artık "gün-içi referans dakika"
-    temsil eder, gerçek saat-of-day karşılaştırması yapılır."""
+    Kritik düzeltme #1 (M3, ilk solve denemesinde infeasibility olarak
+    yakalanan bug): epoch_anchor TÜM veri kümesi için TEK bir GLOBAL referans
+    (compute_epoch_anchor, plan §Context) -- Gün=2'nin zamanları Gün=1'inkinden
+    ~1440dk daha BÜYÜK epoch-değerlere sahip (farklı takvim günü). G'nin
+    "spread" kontrolü bu HAM epoch değerlerini doğrudan karşılaştırırsa, aynı
+    saat-of-day'e sahip iki gün bile ~1440dk'lık SAHTE bir farkla karşılaşır
+    (X_dev=15 ile ASLA uzlaştırılamaz -> infeasible). Çözüm: her
+    (role,flno,gun)'u KENDİ takvim gününün bir referans noktasına göre
+    normalize et (day_offset çıkar).
+
+    Kritik düzeltme #2 (M4, "G check" -- gece yarısı SARMASI): #1'in ilk
+    çözümü referans noktası olarak GERÇEK gece yarısını (00:00) kullanıyordu.
+    Bu, KENDİ saati gerçek gece yarısına YAKIN olan bir uçuş için YANLIŞ:
+    Pazartesi 23:55 (gün-içi=1435) ile Salı 00:05 (gün-içi=5) arasındaki
+    GERÇEK fark yalnızca 10 dakikadır, ama gece-yarısı-çapalı [0,1440)
+    gün-içi temsilinde bu iki değer ARALIĞIN İKİ UCUNA düşer -- |1435-5|=1430,
+    SAHTE bir ~1430dk'lık "ihlal" (X_dev ile ASLA uzlaştırılamaz ->
+    infeasible, GERÇEKTE uyumlu bir tarife bile). Çözüm: referans noktasını
+    gerçek gece yarısından, o uçuşun KENDİ baseline saatinin TAM 12 SAAT
+    KARŞISINA kaydır (_flight_cut_points) -- uçuşun gerçekçi ayarlanabilir
+    aralığı (Big-M disiplini gereği hiçbir zaman +-720dk'yı aşamaz) bu yeni
+    sınırdan ASLA taşamaz, sarma sorunu o uçuş için yapısal olarak imkansız
+    hale gelir. Denklik kanıtı (elle doğrulandı): iki nokta arası GERÇEK
+    dakika farkı, hangi referans noktası (00:00 veya cut) seçilirse seçilsin
+    AYNI kalır -- TEK ŞART, referansın uçuşun gerçek zaman kümesinin
+    ORTASINDAN değil, dışından geçmesi (cut bunu HER ZAMAN garanti eder,
+    00:00 garanti etmez)."""
+    cuts = _flight_cut_points(candidates)
     offsets = {}
     for c in candidates:
-        offsets[c.r1_id] = int((c.arr_time.normalize() - epoch_anchor).total_seconds() // 60)
-        offsets[c.r2_id] = int((c.dep_time.normalize() - epoch_anchor).total_seconds() // 60)
+        for role, flno, ts in (("IB", c.flno1, c.arr_time), ("OB", c.flno2, c.dep_time)):
+            key = (role, flno, c.gun)
+            if key in offsets:
+                continue
+            cut = cuts[(role, flno)]
+            day_midnight = int((ts.normalize() - epoch_anchor).total_seconds() // 60)
+            tod = int((ts - ts.normalize()).total_seconds() // 60)
+            offsets[key] = day_midnight + cut if tod >= cut else day_midnight + cut - 1440
     return offsets
 
 
@@ -107,11 +193,11 @@ def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
     return multi_day
 
 
-def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int):
-    rotation_pairs = build_rotation_pairs(model, pairs_df)
+def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int, out_of_scope_baselines: dict = None):
+    full_pairs, partial_pairs = build_rotation_pairs(model, pairs_df, out_of_scope_baselines)
 
-    index = [(ob, ib, gun) for (ob, ib, gun, station) in rotation_pairs]
-    station_by_pair = {(ob, ib, gun): station for (ob, ib, gun, station) in rotation_pairs}
+    index = [(ob, ib, gun) for (ob, ib, gun, station) in full_pairs]
+    station_by_pair = {(ob, ib, gun): station for (ob, ib, gun, station) in full_pairs}
 
     model.ROTATION_PAIRS = pyo.Set(initialize=index, dimen=3, ordered=True)
 
@@ -121,4 +207,26 @@ def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int):
         return m.t_arr["IB", ib_flno, gun] >= m.t_dep["OB", ob_flno, gun] + r_o + tau
     model.a_rotation = pyo.Constraint(model.ROTATION_PAIRS, rule=rotation_rule)
 
-    return rotation_pairs
+    partial_index = [(ob, ib, gun) for (ob, ib, gun, station, fixed_side, baseline) in partial_pairs]
+    partial_info = {
+        (ob, ib, gun): (station, fixed_side, baseline)
+        for (ob, ib, gun, station, fixed_side, baseline) in partial_pairs
+    }
+    model.ROTATION_PARTIAL_PAIRS = pyo.Set(initialize=partial_index, dimen=3, ordered=True)
+
+    def partial_rotation_rule(m, ob_flno, ib_flno, gun):
+        station, fixed_side, baseline = partial_info[ob_flno, ib_flno, gun]
+        r_o = r_o_lookup[station]
+        if fixed_side == "IB_fixed":
+            # Dönüş bacağı (IB) kapsam dışı, kendi baseline'ında SABİT --
+            # gidiş (OB, model değişkeni) o sabit varıştan en az R_o+tau
+            # ÖNCE kalkmış olmalı (rotasyon eşitsizliğinin tersine çevrilmiş
+            # hali: arr>=dep+R_o+tau -> dep<=arr_fixed-R_o-tau).
+            return m.t_dep["OB", ob_flno, gun] <= baseline - r_o - tau
+        # OB_fixed: gidiş bacağı kapsam dışı, kendi baseline'ında SABİT --
+        # dönüş (IB, model değişkeni) o sabit kalkıştan en az R_o+tau SONRA
+        # varmış olmalı.
+        return m.t_arr["IB", ib_flno, gun] >= baseline + r_o + tau
+    model.a_rotation_partial = pyo.Constraint(model.ROTATION_PARTIAL_PAIRS, rule=partial_rotation_rule)
+
+    return full_pairs, partial_pairs
