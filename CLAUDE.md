@@ -125,10 +125,34 @@ Kullanıcı, M1→M2→(ritüel tamsa)M3'ü bitirip, M4'ün TASARIM NOTUNU yazı
   `m3-operations`) → CLAUDE.md Durum güncelle → 10 satır özet → dur madan
   devam.
 
-**M3 tamamlandı** (tag: `m3-operations`) — ritüel tam uygulandı.
+**M3 tamamlandı** (tag: `m3-operations`) — ritüel tam uygulandı. M4 tasarım
+notu (E1/E2/F) sunuldu ve onaylandı, şimdi KOD yazılıyor.
 
-**Şimdi sırada**: M4 (E1/E2 koşullu aktivasyon + F kova bağlama) için
-TASARIM NOTU yaz (değişkenler, kısıtlar, Big-M türetimleri, E2 doğruluk
-tablosu test planı, fixture genişletme planı) ama **M4 KODUNA BAŞLAMA** —
-orada dur, tek rapor bırak (biten milestone'lar, insan doğrulaması
-bekleyenler, mikro-kararlar, M4 notu, organizatör soruları).
+## Aktif Otonom Tur #2 (2026-07-09 devamı) — bu turun kapsamı: M4 + M5
+
+Önceki turun §1 sürekli disiplini (TDD, ultrathink, validator eş-büyümesi,
+üçlü test standardı, model.md/ASSUMPTIONS aynı commit'te, 60sn solve limiti)
+AYNEN geçerli. Bu turun EK özeti:
+
+- **Doğrulama borcu (M4'ten ÖNCE)**: `tests/slow/test_bruteforce_oracle.py`
+  (src/model import ETMEYEN saf-Python 10-dk grid brute-force, solver'ı
+  doğrular) + validator'a `recompute_objective()` (668.75'i bağımsız
+  yeniden hesaplar, bileşen dökümünü dosyaya yazar).
+- **M4 sırası**: E1 (basit lineer, Big-M yok) → E2 (argmin sandviç, en zor,
+  adversarial test + validator'ın Jbest'i yeniden hesaplaması) → F (kova
+  binary'leri yalnızca pencere-erişilebilir kovalarla, residual capacity
+  full-scan precompute, kapsam-dışı TK uçuşları baseline'da sabit). +G
+  gece-yarısı dairesel mesafe düzeltmesi kontrolü.
+- **M5**: full data'da boyut bütçesi logu → Modül-3 budaması zorunlu →
+  çözüm merdiveni (1: tam-ayarlanabilir+budama, 2: 15dk'da olmazsa
+  adjustable-subset top-K kademeli, 3: o da olmazsa DUR+teşhis) → full-data
+  koşusu pytest DEĞİL (ayrı komut+log) → çıktı brief §5 + golden + determinizm.
+- **Ek dur-ve-sor eşikleri**: merdivenin 3. basamağına düşülmesi; E1 yüzünden
+  pazarların >%20'si sıfır bağlantıya düşerse.
+- **Kapanış (M5 ritüeli sonrası, M6'ya girmeden)**: `docs/report_outline.md`
+  (6 sayfalık rapor iskeleti, rubrik-haritalı), konsolide organizatör soru
+  listesi, M6 maliyet/kazanç öneri listesi (kod yok), tek kapanış raporu.
+
+Detaylı alt-maddeler (E1 formülü, E2 sandviç, F reachable-bucket, residual
+capacity, solve ladder eşikleri) kullanıcının bu turdaki mesajında birebir —
+context sıkışırsa o mesaj otorite kaynağıdır, bu özet sadece hatırlatma.
