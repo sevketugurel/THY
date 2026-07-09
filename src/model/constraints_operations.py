@@ -343,7 +343,8 @@ def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int, o
     if exempted_count:
         print(
             f"WARNING: A rotation -- {exempted_count} pair(s) exempted (VARSAYIM-11): "
-            f"baseline unreconcilable even at best-case adjustment."
+            f"baseline unreconcilable even at best-case adjustment.",
+            flush=True,
         )
 
     index = [(ob, ib, ob_gun, ib_gun) for (ob, ib, ob_gun, ib_gun, station, week_offset) in full_pairs]

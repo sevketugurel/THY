@@ -421,3 +421,92 @@ olarak imkansız olan (R_o+tau, mevcut ayarlanabilir pencereyle
 karşılanamayan) OB-IB çiftleri için nasıl ele alınmalı — bu tür çiftler
 istisna mı tutulmalı, yoksa R_o tahminimizde ya da eşleştirme kuralımızda
 bir hata olabilir mi?"
+
+## VARSAYIM-12: full-data'da adjustable-subset merdiveni provable infeasible — full-adjustable ise UNRESOLVED (ne feasible ne infeasible kanıtlandı)
+
+**Bulgu**: VARSAYIM-9/10/11'in TÜMÜ uygulandıktan sonra bile (G küme-bazlı,
+A baseline-kronoloji eşleştirmesi + best-case istisna), full-data'nın
+solve merdiveni (`scripts/run_full_data.py`, dış-bekçili + `mip_heuristic_effort=0.3`
++ `mip_rel_gap=0.08`) TÜM adımlarda başarısız oldu:
+
+- **step1 (tam-ayarlanabilir, 18118 candidate, TÜM A-G aktif)**: 756174 satır
+  (presolve sonrası 604925 satır/297906 sütun/272927 binary) — 660s dış-bekçi
+  limitinde `watchdog_killed`, SIFIR incumbent. HiGHS kök-düğümde cut
+  üretimine devam ediyor, hiçbir feasible tam-sayı çözümü bulamıyor.
+- **step2 (adjustable-subset, K=50/100/200/400)**: DÖRDÜ DE **temiz, hızlı
+  `infeasible`** (13.5-24.3s solve, timeout DEĞİL — gerçek HiGHS
+  infeasibility sertifikası). K arttıkça (daha çok pazar ayarlanabilir
+  oldukça) infeasibility'nin KAYBOLMAMASI dikkat çekici.
+
+**Bağımsız doğrulama — ucuz baseline-feasibility tanığı** (`scripts/baseline_feasibility_witness.py`,
+solve YOK, 30.2s, VARSAYIM-6'nın "gap∈[L,U]⟹x=1 zorunlu" kuralı sayesinde
+seçim baseline'da ZORUNLU): ham baseline tarifenin KENDİSİ (hiç ayarlama
+yapılmadan) TÜM BEŞ kısıt ailesinde eş zamanlı ihlalli — 2048 toplam ihlal
+(A: 487 ham / VARSAYIM-11 exemption'ıyla çapraz kontrolde ~144'ü gerçek
+"adjustment gerekli", E1: 296, **E2: 1181 — en büyük kategori**, F: 31,
+G: 53).
+
+**Sistematik tanı — tek-tek ve birlikte kaldırma** (`scripts/diagnose_e1_e2_f.py`,
+K=400 alt-kümesinde, `build_model_m4`'ün AYNI test edilmiş primitiflerini
+yeniden birleştiren bir tanı script'i, `src/model/*.py`'a DOKUNMUYOR):
+
+| Varyant | Sonuç |
+|---|---|
+| Tümü açık (A-G) | infeasible (24.6s) |
+| E1 kapalı | **hâlâ infeasible** (33.1s) |
+| E2 kapalı | **hâlâ infeasible** (20.6s) |
+| F kapalı | **hâlâ infeasible** (15.5s) |
+| A kapalı | **hâlâ infeasible** (24.9s) |
+| G kapalı | **hâlâ infeasible** (36.9s) |
+| E1+E2+F ÜÇÜ birden kapalı | **UNRESOLVED** (240s dış-bekçi limitinde `watchdog_killed`) |
+| E1 kapalı, FULL 18118-candidate (K-subset YOK) | **UNRESOLVED** (660s dış-bekçi limitinde `watchdog_killed` — modelin BÜYÜKLÜĞÜ tek başına 660s'de çözülemiyor, hangi kısıtın açık/kapalı olduğundan BAĞIMSIZ) |
+
+**Karar**: KOD DEĞİŞTİRİLMEDİ. A, E1, E2, F, G'nin BEŞİ de K=400 alt-kümesinde
+TEK TEK kaldırıldığında hâlâ infeasible — hiçbiri tek başına suçlu değil.
+Bu, infeasibility'nin tek bir kısıt formülasyon hatasından değil, muhtemelen
+**adjustable-subset mekanizmasının kendisinden** kaynaklandığına işaret
+ediyor: K=400'de ~15742 uçuş baseline'a SABİT kalıyor, ve baseline'ın
+KENDİSİ (yukarıdaki tanık kanıtıyla) zaten TÜM beş ailede ihlalli — bu kadar
+çok uçuşu zaten-bozuk bir tarifeye sabitlemek, tek bir kısıtı gevşetmenin
+çözemeyeceği bir çakışma yaratıyor olabilir. **Full-adjustable (tüm
+candidate'lar ayarlanabilir) durumun feasibility'si test edilen bütçelerde
+(660s) HİÇ KANITLANAMADI** — ne feasible ne infeasible: yalnızca "bu
+büyüklükte kök-düğüm cut üretimiyle 660s'de çözülemiyor" biliniyor.
+Kullanıcıyla (birden fazla AskUserQuestion turu) danışıldı, "daha fazla
+tanı zamanı harcamak yerine mevcut kanıtı yeterli kabul et, organizatöre
+raporla" kararı verildi.
+
+**Neden full-data'da (fixture'da DEĞİL) ortaya çıkıyor**: sentetik fixture
+(668.75, brute-force oracle ile bağımsız doğrulandı) küçük, temiz, elle
+tasarlanmış bir senaryo — gerçek veri 707+ Flight Pair grubu, 1571 rotasyon
+çifti, 1329 O-D aday-pazarı içeriyor, ve VARSAYIM-9/10/11'in zaten gösterdiği
+gibi gerçek operasyonel tarifeler (TK2841 gibi) brief'in ideal-tarife
+varsayımlarını (tam düzenlilik, her rotasyonun uzlaştırılabilir olması)
+KENDİ BAŞINA ihlal ediyor. VARSAYIM-9/10/11 bu ihlalleri G/A için MUAF
+tutarak (yerel, minimal gevşetme) çözdü; ama E1 (yönsel denge) ve E2 (JT-farkı)
+için BENZER bir "genuinely-imkansız durumu istisna tut" mekanizması henüz
+KURULMADI (bu VARSAYIM-9/11'in doğal devamı olurdu, ama hangi çiftlerin/
+pazarların istisna tutulacağına dair veri-türetilmiş bir kural henüz
+tasarlanmadı — kod yazılmadı, yalnızca teşhis yapıldı).
+
+**Etki**: `runs/full_data_run_20260709T161927Z.log.json` (ladder tam log'u),
+`runs/baseline_feasibility_witness_20260709T160923Z.json` (tanık),
+`runs/diagnose_e1_e2_f_*.json` (7 varyant sonucu) — hepsi M5 kapanış
+raporunun kanıt zinciri. **Full-data'da doğrulanmış (validator-onaylı) bir
+objective_value HENÜZ YOK** — M5 bu haliyle "full-data solve denemesi
+kapsamlı şekilde teşhis edildi, kök neden aday listesi daraltıldı, ama
+kesin tek-nokta çözüm bulunamadı" durumunda kapanıyor.
+
+**Organizatöre soru**: "Gerçek O&D/Yolcu Verisi/Flight Pairs veri setinde,
+adjustable-subset alt-problemi (top-K ρ-ağırlıklı pazar ayarlanabilir,
+gerisi baseline'a sabit) K=50'den K=400'e kadar HER K değerinde
+kanıtlanabilir şekilde infeasible çıkıyor — beş kısıt ailesinin (A/E1/E2/F/G)
+hiçbiri tek başına kaldırıldığında bunu düzeltmiyor. Bu, (a) baseline
+tarifenin kendisinin brief'in kısıt setiyle yapısal olarak tutarsız
+olduğunu (VARSAYIM-9/10/11'in G/A için zaten gösterdiği gibi, ama şimdi
+E1/E2 için de), (b) K-subset yaklaşımımızın (adjustable-subset merdiveni)
+yanlış bir gevşetme biçimi olduğunu, yoksa (c) α/γ/X_dev/adjustable_window_min
+gibi parametrelerin gerçek veri ölçeğinde daha gevşek tutulması gerektiğini
+mi gösteriyor? Tam-ayarlanabilir (full, K-subset'siz) problemin feasibility'si
+elimizdeki hesaplama bütçesiyle kanıtlanamadı — organizatörün bu ölçekte
+(18000+ aday) bir çözüm süresi beklentisi/referans benchmark'ı var mı?"

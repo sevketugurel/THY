@@ -55,6 +55,29 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   geçişi). 147/147 test yeşil. CLI (full A-G, `adjustable_set: all`):
   objective=668.75 (M2/M3'le AYNI — E1/E2/F fixture'ın mevcut optimumunu
   bozmadı), selected=18, valid=True.
+- **M5 kapandı — çözüm bulunamadan, kapsamlı teşhisle** (tag: `m5-full-data`).
+  Fixture: 668.75 artık BAĞIMSIZ doğrulandı (`tests/slow/test_bruteforce_oracle.py`
+  saf-Python brute-force + `independent_validator.py::recompute_objective`,
+  `src.model` import ETMEDEN). Full-data: G küme-bazlı (VARSAYIM-9) + A
+  baseline-kronoloji eşleştirmesi+istisna (VARSAYIM-10/11) uygulandıktan
+  SONRA bile solve merdiveni (dış-bekçili + `mip_heuristic_effort=0.3`)
+  step1'de (18118 candidate, 756174 satır) 660s'de incumbent'sız kesildi,
+  step2'nin DÖRT K değeri de (50/100/200/400) TEMİZ `infeasible` verdi.
+  Bağımsız baseline-feasibility tanığı (solve YOK, 30.2s): ham baseline TÜM
+  BEŞ kısıt ailesinde (A/E1/E2/F/G) eş zamanlı ihlalli (2048 ihlal, E2 en
+  büyüğü: 1181). Sistematik tek-tek kaldırma testi (K=400'de, kod
+  değiştirmeden, `scripts/diagnose_e1_e2_f.py`): A/E1/E2/F/G'nin BEŞİ de
+  tek başına kaldırıldığında hâlâ infeasible — tek suçlu YOK. VARSAYIM-12
+  olarak işlendi, organizatöre somut soru (`docs/organizer_questions.md`
+  madde 12). **Full-data'da doğrulanmış objective_value YOK** — bu M5'in
+  kapanış durumu (kullanıcı onaylı: daha fazla tanı yerine mevcut kanıtla
+  organizatöre raporlama). Bu turda ayrıca: appsi_highs `time_limit`'inin
+  büyük modellerde kök-düğüm cut turlarını kesemediği bulundu (dış
+  SIGTERM/SIGKILL bekçisi eklendi, `src/solve/subprocess_watchdog.py`),
+  `run_full_data.py`/`ladder.py` gözlemlenebilirlik yaması (canlı [ladder]
+  log akışı, HiGHS log parse, wall-clock bütçe koruması), çıktı şemasına
+  `k_od_sources[]`, `docs/report_outline.md`/`organizer_questions.md`/`output_format.md`.
+  190+ test yeşil (127 unit + 63 solve + yeni watchdog/parse testleri).
 
 ## Kilit Kararlar
 

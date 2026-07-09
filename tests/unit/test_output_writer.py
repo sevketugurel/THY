@@ -45,6 +45,31 @@ def test_write_output_produces_expected_json_structure(tmp_path):
     assert data["selected_connections"][0]["gap_min"] == 60
 
 
+def test_write_output_reports_k_od_sources_sorted(tmp_path):
+    c1 = _candidate("ZZA-ZZB", 9101, 9112, 60)
+    result = SolveResult(status="optimal", objective_value=100.0, selected={c1: 1}, solve_time_sec=0.01)
+    path = tmp_path / "output.json"
+
+    write_output(path, result, k_od_sources={("ZZB", "ZZA"): "estimated", ("ZZA", "ZZB"): "direct"})
+
+    data = json.loads(path.read_text())
+    assert data["k_od_sources"] == [
+        {"o": "ZZA", "d": "ZZB", "source": "direct"},
+        {"o": "ZZB", "d": "ZZA", "source": "estimated"},
+    ]
+
+
+def test_write_output_k_od_sources_defaults_to_empty_list(tmp_path):
+    c1 = _candidate("ZZA-ZZB", 9101, 9112, 60)
+    result = SolveResult(status="optimal", objective_value=100.0, selected={c1: 1}, solve_time_sec=0.01)
+    path = tmp_path / "output.json"
+
+    write_output(path, result)
+
+    data = json.loads(path.read_text())
+    assert data["k_od_sources"] == []
+
+
 def test_write_output_is_deterministic(tmp_path):
     c1 = _candidate("ZZA-ZZB", 9101, 9112, 60)
     result = SolveResult(status="optimal", objective_value=100.0, selected={c1: 1}, solve_time_sec=0.01)

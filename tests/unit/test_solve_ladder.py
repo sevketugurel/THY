@@ -11,6 +11,8 @@ diagnostic log'la (sessizce devam ETME).
 
 marker: unit (solve_fn fake, gerçek HiGHS çağrısı yok -- <1sn).
 """
+import time
+
 import pyomo.environ as pyo
 import pytest
 
@@ -51,7 +53,7 @@ def test_step1_success_stops_immediately(monkeypatch):
     def fake_build(*a, **kw):
         return object()
 
-    def fake_solve(model, solver, time_limit_sec, seed):
+    def fake_solve(model, solver, time_limit_sec, seed, **kwargs):
         calls.append("solve")
         return _result("optimal", 100.0)
 
@@ -70,7 +72,7 @@ def test_step1_fails_escalates_to_step2_and_succeeds(monkeypatch):
     def fake_build(*a, **kw):
         return object()
 
-    def fake_solve(model, solver, time_limit_sec, seed):
+    def fake_solve(model, solver, time_limit_sec, seed, **kwargs):
         call_log.append(1)
         if len(call_log) == 1:
             return _result("infeasible")
@@ -91,7 +93,7 @@ def test_all_steps_fail_reaches_step3_diagnosis(monkeypatch):
     def fake_build(*a, **kw):
         return object()
 
-    def fake_solve(model, solver, time_limit_sec, seed):
+    def fake_solve(model, solver, time_limit_sec, seed, **kwargs):
         return _result("infeasible")
 
     monkeypatch.setattr("src.solve.ladder.build_model_m4", fake_build)
@@ -111,7 +113,7 @@ def test_time_limit_with_incumbent_is_accepted_at_step1(monkeypatch):
     def fake_build(*a, **kw):
         return object()
 
-    def fake_solve(model, solver, time_limit_sec, seed):
+    def fake_solve(model, solver, time_limit_sec, seed, **kwargs):
         return _result("time_limit", 77.0)
 
     monkeypatch.setattr("src.solve.ladder.build_model_m4", fake_build)
@@ -128,7 +130,7 @@ def test_time_limit_without_incumbent_escalates(monkeypatch):
     def fake_build(*a, **kw):
         return object()
 
-    def fake_solve(model, solver, time_limit_sec, seed):
+    def fake_solve(model, solver, time_limit_sec, seed, **kwargs):
         call_log.append(1)
         if len(call_log) == 1:
             return _result("time_limit", None)  # no incumbent
@@ -141,3 +143,25 @@ def test_time_limit_without_incumbent_escalates(monkeypatch):
     )
     assert result.status == "optimal"
     assert len(call_log) == 2
+
+
+def test_deadline_in_the_past_skips_all_steps_without_solving(monkeypatch):
+    def fake_build(*a, **kw):
+        raise AssertionError("build should never be reached once the deadline has passed")
+
+    def fake_solve(model, solver, time_limit_sec, seed, **kwargs):
+        raise AssertionError("solve should never be reached once the deadline has passed")
+
+    monkeypatch.setattr("src.solve.ladder.build_model_m4", fake_build)
+    candidates = [_candidate("ZZA", "ZZB", 1, 2)]
+    model, result, log = solve_with_ladder(
+        **_ladder_kwargs(candidates), solve_fn=fake_solve, step2_k_schedule=(1,),
+        deadline_ts=time.time() - 1,
+    )
+    assert result.status == "budget_exceeded"
+    assert model is None
+    assert log[0]["step"] == "step1_full_adjustable"
+    assert log[0]["status"] == "budget_exceeded"
+    assert log[1]["step"] == "step2_subset_k1"
+    assert log[1]["status"] == "budget_exceeded"
+    assert log[-1]["step"] == "step3_stop_diagnose"

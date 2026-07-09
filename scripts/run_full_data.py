@@ -3,7 +3,12 @@
 60-second rule is for tests only) -- a separate command with a timestamped
 log, per the M5 protocol.
 
-Kullanım: .venv/bin/python3 scripts/run_full_data.py [--output PATH]
+Kullanım: .venv/bin/python3 -u scripts/run_full_data.py [--output PATH]
+(the `-u` flag matters -- without it, prints below can sit in a buffer for
+minutes on a background/redirected run, making a live solve look hung; every
+print in this file and in src/solve/ladder.py also passes flush=True as a
+second line of defense against that exact failure mode, observed firsthand
+in M5's first 4 full-data attempts today.)
 """
 import argparse
 import json
@@ -37,7 +42,31 @@ def main(argv=None):
     parser.add_argument("--output", default="runs/full_data_output.json")
     parser.add_argument("--step1-time-limit", type=float, default=None,
                          help="override config's time_limit_sec for step1 (exploratory runs)")
+    parser.add_argument("--step2-time-limit", type=float, default=None,
+                         help="override the ladder's default step2 per-K time limit (300s)")
+    parser.add_argument("--mip-gap", type=float, default=None,
+                         help="HiGHS mip_rel_gap for all ladder steps; exploratory runs: 0.05-0.10, "
+                              "omit for production (HiGHS default ~1e-4)")
+    parser.add_argument("--budget-sec", type=float, default=3600.0,
+                         help="total wall-clock budget for preprocessing+ladder; a ladder step is "
+                              "SKIPPED (not started) once this is exceeded, and a diagnostic "
+                              "summary is written instead of hanging silently")
+    parser.add_argument("--mip-heuristic-effort", type=float, default=None,
+                         help="HiGHS mip_heuristic_effort (0-1, default ~0.05); raise for "
+                              "incumbent-priority exploratory runs (0.2-0.5) -- see "
+                              "docs/decisions.md 2026-07-09 (root-node cuts alone found zero "
+                              "incumbent after 1280s+ on the full-data model)")
+    parser.add_argument("--no-subprocess-watchdog", action="store_true",
+                         help="disable the external SIGTERM/SIGKILL watchdog and rely on "
+                              "appsi_highs's own (unreliable at this scale, see docs/decisions.md) "
+                              "in-process time_limit -- default is watchdog ON")
+    parser.add_argument("--watchdog-margin-sec", type=float, default=60.0,
+                         help="grace period beyond time_limit_sec before the external watchdog "
+                              "sends SIGTERM to a step's subprocess")
     args = parser.parse_args(argv)
+
+    script_t0 = time.time()
+    deadline_ts = script_t0 + args.budget_sec
 
     config = yaml.safe_load(Path(args.config).read_text())
     if args.step1_time_limit is not None:
@@ -46,7 +75,19 @@ def main(argv=None):
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log_path = Path("runs") / f"full_data_run_{stamp}.log.json"
-    log = {"timestamp_utc": datetime.now(timezone.utc).isoformat(), "config": config}
+    highs_log_dir = Path("runs") / f"full_data_run_{stamp}_highs_logs"
+    highs_log_dir.mkdir(parents=True, exist_ok=True)
+    log = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(), "config": config,
+        "budget_sec": args.budget_sec, "mip_gap": args.mip_gap,
+        "mip_heuristic_effort": args.mip_heuristic_effort,
+        "subprocess_watchdog": not args.no_subprocess_watchdog,
+        "watchdog_margin_sec": args.watchdog_margin_sec,
+    }
+    print(f"[run_full_data] budget={args.budget_sec}s mip_gap={args.mip_gap} "
+          f"mip_heuristic_effort={args.mip_heuristic_effort} "
+          f"subprocess_watchdog={not args.no_subprocess_watchdog} "
+          f"highs_logs={highs_log_dir}", flush=True)
 
     t0 = time.time()
     od_table = load_od_table(FULL_OD)
@@ -75,6 +116,7 @@ def main(argv=None):
     # VARSAYIM-8 (ASSUMPTIONS.md): direct median K_od -> LS-estimate fallback
     # -> drop market if neither works.
     journey_constants = {}
+    k_od_sources = {}
     dropped_markets = set()
     for c in candidates:
         market = (c.o, c.d)
@@ -82,14 +124,20 @@ def main(argv=None):
             continue
         try:
             journey_constants[market] = provider.get_journey_constant(c.o, c.d)
+            k_od_sources[market] = "direct"
         except KeyError:
             try:
                 journey_constants[market] = provider.get_journey_constant_estimate(c.o, c.d)
+                k_od_sources[market] = "estimated"
             except KeyError:
                 dropped_markets.add(market)
     log["dropped_markets_no_k_od"] = sorted(f"{o}-{d}" for o, d in dropped_markets)
     candidates = [c for c in candidates if (c.o, c.d) not in dropped_markets]
     log["candidate_count_after_k_od_drop"] = len(candidates)
+    log["k_od_source_counts"] = {
+        "direct": sum(1 for s in k_od_sources.values() if s == "direct"),
+        "estimated": sum(1 for s in k_od_sources.values() if s == "estimated"),
+    }
 
     t2 = time.time()
     rival_data, b_od_data = {}, {}
@@ -118,11 +166,12 @@ def main(argv=None):
     log["preprocessing_total_time_sec"] = round(time.time() - t0, 1)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(json.dumps(log, indent=2, sort_keys=True, default=str))
-    print(f"Preprocessing done in {log['preprocessing_total_time_sec']}s. Starting solve ladder...")
-    print(f"Interim log: {log_path}")
+    print(f"Preprocessing done in {log['preprocessing_total_time_sec']}s. Starting solve ladder...", flush=True)
+    print(f"Interim log: {log_path}", flush=True)
+    remaining_budget = deadline_ts - time.time()
+    print(f"[run_full_data] {remaining_budget:.0f}s of budget remaining for the ladder", flush=True)
 
-    t3 = time.time()
-    model, result, ladder_log = solve_with_ladder(
+    ladder_kwargs = dict(
         candidates_full=candidates, rho=rho, journey_constants=journey_constants,
         rival_data=rival_data, b_od_data=b_od_data, ranking_table=ranking_table,
         pairs_df=pairs_df, r_o_lookup=r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
@@ -130,16 +179,26 @@ def main(argv=None):
         bucket_size_min=config["bucket_size_min"], capacity_departure=config["capacity_departure"],
         capacity_arrival=config["capacity_arrival"], L=L, U=U, monotonic=monotonic,
         step1_time_limit_sec=config["time_limit_sec"], seed=config["seed"], solver=config["solver"],
+        mip_gap=args.mip_gap, log_dir=highs_log_dir, deadline_ts=deadline_ts,
+        mip_heuristic_effort=args.mip_heuristic_effort,
+        use_subprocess_watchdog=not args.no_subprocess_watchdog,
+        watchdog_margin_sec=args.watchdog_margin_sec,
     )
+    if args.step2_time_limit is not None:
+        ladder_kwargs["step2_time_limit_sec"] = args.step2_time_limit
+
+    t3 = time.time()
+    model, result, ladder_log = solve_with_ladder(**ladder_kwargs)
     log["ladder_log"] = ladder_log
     log["ladder_total_time_sec"] = round(time.time() - t3, 1)
     log["final_status"] = result.status
     log["final_objective_value"] = result.objective_value
+    log["script_total_time_sec"] = round(time.time() - script_t0, 1)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if result.status in ("optimal", "time_limit") and result.objective_value is not None:
-        write_output(output_path, result)
+        write_output(output_path, result, k_od_sources=k_od_sources)
         validation = validate_output(
             output_path, FULL_OD, L=L, U=U,
             adjustable_window_min=config["adjustable_window_min"],
@@ -153,11 +212,16 @@ def main(argv=None):
         log["validation_violations"] = validation.violations
     else:
         log["validation_is_valid"] = None
-        log["validation_violations"] = ["STEP3: no accepted solution at any ladder step -- see ladder_log"]
+        reason = ("STEP0: wall-clock budget exceeded before any ladder step could complete "
+                  "-- see ladder_log and re-run with a larger --budget-sec"
+                  if result.status == "budget_exceeded" else
+                  "STEP3: no accepted solution at any ladder step -- see ladder_log")
+        log["validation_violations"] = [reason]
 
     log_path.write_text(json.dumps(log, indent=2, sort_keys=True, default=str))
-    print(json.dumps({k: v for k, v in log.items() if k not in ("config",)}, indent=2, sort_keys=True, default=str))
-    print(f"\nFull log: {log_path}")
+    print(json.dumps({k: v for k, v in log.items() if k not in ("config",)}, indent=2, sort_keys=True, default=str),
+          flush=True)
+    print(f"\nFull log: {log_path}", flush=True)
     return log
 
 
