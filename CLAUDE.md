@@ -18,8 +18,19 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   rank one-hot (kritik infeasibility-tuzağı düzeltmesiyle — bkz. Kilit Kararlar).
   `main.py` artık `build_model_with_competition` kullanıyor. 96/96 test yeşil.
   CLI: objective=668.75, valid=True (668.75 **insan doğrulaması bekliyor**).
-- **M3 sırada** — A (rotasyon, Flight Pair) + G (gün-içi tutarlılık). Kullanıcının
-  M3 ek şartları aşağıda ("Aktif Otonom Tur").
+- **M3 KOD YAZILDI, TEST EDİLEMEDİ** — A (rotasyon) + G (düzenlilik) implement
+  edildi (`src/model/constraints_operations.py`, `main.py`'ye `build_model_with_operations`
+  ile bağlandı, validator A/G-check ile genişletildi), TÜM dosyalar elle
+  satır satır gözden geçirildi AMA **pytest/python çalıştırılamadı** — Bash
+  tool'un güvenlik sınıflandırıcısı (`claude-sonnet-5 is temporarily
+  unavailable`) onlarca denemeye rağmen code-execution komutlarını (basit
+  `python -c "print(1+1)"` bile) sürekli reddetti; salt-okunur komutlar
+  (`ls`,`echo`,`pwd`) çalışıyordu, spesifik olarak execution classifier'ı
+  etkilendi. **Bu yüzden M3 COMMIT/TAG EDİLMEDİ** (m3-operations tag'i YOK) —
+  "tüm suite yeşil" doğrulanmadan ritüel tamamlanamaz, sahte "test geçti"
+  iddiası YAPILMADI. **Devam ederken ilk iş**: `pytest tests/solve/test_m3_constraints_a.py
+  tests/solve/test_m3_constraints_g.py -v` çalıştır, çıkan hataları düzelt,
+  sonra tüm suite + CLI + M3 ritüelini normal şekilde tamamla.
 
 ## Kilit Kararlar
 

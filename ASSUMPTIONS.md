@@ -136,3 +136,35 @@ otomatik güncellenir (tek noktadan besleniyorlar).
 fazla itinerary'si varsa, bunlar N_od hesabında AYRI rakipler mi sayılmalı,
 yoksa tek bir rakip (en iyi/en hızlı itineraryi ile temsil edilen) olarak mı
 konsolide edilmeli?"
+
+---
+
+## VARSAYIM-5: A rotasyon kısıtı yalnızca IST'e değen ARDIŞIK bacaklara uygulanıyor
+
+**Bulgu**: `Flight Pairs.xlsx`'teki Pair gruplarının çoğu (657/707) tam 2
+üyeli (basit IST→o, o→IST round-trip). Ancak 50/707 grup 3+ üyeli, ve
+incelenen bir örnekte (`Pair=181`) yapı **IST→MEX→CUN→IST** şeklinde —
+ORTADAKİ bacak (MEX→CUN) IST'e HİÇ DEĞMİYOR.
+
+**Karar**: A rotasyon kısıtı yalnızca bir Pair grubu içindeki ARDIŞIK
+(Orig==IST → sonra Dest==IST) bacak çiftlerine uygulanıyor. IST'e değmeyen
+ara bacaklar (ör. MEX→CUN) modelin karar değişkeni kapsamı DIŞINDA (model
+yalnızca IST'e gelen/IST'ten giden uçuşların saatlerini ayarlıyor) — bu
+bacaklar için rotasyon kısıtı KURULMUYOR.
+
+**Neden**: Modelin `t_arr`/`t_dep` değişkenleri yalnızca IST tarafındaki
+zamanları temsil ediyor (brief'in kapsamı da bu — "ayarlanabilir uçuşların
+IST kalkış/varış saatleri"). MEX→CUN gibi bir bacağın kendi zamanları hiç
+modellenmiyor, dolayısıyla o bacağın rotasyon-uygunluğunu (uçağın MEX'te
+yeterli yer süresi bulup bulamadığını) kontrol edecek bir mekanizma yok.
+
+**Etki**: Bu tip çoklu-duraklı rotasyonlarda (grupların küçük bir azınlığı,
+≤50/707) A kısıtı EKSİK kalıyor — model bu rotasyonların fiziksel
+gerçekleştirilebilirliğini garanti ETMİYOR. `src/model/constraints_operations.py::build_rotation_pairs`
+ve `src/validate/independent_validator.py::_rotation_subpairs` bu senaryoyu
+sessizce atlıyor (ne kısıt kuruluyor ne ihlal raporlanıyor).
+
+**Organizatöre soru**: "Flight Pairs'teki 3+ üyeli gruplar (ör. IST→MEX→CUN→IST)
+gerçek çoklu-duraklı rotasyonlar mı? Bu durumda ara bacağın (MEX→CUN) zamanı
+sabit mi kabul edilmeli, yoksa bu tip rotasyonlar için ayrı bir modelleme
+yaklaşımı mı bekleniyor?"

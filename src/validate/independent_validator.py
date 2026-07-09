@@ -24,7 +24,7 @@ from pathlib import Path
 
 from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
-from src.data.loaders import load_od_table
+from src.data.loaders import load_flight_pairs, load_od_table
 
 
 @dataclass
@@ -56,9 +56,27 @@ def _baseline_bounds(tk, role, flno, gun, anchor, adjustable_window_min, adjusta
     return baseline, baseline
 
 
+def _rotation_subpairs(pairs_df):
+    """Same logic as src.model.constraints_operations.build_rotation_pairs
+    but working purely from the raw Flight Pairs table (no model.* access) --
+    consecutive (Orig==IST -> OB, Dest==IST -> IB) sub-pairs within each Pair
+    group. Legs not touching IST (e.g. an intermediate MEX->CUN leg in a
+    IST->MEX->CUN->IST group) are outside our variable scope and skipped."""
+    subpairs = []
+    for _, group in pairs_df.groupby("pair"):
+        rows = group.to_dict("records")
+        for i in range(len(rows) - 1):
+            leg1, leg2 = rows[i], rows[i + 1]
+            if leg1["orig"] != "IST" or leg2["dest"] != "IST" or leg1["dest"] != leg2["orig"]:
+                continue
+            subpairs.append((leg1["flno"], leg2["flno"], leg1["dest"]))
+    return subpairs
+
+
 def validate_output(
     output_path: Path, od_table_path: Path, L: int, U: int,
     adjustable_window_min: int = 0, adjustable_set: str = "none",
+    flight_pairs_path: Path = None, tau: int = None, x_dev: int = None,
 ) -> ValidationResult:
     data = json.loads(Path(output_path).read_text())
     od_table = load_od_table(od_table_path)
@@ -118,6 +136,54 @@ def validate_output(
                 f"connection {conn['od']} FlNo1={conn['flno1']} FlNo2={conn['flno2']} "
                 f"Gün={conn['gun']}: gap={actual_gap}min outside [{L},{U}]"
             )
+
+    if x_dev is not None:
+        # Kritik: reported_times ayni GLOBAL epoch_anchor'da (compute_epoch_anchor,
+        # candidates/generate.py ile ayni sozlesme) -- farkli gun'ler ~1440dk
+        # farkli epoch degerlerine sahip (farkli takvim gunu). Ham degerleri
+        # dogrudan karsilastirmak, ayni saat-of-day'e sahip GECERLI bir cozumu
+        # bile ~1440dk'lik SAHTE bir ihlal olarak bayraklardi -- her (role,flno,gun)
+        # KENDI takvim gununun gece yarisina gore normalize edilir once
+        # (constraints_operations.py::_day_offsets ile ayni mantik).
+        by_role_flno = {}
+        for (role, flno, gun), t in reported_times.items():
+            match = tk[(tk.flno1 == flno) & (tk.gun == gun)] if role == "IB" else tk[(tk.flno2 == flno) & (tk.gun == gun)]
+            if match.empty:
+                continue
+            ref_col = "arr_time" if role == "IB" else "dep_time"
+            day_offset = _epoch_min(match.iloc[0][ref_col].normalize(), anchor)
+            by_role_flno.setdefault((role, flno), {})[gun] = t - day_offset
+        for (role, flno), by_gun in by_role_flno.items():
+            if len(by_gun) < 2:
+                continue
+            spread = max(by_gun.values()) - min(by_gun.values())
+            if spread > x_dev:
+                violations.append(
+                    f"regularity (x_dev) role={role} FlNo={flno}: gün-içi spread={spread}min "
+                    f"exceeds X_dev={x_dev} (day-normalized times={by_gun})"
+                )
+
+    if flight_pairs_path is not None:
+        pairs_df = load_flight_pairs(flight_pairs_path)
+        provider_a = BlockTimeProvider(tk, L=L, U=U)
+        for ob_flno, ib_flno, station in _rotation_subpairs(pairs_df):
+            try:
+                r_o = provider_a.get_rotation_constant(station)
+            except KeyError:
+                continue
+            for gun in set(g for (_, f, g) in reported_times if f == ob_flno) | \
+                       set(g for (_, f, g) in reported_times if f == ib_flno):
+                dep_key = ("OB", ob_flno, gun)
+                arr_key = ("IB", ib_flno, gun)
+                if dep_key not in reported_times or arr_key not in reported_times:
+                    continue
+                min_arr = reported_times[dep_key] + r_o + tau
+                if reported_times[arr_key] < min_arr:
+                    violations.append(
+                        f"rotation FlNo(OB)={ob_flno} FlNo(IB)={ib_flno} Gün={gun}: "
+                        f"IST arrival {reported_times[arr_key]} < required minimum "
+                        f"{min_arr} (dep {reported_times[dep_key]} + R_o({station})={r_o} + tau={tau})"
+                    )
 
     ranking_results = data.get("ranking_results", [])
     if ranking_results:

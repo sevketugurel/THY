@@ -2,8 +2,9 @@
 """Single-command entrypoint: read -> build -> solve -> validate -> write.
 
 M1 scope: B (bağlantı uygunluğu) + C (Modül-5 monoton slot).
-M2 scope: + D (rakip yenme ve sıralama). Real constraint groups A,E-G land
-in M3+.
+M2 scope: + D (rakip yenme ve sıralama).
+M3 scope: + A (rotasyon) + G (düzenlilik). Real constraint groups E,F land
+in M4.
 """
 import argparse
 import sys
@@ -14,9 +15,9 @@ import yaml
 from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
-from src.data.loaders import load_change_ranking, load_od_table, load_yolcu_verisi
+from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
-from src.model.build import build_model_with_competition
+from src.model.build import build_model_with_operations
 from src.output.writer import write_output
 from src.solve.runner import solve
 from src.validate.independent_validator import validate_output
@@ -24,9 +25,11 @@ from src.validate.independent_validator import validate_output
 FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
 FIXTURE_YV = "tests/fixtures/synthetic_yolcu_verisi.xlsx"
 FIXTURE_CR = "tests/fixtures/synthetic_change_ranking_input.xlsx"
+FIXTURE_FP = "tests/fixtures/synthetic_flight_pairs.xlsx"
 FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
 FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
 FULL_CR = "data_raw/change_ranking_input.xlsx"
+FULL_FP = "data_raw/Flight Pairs.xlsx"
 
 
 def main(argv=None) -> int:
@@ -44,15 +47,16 @@ def main(argv=None) -> int:
     L, U = config["L"], config["U"]
 
     if args.full_data:
-        od_path, yv_path, cr_path = FULL_OD, FULL_YV, FULL_CR
+        od_path, yv_path, cr_path, fp_path = FULL_OD, FULL_YV, FULL_CR, FULL_FP
     else:
-        od_path, yv_path, cr_path = FIXTURE_OD, FIXTURE_YV, FIXTURE_CR
+        od_path, yv_path, cr_path, fp_path = FIXTURE_OD, FIXTURE_YV, FIXTURE_CR, FIXTURE_FP
 
     od_table = load_od_table(od_path)
     tk = od_table[od_table.cr1 == "TK"]
     yolcu = load_yolcu_verisi(yv_path)
     rho = {(r.orig, r.dest): r.rho for r in yolcu.itertuples()}
     ranking_table = load_change_ranking(cr_path)
+    pairs_df = load_flight_pairs(fp_path)
 
     anchor = compute_epoch_anchor(tk)
     candidates = []
@@ -81,9 +85,20 @@ def main(argv=None) -> int:
 
     monotonic = is_ranking_monotonic(ranking_table)
 
-    model = build_model_with_competition(
+    rotation_stations = set(
+        row["dest"] for row in pairs_df.to_dict("records") if row["orig"] == "IST"
+    )
+    r_o_lookup = {}
+    for station in rotation_stations:
+        try:
+            r_o_lookup[station] = provider.get_rotation_constant(station)
+        except KeyError:
+            continue  # VARSAYIM: rotasyon verisi olmayan istasyon icin A atlanir
+
+    model = build_model_with_operations(
         candidates, rho, journey_constants, rival_data, b_od_data, ranking_table,
-        L=L, U=U, monotonic=monotonic,
+        pairs_df, r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
+        epoch_anchor=anchor, L=L, U=U, monotonic=monotonic,
     )
     result = solve(model, solver=config["solver"], time_limit_sec=config["time_limit_sec"], seed=config["seed"])
 
@@ -95,6 +110,7 @@ def main(argv=None) -> int:
         output_path, od_path, L=config["L"], U=config["U"],
         adjustable_window_min=config["adjustable_window_min"],
         adjustable_set=config["adjustable_set"],
+        flight_pairs_path=fp_path, tau=config["tau"], x_dev=config["X_dev"],
     )
 
     n_selected = sum(result.selected.values()) if result.selected else 0

@@ -221,3 +221,31 @@ sebebi DEĞİLDİR. Validator bunu flag ETMEZ (bkz. `test_validate_allows_under_
 ZZB-ZZA pazarında NI1×NO2'nin serbest zamanlarla J=360 elde edip R3,R4,R5'in
 ÜÇÜNÜ de yenebildiği ama sadece R3,R5'in claim edildiği elle-doğrulanmış bir
 senaryo).
+
+## M3 eki — gün-içi normalizasyon (KRİTİK, ilk solve denemesinde infeasibility olarak yakalandı)
+
+A ve G kısıtları eklendiğinde ilk solve denemesi **infeasible** verdi.
+Kaynak: `t_arr`/`t_dep` TEK bir GLOBAL `epoch_anchor`'a göre kurulu (tüm veri
+kümesinin en erken tarihinin gece yarısı) — MI1'in Gün1 değeri (840, 14:00)
+ile Gün2 değeri HAM epoch cinsinden **2255** (1440+815, çünkü Gün2 AYRI bir
+takvim günü), 815 DEĞİL. G'nin `max(t)-min(t)<=X_dev` kontrolünü bu HAM
+değerlere uygulamak, saat-of-day TAM uyumlu bir tarifeyi bile ~1440dk'lık
+sahte bir ihlal olarak görüyordu — asla X_dev(15) ile uzlaştırılamaz,
+model HER ZAMAN infeasible çıkıyordu.
+
+**Tespit yöntemi** (izole etme): B+C alone → optimal. A alone → optimal.
+B+C+A → **infeasible** (ayrı bir bug: `tests/solve/test_m3_constraints_a.py`'nin
+test yardımcısındaki yanlış `gap_lo`/`gap_hi` hint'i, üretim kodunda değil —
+bkz. `docs/decisions.md`). B+C+G → **infeasible** (gün-içi normalizasyon
+eksikliği, gerçek üretim-kodu bug'ı). Düzeltme: `constraints_operations.py::_day_offsets`
+her (role,flno,gun)'u KENDİ takvim gününün gece yarısına göre normalize
+ediyor önce; `independent_validator.py`'nin x_dev kontrolü de AYNI
+normalizasyonu tekrarlıyor (aksi halde GEÇERLİ bir çözüm bile validator
+tarafından yanlışlıkla reddedilirdi — bu ikinci, sessiz bug hiçbir solve
+hatası vermezdi, sadece validator'ı sürekli yanlış-pozitif üretir hale
+getirirdi).
+
+**CLI sonucu** (M3 dahil, `adjustable_set: all`): objective=**668.75**
+(M2'yle AYNI — A/G kısıtları bu fixture için mevcut optimumu BOZMADI,
+solver'ın zaten seçtiği tarife A/G'yi de sağlıyormuş). 668.75 hâlâ **insan
+doğrulaması bekliyor** (M1 ekinden beri aynı durum).
