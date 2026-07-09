@@ -57,6 +57,38 @@ def _baseline_bounds(tk, role, flno, gun, anchor, adjustable_window_min, adjusta
     return baseline, baseline
 
 
+def _has_structural_candidate(tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U):
+    """Bağımsız yeniden-uygulama (src.candidates.generate.generate_candidates'in
+    achievable-range kapısıyla BİREBİR aynı mantık, kasıtlı olarak
+    KOPYALANMIŞ -- src.candidates import etmeden). E1/E2's model-side scope
+    (`_market_groups`) bir (o,d,gun) yönünün E1/E2'ye dahil olması için
+    yalnızca YAPISAL bir aday var olmasını şart koşar (SEÇİLMİŞ/offered
+    olması DEĞİL, VARSAYIM-6) -- bu, o yönde EN AZ BİR inbound x outbound
+    kombinasyonunun achievable gap aralığının [L,U] ile kesişip kesişmediğini
+    sorar, tıpkı generate_candidates'in yaptığı gibi."""
+    is_adjustable = adjustable_set == "all"
+    day_rows = tk[tk["gun"] == gun]
+    inbound = day_rows[day_rows["dep1"] == o][["flno1", "arr_time"]].drop_duplicates(subset=["flno1"])
+    outbound = day_rows[day_rows["arr2"] == d][["flno2", "dep_time"]].drop_duplicates(subset=["flno2"])
+    for _, ib in inbound.iterrows():
+        arr_baseline = _epoch_min(ib["arr_time"], anchor)
+        arr_lo, arr_hi = (
+            (arr_baseline - adjustable_window_min, arr_baseline + adjustable_window_min)
+            if is_adjustable else (arr_baseline, arr_baseline)
+        )
+        for _, ob in outbound.iterrows():
+            dep_baseline = _epoch_min(ob["dep_time"], anchor)
+            dep_lo, dep_hi = (
+                (dep_baseline - adjustable_window_min, dep_baseline + adjustable_window_min)
+                if is_adjustable else (dep_baseline, dep_baseline)
+            )
+            gap_lo = dep_lo - arr_hi
+            gap_hi = dep_hi - arr_lo
+            if gap_hi >= L and gap_lo <= U:
+                return True
+    return False
+
+
 def _cluster_flight_days_independent(occurrences, x_dev):
     """Bağımsız yeniden-uygulama (src.model.day_clustering.cluster_flight_days
     ile BİREBİR aynı algoritma, kasıtlı olarak KOPYALANMIŞ -- diskalifiye
@@ -205,17 +237,38 @@ def validate_output(
             )
 
     if alpha is not None:
+        # 2026-07-09 baseline autopsy finding (docs/baseline_autopsy.md #1):
+        # scope MUST match add_e1_constraints' _market_groups gate (VARSAYIM-6
+        # -- "en az bir CANDIDATE'ı olan pazar çiftlerine uygulanır"), which
+        # requires STRUCTURAL candidate existence on both sides, NOT that
+        # both sides have a SELECTED connection. Building the pair-scan
+        # purely from `counts` (selected-only) silently skipped any pair
+        # where one side had zero selected connections but a real
+        # structural candidate on the other -- undercounting violations by
+        # 394/690 on the full-data baseline witness.
         counts = {}
         for conn in data["selected_connections"]:
             o, d = conn["od"].split("-")
             counts[(o, d, conn["gun"])] = counts.get((o, d, conn["gun"]), 0) + 1
+        candidate_pairs = set()
+        for (o, d, gun) in counts:
+            candidate_pairs.add((o, d, gun))
+            candidate_pairs.add((d, o, gun))
         checked = set()
-        for (o, d, gun) in list(counts.keys()):
-            if (o, d, gun) in checked or (d, o, gun) not in counts:
+        for (o, d, gun) in list(candidate_pairs):
+            if (o, d, gun) in checked or (d, o, gun) in checked:
+                continue
+            fwd_exists = (o, d, gun) in counts or _has_structural_candidate(
+                tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U)
+            bwd_exists = (d, o, gun) in counts or _has_structural_candidate(
+                tk, d, o, gun, anchor, adjustable_window_min, adjustable_set, L, U)
+            if not (fwd_exists and bwd_exists):
                 continue
             checked.add((o, d, gun))
             checked.add((d, o, gun))
-            n_fwd, n_bwd = counts[(o, d, gun)], counts[(d, o, gun)]
+            n_fwd, n_bwd = counts.get((o, d, gun), 0), counts.get((d, o, gun), 0)
+            if n_fwd + n_bwd == 0:
+                continue
             if abs(n_fwd - n_bwd) > alpha * (n_fwd + n_bwd):
                 violations.append(
                     f"E1 {o}-{d} Gün={gun}: |n_fwd({n_fwd})-n_bwd({n_bwd})| "
@@ -238,10 +291,18 @@ def validate_output(
             if arr_key not in reported_times or dep_key not in reported_times:
                 continue
             gap = reported_times[dep_key] - reported_times[arr_key]
+            # VARSAYIM-8 fallback (direct median -> LS-estimate), matching
+            # journey_constants dict construction in main.py/run_full_data.py
+            # exactly -- direct-only skipped 571/1329 estimated-K_od markets
+            # entirely on full data (docs/baseline_autopsy.md #2).
             try:
-                journey = provider_e2.get_journey_constant(o, d) + gap
+                k_od = provider_e2.get_journey_constant(o, d)
             except KeyError:
-                continue
+                try:
+                    k_od = provider_e2.get_journey_constant_estimate(o, d)
+                except KeyError:
+                    continue
+            journey = k_od + gap
             journeys_by_market.setdefault((o, d, conn["gun"]), []).append(journey)
 
         checked_e2 = set()
@@ -415,6 +476,21 @@ def validate_output(
                 ob_pos = (ob_gun - 1) * 1440 + ob_tod[ob_gun]
                 ib_pos = (ib_gun - 1) * 1440 + ib_tod[ib_gun]
                 week_offset = WEEK_PERIOD_MIN if ib_pos < ob_pos else 0
+                # 2026-07-09 baseline autopsy finding (docs/baseline_autopsy.md
+                # #4): VARSAYIM-11 exempts a pair from A entirely (model-side,
+                # add_a_constraints) when it's unreconcilable even at its OWN
+                # best-case adjustment -- the validator must mirror this
+                # exactly, or a genuinely-valid solution using the exemption
+                # gets wrongly flagged. Best case: dep as early as possible
+                # (dep_lo), arr as late as possible (arr_hi).
+                dep_bounds = _baseline_bounds(tk, "OB", ob_flno, ob_gun, anchor, adjustable_window_min, adjustable_set)
+                arr_bounds = _baseline_bounds(tk, "IB", ib_flno, ib_gun, anchor, adjustable_window_min, adjustable_set)
+                if dep_bounds is None or arr_bounds is None:
+                    continue
+                dep_lo, _ = dep_bounds
+                _, arr_hi = arr_bounds
+                if arr_hi + week_offset < dep_lo + r_o + tau:
+                    continue  # VARSAYIM-11: exempt, unreconcilable even at best case
                 min_arr = reported_times[dep_key] + r_o + tau - week_offset
                 if reported_times[arr_key] < min_arr:
                     violations.append(

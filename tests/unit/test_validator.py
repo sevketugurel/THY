@@ -244,6 +244,52 @@ def test_validate_catches_e1_imbalance(tmp_path):
     assert any("E1" in v for v in result.violations)
 
 
+def test_validate_catches_e1_imbalance_when_one_side_has_zero_selected(tmp_path):
+    # 2026-07-09 baseline autopsy finding (docs/baseline_autopsy.md #1):
+    # ZZA-ZZB Gün1 has 2 STRUCTURAL candidates (MI1xMO2, MI2xMO2, per
+    # fixtures/README.md ground truth) but the output selects NEITHER --
+    # ZZB-ZZA Gün1 selects 1 (NI1xNO2). Old (buggy) scope built `counts`
+    # only from selected_connections, so ZZA-ZZB (0 selected) was never a
+    # key -- the reverse-lookup `(o,d,gun) not in counts` then skipped this
+    # pair ENTIRELY, silently missing a genuine E1 violation (1-0=1 >
+    # 0.2*1=0.2). The model's own add_e1_constraints scopes E1_PAIRS by
+    # STRUCTURAL candidate existence (VARSAYIM-6), not selection -- the
+    # validator must match.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, alpha=0.20)
+    assert not result.is_valid
+    assert any("E1" in v for v in result.violations)
+
+
+def test_validate_e1_skips_pair_when_reverse_direction_has_no_real_flights(tmp_path):
+    # Control case for the fix above: Gün=2 in this fixture only has flight
+    # rows for ZZA-side/ZZB-side stations that already exist on Gün=1 (no
+    # new stations), so to get a genuinely-empty reverse direction we point
+    # at a (o,d) with NO raw TK rows at all in either direction: querying
+    # structural-candidate existence for a nonexistent station pair must
+    # return False (not crash), and since ZZA-ZZB's own reverse (ZZB-ZZA)
+    # DOES exist structurally in this fixture, this test instead confirms
+    # the new structural-scope lookup itself is safe for a market with zero
+    # raw rows (used internally when checking (d,o,gun) for a fabricated d).
+    from src.validate.independent_validator import _has_structural_candidate, _epoch_anchor
+    from src.data.loaders import load_od_table
+    od_table = load_od_table(FIXDIR / "synthetic_od_table.xlsx")
+    tk = od_table[od_table.cr1 == "TK"]
+    anchor = _epoch_anchor(tk)
+    assert _has_structural_candidate(tk, "ZZA", "QQQ", 1, anchor, 0, "none", L, U) is False
+    assert _has_structural_candidate(tk, "ZZA", "ZZB", 1, anchor, 0, "none", L, U) is True
+
+
 def test_validate_passes_e1_balanced_market(tmp_path):
     output_path = _write_output_with_ranking(
         tmp_path,
@@ -268,6 +314,55 @@ def test_validate_catches_e2_gamma_violation(tmp_path):
     # K_od(ZZA,ZZB)=220, K_od(ZZB,ZZA)=240. ZZA-ZZB offers gap=60 (J=280) and
     # gap=300 (J=520) -> Jbest_fwd=280. ZZB-ZZA offers gap=205 (J=445) ->
     # Jbest_bwd=445. |445-280|=165 > Gamma=30.
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZA-ZZB", "flno1": 9102, "flno2": 9112, "gun": 1, "gap_min": 300},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "IB", "flno": 9102, "gun": 1, "time_min": 600},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, gamma=30)
+    assert not result.is_valid
+    assert any("E2" in v for v in result.violations)
+
+
+def test_validate_e2_falls_back_to_estimated_journey_constant(tmp_path, monkeypatch):
+    # 2026-07-09 baseline autopsy finding (docs/baseline_autopsy.md #2): the
+    # E2 section built its OWN BlockTimeProvider and called ONLY
+    # get_journey_constant (direct-median, VARSAYIM-8) -- with no fallback
+    # to get_journey_constant_estimate (LS-estimate) the way the MODEL's
+    # journey_constants dict does (run_full_data.py/main.py both try direct
+    # then estimate). On full data 571/1329 markets only have an ESTIMATED
+    # K_od -- E2 was silently skipping ALL of them (`except KeyError:
+    # continue`), undercounting violations by 38 (1181 vs 1219 recomputed).
+    # This forces ZZA-ZZB's DIRECT lookup to fail so only the estimate path
+    # can produce a result.
+    import src.validate.independent_validator as validator_mod
+
+    real_get = validator_mod.BlockTimeProvider.get_journey_constant
+
+    def fake_get_journey_constant(self, o, d):
+        if (o, d) == ("ZZA", "ZZB"):
+            raise KeyError("forced: simulate no direct baseline row for ZZA-ZZB")
+        return real_get(self, o, d)
+
+    def fake_get_journey_constant_estimate(self, o, d):
+        if (o, d) == ("ZZA", "ZZB"):
+            return 220.0  # same as the fixture's real direct K_od, so the hand-calc below still holds
+        raise KeyError(f"no estimate stubbed for {(o, d)}")
+
+    monkeypatch.setattr(validator_mod.BlockTimeProvider, "get_journey_constant", fake_get_journey_constant)
+    monkeypatch.setattr(validator_mod.BlockTimeProvider, "get_journey_constant_estimate", fake_get_journey_constant_estimate)
+
     output_path = _write_output_with_ranking(
         tmp_path,
         connections=[
@@ -347,6 +442,81 @@ def test_validate_passes_f_within_capacity(tmp_path):
         bucket_size_min=10, capacity_departure=10, capacity_arrival=15,
     )
     assert not any("F kova" in v for v in result.violations), result.violations
+
+
+def test_validate_catches_genuine_rotation_violation(tmp_path, monkeypatch):
+    # RA1(OB,9311,dep baseline=200)/RA2(IB,9301,arr baseline=850) on ZZA.
+    # R_o monkeypatched to 300 (tau=45, need>=345) so there's room for a
+    # GENUINE-but-violatable-within-window scenario: best-case check
+    # (dep_lo=20,arr_hi=1030) -> 1030>=20+345=365 -- reconcilable, NOT
+    # exempt. Reported at the window EDGES (dep=380 latest, arr=670
+    # earliest, both legal): 670 < 380+345=725 -- violates. Control case
+    # confirming the VARSAYIM-11 exemption fix doesn't swallow real
+    # violations that ARE reconcilable but weren't actually reconciled.
+    import src.validate.independent_validator as validator_mod
+
+    def fake_get_rotation_constant(self, station):
+        if station == "ZZA":
+            return 300.0
+        raise KeyError(station)
+
+    monkeypatch.setattr(validator_mod.BlockTimeProvider, "get_rotation_constant", fake_get_rotation_constant)
+
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[],
+        adjusted_times=[
+            {"role": "OB", "flno": 9311, "gun": 1, "time_min": 380},
+            {"role": "IB", "flno": 9301, "gun": 1, "time_min": 670},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(
+        output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U,
+        adjustable_window_min=180, adjustable_set="all",
+        flight_pairs_path=FIXDIR / "synthetic_flight_pairs.xlsx", tau=45,
+    )
+    assert not result.is_valid
+    assert any("rotation" in v for v in result.violations)
+
+
+def test_validate_exempts_rotation_pair_unreconcilable_even_at_best_case(tmp_path, monkeypatch):
+    # 2026-07-09 baseline autopsy finding (docs/baseline_autopsy.md #4): the
+    # validator's rotation (A) check had NO VARSAYIM-11 exemption test at
+    # all -- every matched OB/IB pair was checked UNCONDITIONALLY, meaning a
+    # genuinely valid solution (which the model itself would have EXEMPTED
+    # from A, per add_a_constraints' best-case-reconcilability test) could
+    # get wrongly flagged. Same scenario as
+    # tests/solve/test_m3_constraints_a.py::test_rotation_exempts_pair_unreconcilable_even_at_best_case
+    # (R_o=1254, tau=45, only ~1030-20=1010min max achievable spread <
+    # 1254+45=1299 needed) -- monkeypatched onto the real RA1/RA2 pair since
+    # this 2-station fixture's LS system can't itself produce such a large
+    # R_o (see fixtures/README.md degenerate-LS note).
+    import src.validate.independent_validator as validator_mod
+
+    def fake_get_rotation_constant(self, station):
+        if station == "ZZA":
+            return 1254.0
+        raise KeyError(station)
+
+    monkeypatch.setattr(validator_mod.BlockTimeProvider, "get_rotation_constant", fake_get_rotation_constant)
+
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[],
+        adjusted_times=[
+            {"role": "OB", "flno": 9311, "gun": 1, "time_min": 200},   # baseline, within [20,380]
+            {"role": "IB", "flno": 9301, "gun": 1, "time_min": 850},   # baseline, within [670,1030]
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(
+        output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U,
+        adjustable_window_min=180, adjustable_set="all",
+        flight_pairs_path=FIXDIR / "synthetic_flight_pairs.xlsx", tau=45,
+    )
+    assert result.is_valid, result.violations
+    assert not any("rotation" in v for v in result.violations)
 
 
 def test_recompute_objective_matches_m2_hand_calc(tmp_path):

@@ -72,21 +72,28 @@ OB-IB çiftleri (VARSAYIM-10 düzeltmesinden SONRA bile 382/1571, %24.3) istisna
 mı tutulmalı, yoksa R_o tahminimizde/eşleştirme kuralımızda bir hata mı var?
 → `src/model/constraints_operations.py::add_a_constraints`.
 
-**12. (VARSAYIM-12) Full-data'nın adjustable-subset alt-problemi HER K
-değerinde (50/100/200/400) kanıtlanabilir infeasible** — beş kısıt ailesinin
-(A/E1/E2/F/G) hiçbiri tek başına kaldırıldığında bunu düzeltmiyor (K=400'de
-6 varyant test edildi, hepsi infeasible). Bu; (a) baseline tarifenin
-kendisinin brief'in kısıt setiyle yapısal olarak tutarsız olduğunu
-(VARSAYIM-9/10/11'in G/A için zaten gösterdiği gibi, ama artık E1/E2 için
-de — baseline-feasibility tanığı ham baseline'ın TÜM beş ailede eş zamanlı
-2048 ihlali olduğunu gösterdi), (b) K-subset gevşetme yaklaşımının yanlış
-biçimde tasarlandığını, yoksa (c) α/γ/X_dev/adjustable_window_min gibi
-parametrelerin gerçek veri ölçeğinde daha gevşek tutulması gerektiğini mi
-gösteriyor? Tam-ayarlanabilir (K-subset'siz) problemin feasibility'si
-elimizdeki hesaplama bütçesiyle (660s, dış-bekçili) kanıtlanamadı —
-organizatörün bu ölçekte (18000+ aday) beklediği bir çözüm süresi/referans
-benchmark var mı? → `scripts/run_full_data.py`, `scripts/diagnose_e1_e2_f.py`,
-`scripts/baseline_feasibility_witness.py`.
+**12. (VARSAYIM-12, GÜNCEL — `docs/baseline_autopsy.md` ile daraltıldı)
+Full-adjustable modelin (K-subset'siz, tüm 18118 aday) çözüm süresi** —
+derin otopsi K-subset'in K-şemasının (50/100/200/400) full-data ölçeğinde
+YETERSİZ olduğunu nicel olarak gösterdi (K=400'de bile E1 ihlallerinin
+%54'ü, E2'ninkilerin %51'i top-K ayarlanabilir pazarların HİÇBİRİNE
+dokunmuyor — K arttıkça oran düzenli düşüyor, mekanizma çalışıyor, sadece
+K yetersiz). Full-adjustable (step1) modelin KENDİSİ yapısal olarak
+infeasible OLMADIĞI biliniyor ama BÜYÜKLÜĞÜ (756174 satır presolve öncesi)
+nedeniyle 660s'lik dış-bekçi bütçesinde sonuçlanamadı. Organizatörün bu
+ölçekte (18000+ aday, ~900+ pazar) beklediği bir çözüm süresi/referans
+benchmark'ı var mı? → `scripts/run_full_data.py`, `scripts/diagnose_e1_e2_f.py`,
+`scripts/baseline_feasibility_witness.py`, `docs/baseline_autopsy.md`.
+
+**12b. (Otopsi'den yeni) Gamma=30dk gerçek veri ölçeğinde uygulanabilir mi?**
+— E2'nin 1219 gerçek ihlalinin %78'inde (949) K_od'un YAPISAL asimetrisi
+($T^{IB}_o+T^{OB}_d$ vs $T^{IB}_d+T^{OB}_o$, istasyonların KENDİ blok
+sürelerinin farkı) TEK BAŞINA Gamma(30dk)'yı aşıyor — gap SIFIR olsa bile
+(imkansız ama ideal), bu ihlaller çözülemez. Bu, "en iyi yolculuk süresi
+farkı"nın Gamma ile karşılaştırılmasının küresel/coğrafi çeşitliliği yüksek
+bir ağda çok sıkı bir eşik olduğunu gösteriyor olabilir — Gamma'nın büyük
+ölçekli ağlarda nasıl yorumlanması/ölçeklenmesi gerektiği konusunda
+organizatör rehberliği var mı? → `docs/baseline_autopsy.md` §2.
 
 ## Kapsam / veri (plan §7'den, henüz kod kararına dönüşmemiş)
 

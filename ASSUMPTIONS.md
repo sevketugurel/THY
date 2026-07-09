@@ -510,3 +510,25 @@ gibi parametrelerin gerçek veri ölçeğinde daha gevşek tutulması gerektiği
 mi gösteriyor? Tam-ayarlanabilir (full, K-subset'siz) problemin feasibility'si
 elimizdeki hesaplama bütçesiyle kanıtlanamadı — organizatörün bu ölçekte
 (18000+ aday) bir çözüm süresi beklentisi/referans benchmark'ı var mı?"
+
+**GÜNCELLEME (2026-07-09, M5b — DERİN OTOPSİ SONRASI daraltıldı)**:
+`docs/baseline_autopsy.md`, kullanıcının talebiyle yapılan derin analizle bu
+VARSAYIM'ı ÖNEMLİ ÖLÇÜDE DARALTTI. Kök neden (b)'ye YAKIN çıktı — ama
+"K-subset yaklaşımı yanlış" değil, "**K-subset'in K-şeması (50/100/200/400)
+full-data ölçeğinde yetersiz**". Nicel kanıt: her aile için "baked-in"
+(top-K ayarlanabilir pazarların HİÇBİRİNE dokunmayan, K'dan bağımsız
+ÇÖZÜLEMEZ kalan) ihlal oranı hesaplandı — K arttıkça oran DÜZENLİ düşüyor
+(K=50'de E1 %96/E2 %91 → K=400'de E1 %54/E2 %51) ama K=400 hâlâ full-data'nın
+gerçek pazar sayısının (~900+) yalnızca %44'ü. Ayrıca E1/E2'nin GERÇEK ihlal
+sayıları validator'daki KAPSAM eksiklikleri nedeniyle daha önce yanlış
+raporlanmıştı (296→690, 1181→1219) — bu 3 validator hatası (E1 kapsamı, E2
+estimate-fallback, A exemption) TDD ile düzeltildi (yalnızca
+`independent_validator.py`, model kodu DOKUNULMADI). F'nin kapasite
+sayıları (10/15) brief'in kendi §2.4 verisi olarak TEYİT edildi (VARSAYIM
+değil). G'nin model/validator paritesi kod karşılaştırmasıyla KANITLANDI.
+**Kalan açık soru**: full-adjustable (step1, K-subset'siz) modelin
+feasibility'si HÂLÂ kanıtlanamadı — yalnızca BÜYÜKLÜK (756174 satır)
+nedeniyle 660s'de sonuçlanamıyor, infeasibility DEĞİL. Organizatör sorusu
+(c) (Gamma'nın gerçek ölçekte uygunluğu) hâlâ geçerli: 1219 E2 ihlalinin
+949'unda (%78) K_od'un YAPISAL asimetrisi TEK BAŞINA Gamma(30dk)'yı aşıyor
+— gap seçimiyle çözülemeyecek bir durum.
