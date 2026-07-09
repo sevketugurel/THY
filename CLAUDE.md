@@ -18,19 +18,19 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   rank one-hot (kritik infeasibility-tuzağı düzeltmesiyle — bkz. Kilit Kararlar).
   `main.py` artık `build_model_with_competition` kullanıyor. 96/96 test yeşil.
   CLI: objective=668.75, valid=True (668.75 **insan doğrulaması bekliyor**).
-- **M3 KOD YAZILDI, TEST EDİLEMEDİ** — A (rotasyon) + G (düzenlilik) implement
-  edildi (`src/model/constraints_operations.py`, `main.py`'ye `build_model_with_operations`
-  ile bağlandı, validator A/G-check ile genişletildi), TÜM dosyalar elle
-  satır satır gözden geçirildi AMA **pytest/python çalıştırılamadı** — Bash
-  tool'un güvenlik sınıflandırıcısı (`claude-sonnet-5 is temporarily
-  unavailable`) onlarca denemeye rağmen code-execution komutlarını (basit
-  `python -c "print(1+1)"` bile) sürekli reddetti; salt-okunur komutlar
-  (`ls`,`echo`,`pwd`) çalışıyordu, spesifik olarak execution classifier'ı
-  etkilendi. **Bu yüzden M3 COMMIT/TAG EDİLMEDİ** (m3-operations tag'i YOK) —
-  "tüm suite yeşil" doğrulanmadan ritüel tamamlanamaz, sahte "test geçti"
-  iddiası YAPILMADI. **Devam ederken ilk iş**: `pytest tests/solve/test_m3_constraints_a.py
-  tests/solve/test_m3_constraints_g.py -v` çalıştır, çıkan hataları düzelt,
-  sonra tüm suite + CLI + M3 ritüelini normal şekilde tamamla.
+- **M3 tamam** (tag: `m3-operations`) — A (rotasyon, koşulsuz kısıt) + G
+  (düzenlilik, referans-zaman formülasyonu). **Kritik bug bulundu ve
+  düzeltildi**: G ilk denemede infeasible çıktı çünkü `t_arr`/`t_dep` global
+  epoch_anchor'a göre kurulu, farklı `gun` değerleri ~1440dk farklı ham
+  değerlere sahip (farklı takvim günü) — gün-içi normalizasyon eksikliği
+  hem modeli hem validator'ı etkiliyordu, ikisi de düzeltildi (bkz. Kilit
+  Kararlar). Bu turda Bash/Python execution classifier'ı bir süre kullanılamaz
+  hale geldi (onlarca deneme başarısız oldu); "continue" ile devam edildiğinde
+  düzeldi ve gerçek infeasibility'ler bu şekilde ortaya çıktı/düzeltildi.
+  102/102 test yeşil. CLI: objective=668.75 (M2'yle aynı — A/G mevcut
+  optimumu bozmadı), valid=True.
+- **M4 sırada** — E1/E2 (koşullu aktivasyon) + F (kova bağlama). Kullanıcının
+  M4 talimatı: TASARIM NOTU yaz, KODA BAŞLAMA, orada dur.
 
 ## Kilit Kararlar
 
@@ -71,6 +71,16 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
 - **Under-claim toleransı**: validator D'de under-claim'i (gerçekte yenilen
   ama raporlanmayan rakip) violation SAYMAZ — forward-only forcing bunu
   yapısal olarak ZARARSIZ kılıyor (claimed⊆actual her zaman, ödül asla şişmez).
+- **A rotasyon**: koşulsuz kısıt (Big-M YOK, reifikasyon değil). Yalnızca
+  Pair grubundaki ARDIŞIK (Orig==IST→Dest==IST) bacaklara uygulanır — IST'e
+  değmeyen ara bacaklar (ör. IST→MEX→CUN→IST, ~50/707 gerçek grup) modelin
+  değişken kapsamı dışında, kısıt EKSİK kalır (`ASSUMPTIONS.md` VARSAYIM-5).
+- **G gün-içi normalizasyon ZORUNLU** (`constraints_operations.py::_day_offsets`):
+  farklı `gun` değerleri GLOBAL epoch'ta ~1440dk farklı ham değerlere sahip
+  (farklı takvim günü) — normalize etmeden `max(t)-min(t)<=X_dev` kontrolü
+  HER ZAMAN infeasible verir (gerçek bir solve denemesiyle yakalandı, ipucu
+  değil). Validator'ın x_dev kontrolü AYNI normalizasyonu tekrarlar, aksi
+  halde geçerli çözümleri yanlışlıkla reddeder.
 
 ## Çalıştırma
 
@@ -115,20 +125,9 @@ Kullanıcı, M1→M2→(ritüel tamsa)M3'ü bitirip, M4'ün TASARIM NOTUNU yazı
   `m3-operations`) → CLAUDE.md Durum güncelle → 10 satır özet → dur madan
   devam.
 
-**M3 ek şartları** (kullanıcı mesajından, henüz uygulanmadı):
-- **A rotasyon**: Flight Pair eşleşmesiyle, dönüş IST varışı ≥ gidiş IST
-  kalkışı + R_o (block-time sağlayıcıdan, T_OB+T_IB zaten birleşik) + τ.
-  3+ üyeli Pair grupları ardışık işlenir (plan §4, zaten sentetik fixture'da
-  ROT-A/ROT-B ile 2-üyeli test edilebilir durumda).
-- **G düzenlilik**: gün-çifti mutlak farkları yerine REFERANS-ZAMAN
-  formülasyonu — serbest $T^{dep}_f$ ve $T^{arr}_f$, $t_{f,h}\in[T_f,T_f+X_{dev}]$.
-  Aynı semantik (max−min ≤ X_dev), O(H) kısıt (H=gün sayısı), daha sıkı
-  gevşetme (mutlak-fark formülasyonundan daha az Big-M). Doğruluk argümanı
-  model.md'ye yazılacak.
-- Üçlü test standardı + validator genişletmesi (A/G için de bağlayıcı/
-  bağlayıcı-değil/kasıtlı-ihlal-yakalanıyor) burada da geçerli.
+**M3 tamamlandı** (tag: `m3-operations`) — ritüel tam uygulandı.
 
-**M3 ritüeli bitince**: M4 (E1/E2 koşullu aktivasyon + F kova bağlama) için
+**Şimdi sırada**: M4 (E1/E2 koşullu aktivasyon + F kova bağlama) için
 TASARIM NOTU yaz (değişkenler, kısıtlar, Big-M türetimleri, E2 doğruluk
 tablosu test planı, fixture genişletme planı) ama **M4 KODUNA BAŞLAMA** —
 orada dur, tek rapor bırak (biten milestone'lar, insan doğrulaması
