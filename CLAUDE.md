@@ -104,7 +104,18 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   (farklı takvim günü) — normalize etmeden `max(t)-min(t)<=X_dev` kontrolü
   HER ZAMAN infeasible verir (gerçek bir solve denemesiyle yakalandı, ipucu
   değil). Validator'ın x_dev kontrolü AYNI normalizasyonu tekrarlar, aksi
-  halde geçerli çözümleri yanlışlıkla reddeder.
+  halde geçerli çözümleri yanlışlıkla reddeder. Gece yarısı SARMASI için
+  referans noktası gerçek 00:00 değil, uçuşun kendi baseline'ının 12 saat
+  karşısı (`_flight_cut_points`).
+- **G KÜME-BAZLI (M5, VARSAYIM-9)**: gerçek veride TK2841 kendi baseline'ında
+  bile G'nin uzlaştırılabilirlik sınırını aşıyor (645dk>375dk) — koşulsuz
+  okuma full data'yı KOŞULSUZ infeasible yapardı (formel Helly-özelliği
+  kanıtıyla ASSUMPTIONS.md'de gösterildi). G artık `src/model/day_clustering.py::cluster_flight_days`
+  ile EN AZ sayıda uzlaştırılabilir kümeye bölünmüş halde uygulanıyor
+  (dairesel en-büyük-boşluktan kes + soldan-sağa açgözlü ÇAP taraması,
+  ARDIŞIK-boşluk DEĞİL — data-türetilmiş, hiçbir uçuşa özel hardcode yok).
+  Tüm günler uzlaştırılabilirse (yaygın durum) TEK küme = M3 davranışı
+  DEĞİŞMEDEN korunur. Validator aynı algoritmayı bağımsız yeniden uyguluyor.
 
 ## Çalıştırma
 

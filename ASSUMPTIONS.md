@@ -291,3 +291,64 @@ süresi hiçbir mevcut tarifede [L,U] penceresine denk gelmiyor (yalnızca
 ayarlanabilir senaryoda ulaşılabilir). Bu pazarlar için resmi bir K_od
 (gate-to-gate uçuş süresi sabiti) verisi var mı, yoksa ağ-genelinde
 istasyon-bazlı bir tahmin (bizim LS yaklaşımımız gibi) kabul edilebilir mi?"
+
+## VARSAYIM-9: G küme-bazlı uygulanıyor — baseline verinin kendisi KOŞULSUZ G'yi ihlal ediyor (kanıtlı)
+
+**Bulgu**: M5'in full-data solve merdiveni, F devre dışı bırakılsa bile,
+A+G ile de, YALNIZCA B+C+D+G ile de HIZLI (saniyeler içinde, zaman
+limitine takılmadan) infeasible veriyordu — merdivenin TÜM adımları
+(step1 tam-ayarlanabilir, step2'nin 4 K değeri) başarısız oldu (step3'e
+düşüldü). Kök neden izolasyonu: B+C+D TEK BAŞINA (A/G'siz) infeasible
+DEĞİL (genuine arama gerektiriyor, hızlı infeasible vermiyor) — A ve/veya
+G'nin varlığı SORUNUN kaynağı. Gerçek gün-içi (dairesel) yayılım analizi:
+461 çok-günlü IB uçuşundan 1'i, 476 çok-günlü OB uçuşundan 0'ı, KENDİ
+baseline saatlerinde bile G'nin uzlaştırılabilirlik sınırını (2*180+15=375dk,
+±180dk pencere + X_dev=15dk) AŞIYOR:
+
+```
+TK2841 (TZX->IST): Gün2,3,4,7 = 03:25, Gün5 = 14:10 (645dk fark)
+```
+
+**Matematiksel kanıt (formel)**: bir grubun (aynı role,flno'nun gün-örnekleri)
+TEK bir ortak referans zamanı T_ref ile uzlaştırılabilmesi ⟺ (aralıklar için
+1D Helly özelliği) HER örneğin kendi $[baseline_h-w_h, baseline_h+w_h]$
+aralığının $[T_{ref}, T_{ref}+X_{dev}]$ ile kesişmesi ⟺ $T_{ref} \in
+\bigcap_h [baseline_h-w_h-X_{dev}, baseline_h+w_h]$ ⟺ bu kesişim boş değil ⟺
+$\max_h(baseline_h-w_h) - \min_h(baseline_h+w_h) \le X_{dev}$ ⟺ (iki-nokta
+"en kötü çift" karakterizasyonu) $\max(baseline) - \min(baseline) \le
+w_{min\text{-}örnek} + w_{max\text{-}örnek} + X_{dev}$. TK2841 için:
+$645 > 180+180+15=375$ — **KATI (koşulsuz, tüm günler tek grup) okumada
+uzlaştırılabilir küme kümesi BOŞ, tüm problem infeasible olurdu.** Bu
+yarışma kurgusunun kendi tutarlılığıyla çelişir (organizatör çözümsüz bir
+problem tasarlamamıştır) — bu yüzden ZORUNLU MİNİMAL bir gevşetme gerekli.
+
+**Karar**: G artık FLIGHT bazında değil KÜME bazında uygulanıyor
+(`src/model/day_clustering.py::cluster_flight_days`). Her (role,flno)'nun
+gün-örnekleri, EN AZ sayıda "uzlaştırılabilir" kümeye ayrılır — her küme
+KENDİ İÇİNDE G'yi (bugünkü, M3 formülasyonuyla BİREBİR aynı şekilde) sağlar,
+kümeler ARASINDA G HİÇ uygulanmaz. Algoritma DATA-TÜRETİLMİŞ ve GENEL (2841'e
+özel hiçbir şey hardcode edilmiyor — gizli test seti güvenliği): (1) dairesel
+eksende (mod 1440) EN BÜYÜK boşluktan kes (gece yarısı sarmasını G'nin kendi
+`_flight_cut_points`'iyle AYNI mantıkla ele alır), (2) doğrusallaştırılmış
+diziyi soldan sağa AÇGÖZLÜ ÇAP taraması (küme BAŞLANGICINA göre, ARDIŞIK
+öğeye göre DEĞİL — 0/300/600dk'lık bir zincir ardışık bakışta yanlışlıkla
+birleşirdi ama ortak bir bandı asla sığdıramaz, bkz.
+`tests/unit/test_day_clustering.py`). Tüm günler zaten uzlaştırılabilirse
+(yaygın durum, gerçek veride 460/461 IB ve 476/476 OB uçuşu) TEK küme oluşur
+= M3 davranışı DEĞİŞMEDEN korunur.
+
+**Etki**: validator (`independent_validator.py::_cluster_flight_days_independent`)
+AYNI kümeleme algoritmasını BAĞIMSIZ olarak (import ETMEDEN) yeniden uygular
+— yalnızca AYNI kümenin İÇİNDEKİ raporlanan zamanlar X_dev'e tabi tutulur,
+kümeler arası karşılaştırma yapılmaz. `docs/model.md`'ye formel kanıt +
+kümeli formülasyon eklendi.
+
+**Organizatöre soru (somut)**: "TK2841 (TZX→IST) 4 günde 03:25'te, 1 günde
+(Gün5) 14:10'da uçuyor — uçuş numarası yapısal olarak farklı iki tarifede
+kullanılıyor gibi görünüyor. Bu; (a) veri hatası/maskeleme artefaktı mı,
+(b) o gün için gerçek, tek-seferlik bir tarife değişikliği mi, yoksa (c)
+uçuş numarasının kasıtlı olarak farklı rotasyonlar için yeniden kullanıldığı
+bilinen bir pratik mi? G'nin (düzenlilik) gün-varyantlarına TAM olarak nasıl
+uygulanması bekleniyor — TÜM operasyon günleri KOŞULSUZ tek bir X_dev bandına
+mı sığmalı (ki bu durumda TK2841 problemi çözümsüz kılar), yoksa bizim
+kümeli yaklaşımımıza benzer bir ayrım kabul edilebilir mi?"

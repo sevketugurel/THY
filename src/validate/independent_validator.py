@@ -57,6 +57,43 @@ def _baseline_bounds(tk, role, flno, gun, anchor, adjustable_window_min, adjusta
     return baseline, baseline
 
 
+def _cluster_flight_days_independent(occurrences, x_dev):
+    """Bağımsız yeniden-uygulama (src.model.day_clustering.cluster_flight_days
+    ile BİREBİR aynı algoritma, kasıtlı olarak KOPYALANMIŞ -- diskalifiye
+    sigortası, oradaki bir bug validasyonu da sessizce geçemesin). M5
+    VARSAYIM-9 (ASSUMPTIONS.md): dairesel en-büyük-boşluktan kes, sonra
+    soldan-sağa açgözlü ÇAP taraması (küme BAŞLANGICINA göre, ardışık öğeye
+    göre DEĞİL -- bkz. tests/unit/test_day_clustering.py 0-300-600 zinciri).
+    occurrences: (key, baseline_tod_min, half_width_min) üçlüleri."""
+    if len(occurrences) <= 1:
+        return [[key for key, _, _ in occurrences]]
+    sorted_occ = sorted(occurrences, key=lambda o: o[1])
+    n = len(sorted_occ)
+    gaps = []
+    for i in range(n):
+        cur_tod = sorted_occ[i][1]
+        nxt_tod = sorted_occ[(i + 1) % n][1]
+        gap = (nxt_tod + 1440 - cur_tod) if i == n - 1 else (nxt_tod - cur_tod)
+        gaps.append(gap)
+    cut_after = max(range(n), key=lambda i: gaps[i])
+    linear = list(sorted_occ[cut_after + 1:]) + [
+        (key, tod + 1440, hw) for (key, tod, hw) in sorted_occ[:cut_after + 1]
+    ]
+    clusters = []
+    current = [linear[0]]
+    start_tod, start_hw = linear[0][1], linear[0][2]
+    for occ in linear[1:]:
+        key, tod, hw = occ
+        if tod - start_tod <= start_hw + hw + x_dev:
+            current.append(occ)
+        else:
+            clusters.append(current)
+            current = [occ]
+            start_tod, start_hw = tod, hw
+    clusters.append(current)
+    return [[o[0] for o in cluster] for cluster in clusters]
+
+
 def _rotation_subpairs(pairs_df):
     """Same logic as src.model.constraints_operations.build_rotation_pairs
     but working purely from the raw Flight Pairs table (no model.* access) --
@@ -284,15 +321,35 @@ def validate_output(
             day_offset = day_midnight + cut if tod >= cut else day_midnight + cut - 1440
             by_role_flno.setdefault((role, flno), {})[gun] = t - day_offset
 
+        # M5 VARSAYIM-9 (ASSUMPTIONS.md, bkz. src.model.day_clustering docstring):
+        # gerçek veride EN AZ BİR uçuş numarası (TK2841) TÜM günlerini TEK bir
+        # X_dev bandına sığdıramıyor (baseline'ın kendisi uzlaştırılamaz).
+        # Validator, modelin AYNI kümeleme kararını (baseline+pencere+X_dev'den,
+        # RAPORLANAN zamanlardan DEĞİL) bağımsız olarak yeniden hesaplar --
+        # yalnızca AYNI kümenin İÇİNDEKİ raporlanan zamanlar X_dev'e tabi;
+        # kümeler ARASI karşılaştırma yapılmaz (model tarafıyla tutarlı olmak
+        # ZORUNLU, aksi halde geçerli bir çözüm yanlışlıkla reddedilir YA DA
+        # gerçek bir küme-içi ihlal kaçırılır).
         for (role, flno), by_gun in by_role_flno.items():
             if len(by_gun) < 2:
                 continue
-            spread = max(by_gun.values()) - min(by_gun.values())
-            if spread > x_dev:
-                violations.append(
-                    f"regularity (x_dev) role={role} FlNo={flno}: gün-içi spread={spread}min "
-                    f"exceeds X_dev={x_dev} (day-normalized times={by_gun})"
-                )
+            occurrences = []
+            for gun in by_gun:
+                ts = baseline_ts[(role, flno, gun)]
+                tod = _epoch_min(ts, ts.normalize())
+                half_width = adjustable_window_min if adjustable_set == "all" else 0
+                occurrences.append((gun, tod, half_width))
+            for cluster in _cluster_flight_days_independent(occurrences, x_dev):
+                if len(cluster) < 2:
+                    continue
+                cluster_values = {g: by_gun[g] for g in cluster}
+                spread = max(cluster_values.values()) - min(cluster_values.values())
+                if spread > x_dev:
+                    violations.append(
+                        f"regularity (x_dev) role={role} FlNo={flno} küme={sorted(cluster)}: "
+                        f"gün-içi spread={spread}min exceeds X_dev={x_dev} "
+                        f"(day-normalized times={cluster_values})"
+                    )
 
     if flight_pairs_path is not None:
         pairs_df = load_flight_pairs(flight_pairs_path)

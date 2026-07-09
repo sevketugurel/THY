@@ -234,9 +234,53 @@ kaydırılıyor (`_flight_cut_points`, saat+720 mod 1440) — uçuşun ayarlanab
 aralığı (Big-M disiplini gereği hiçbir zaman ±720dk'yı aşamaz) bu yeni
 sınırdan ASLA taşamaz, sarma sorunu o uçuş için yapısal olarak imkansız
 hale gelir. Elle doğrulandı ve `test_g_no_false_violation_at_midnight_wraparound`
-(RED→GREEN) ile kanıtlandı; `test_g_still_catches_genuine_violation_near_midnight`
-gerçek ihlallerin hâlâ yakalandığını doğrular. Validator'ın x_dev kontrolü
-BİREBİR aynı mantığı tekrarlar.
+(RED→GREEN) ile kanıtlandı. Validator'ın x_dev kontrolü BİREBİR aynı
+mantığı tekrarlar.
+
+**Üçüncü kritik düzeltme — KÜME-BAZLI G (M5 VARSAYIM-9)**: full-data solve
+merdiveni tüm adımlarda HIZLI infeasible verdi (bkz. ASSUMPTIONS.md
+VARSAYIM-9) — kök neden, gerçek TK2841 (TZX→IST) uçuşunun KENDİ baseline
+tarifesinin bile G'nin koşulsuz ("tüm günler tek grup") okumasını tatmin
+edemeyecek kadar günden güne değişmesi (4 günde 03:25, 1 günde 14:10,
+645dk fark — $\pm180$dk pencere ile en fazla $2\times180+15=375$dk
+uzlaştırılabilir, $645>375$). Katı okumada uzlaştırılabilir küme kümesi
+BOŞ — tüm problem infeasible olurdu.
+
+**Formel kanıt** (1D Helly özelliği, aralıklar için): bir grubun (aynı
+role,flno'nun gün-örnekleri) tek bir ortak $T_{ref}$ ile uzlaştırılabilmesi
+
+$$\iff \forall h:\ [baseline_h-w_h,\,baseline_h+w_h] \cap [T_{ref},\,T_{ref}+X_{dev}] \neq \emptyset$$
+$$\iff T_{ref} \in \bigcap_h [baseline_h-w_h-X_{dev},\,baseline_h+w_h]$$
+$$\iff \max_h(baseline_h-w_h) - \min_h(baseline_h+w_h) \le X_{dev}$$
+$$\iff \max(baseline) - \min(baseline) \le w_{\min\text{-}\ddot{o}rnek} + w_{\max\text{-}\ddot{o}rnek} + X_{dev} \quad \text{(ÇAP koşulu)}$$
+
+Bu bir **ÇAP** (diameter) koşuludur, ARDIŞIK-boşluk (single-linkage) koşulu
+DEĞİL: 0dk/300dk/600dk'lık üç nokta ($w=0$, $X_{dev}=310$) ardışık bakışta
+($300\le310$ her komşu çift için) tek kümeye yanlışlıkla birleşirdi, ama
+0 ile 600 arasındaki GERÇEK 600dk'lık fark 310'u aşıyor — ortak bir
+310dk'lık pencereye asla sığmazlar.
+
+**Karar**: G artık FLIGHT bazında değil KÜME bazında uygulanıyor
+(`src/model/day_clustering.py::cluster_flight_days`). Algoritma: (1)
+dairesel eksende (mod 1440) EN BÜYÜK boşluktan kes (rastgele bir kesim
+noktasının gerçek bir kümeyi bölmesini önler — gece yarısı sarmasıyla AYNI
+motivasyon, `_flight_cut_points`'le tutarlı), (2) doğrusallaştırılmış
+diziyi soldan sağa AÇGÖZLÜ ÇAP taraması: her nokta KÜME BAŞLANGICINA
+(sıralı taramada her zaman en küçük tod'lu, ilk eklenen üye) göre
+kontrol edilir, ARDIŞIK ÖĞEYE göre DEĞİL. Her döndürülen kümenin çap
+koşulunu sağladığı invariant olarak assert edilir. Veri-türetilmiş ve
+GENEL (belirli bir uçuş numarasına özel hiçbir şey hardcode edilmiyor —
+gizli test seti güvenliği).
+
+$$t_{f,h} \in [T_{ref}^{(f,c)},\, T_{ref}^{(f,c)}+X_{dev}] \qquad \forall h \in c$$
+
+Tüm günler zaten uzlaştırılabilirse (yaygın durum — gerçek veride 460/461
+çok-günlü IB uçuşu, 476/476 OB uçuşu) TEK küme oluşur = M3 davranışı
+DEĞİŞMEDEN korunur; yalnızca TK2841 gibi yapısal aykırı değerler kendi
+tekil kümelerine ayrılır. `independent_validator.py::_cluster_flight_days_independent`
+AYNI algoritmayı bağımsız (import etmeden) yeniden uygular — yalnızca AYNI
+kümenin İÇİNDEKİ raporlanan zamanlar X_dev'e tabi, kümeler arası
+karşılaştırma yapılmaz.
 
 **Rol-ayrımı**: aynı `flno` hem IB hem OB rolünde görünebilir (M1'de 26
 gerçek örnek doğrulandı) — her rol KENDİ ayrı $T_{role,flno}$'suna sahip

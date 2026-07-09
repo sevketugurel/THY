@@ -168,11 +168,16 @@ def test_g_no_false_violation_at_midnight_wraparound():
     assert result.status == "optimal"
 
 
-def test_g_still_catches_genuine_violation_near_midnight():
+def test_g_genuinely_far_apart_occurrences_split_into_separate_clusters():
     # Gün1 baseline arr=23:00 (1380), Gün2 baseline arr=01:00 next day
     # (1440+60=1500) -- REAL clock difference is 120min > X_dev=15, a
-    # genuine violation. The wraparound fix must not swallow real
-    # violations near midnight along with fixing the false ones.
+    # genuine (non-wraparound) mismatch. Under M5's clustered-G (VARSAYIM-9),
+    # this does NOT make the model infeasible anymore -- it simply forms TWO
+    # separate reconcilable clusters (Rfix, window=0 each, so the
+    # reconcilability limit is 0+0+15=15 < 120), and G imposes NO
+    # cross-cluster regularity. The wraparound fix must not swallow real
+    # near-midnight mismatches into a false single cluster either -- this is
+    # a genuine 120min gap, not a ~10min circular one.
     anchor = pd.Timestamp("2024-01-01")
     c1 = _midnight_candidate(gun=1, arr_tod_min=1380, anchor=anchor, flno=9302)
     c2 = _midnight_candidate(gun=2, arr_tod_min=60, anchor=anchor, flno=9302)
@@ -182,7 +187,66 @@ def test_g_still_catches_genuine_violation_near_midnight():
     model._candidates = [c1, c2]
     model.objective = pyo.Objective(expr=0, sense=pyo.maximize)
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
-    assert result.status == "infeasible"
+    # A fully-fixed (Rfix), unconstrained-by-anything, trivial-objective model
+    # can report "unknown" rather than "optimal" from HiGHS -- the important
+    # thing is it's NOT infeasible (no false G violation) and no constraint
+    # was built at all (both occurrences became singleton clusters).
+    assert result.status != "infeasible"
+    assert len(model.G_FLIGHTS) == 0
+
+
+def test_g_within_cluster_regularity_still_binds_despite_distant_outlier():
+    # VARSAYIM-9's exact TK2841 shape: 3 occurrences at ~03:25 (close, must
+    # stay regular) + 1 at 14:10 (a genuine outlier, its own cluster).
+    # Adjustable window +-30min (small, so the adversarial objective can't
+    # trivially satisfy X_dev by accident) -- confirms the CLOSE trio is
+    # still forced within a common X_dev=15 band even though a structurally
+    # incompatible 4th occurrence exists for the SAME flight number.
+    anchor = pd.Timestamp("2024-01-01")
+    w = 30
+
+    def _adjustable_candidate(gun, arr_tod_min, flno=9303):
+        ts = anchor + pd.Timedelta(days=gun - 1, minutes=arr_tod_min)
+        epoch = int((ts - anchor).total_seconds() // 60)
+        return Candidate(
+            od="ZZM-IST", o="ZZM", d="IST", gun=gun, flno1=flno, flno2=80000 + gun,
+            r1_id=("IB", flno, gun), r2_id=("OB", 80000 + gun, gun),
+            arr_time=ts, dep_time=ts, gap_min=0,
+            arr_lo=epoch - w, arr_hi=epoch + w, dep_lo=0, dep_hi=0,
+            gap_lo=-(epoch + w), gap_hi=-(epoch - w),
+        )
+
+    c1 = _adjustable_candidate(gun=1, arr_tod_min=205)   # 03:25
+    c2 = _adjustable_candidate(gun=2, arr_tod_min=205)
+    c3 = _adjustable_candidate(gun=3, arr_tod_min=205)
+    # Rfix outlier (window=0, matching _midnight_candidate's pattern) --
+    # avoids B's Big-M discipline entirely (irrelevant to this test) while
+    # still exercising "does a genuinely-unreconcilable 4th occurrence get
+    # its own singleton cluster instead of breaking the close trio's G".
+    c_outlier = _midnight_candidate(gun=5, arr_tod_min=850, anchor=anchor, flno=9303)  # 14:10
+
+    model = pyo.ConcreteModel()
+    all_c = [c1, c2, c3, c_outlier]
+    add_flight_time_variables(model, all_c)
+    add_g_constraints(model, all_c, anchor, x_dev=15)
+    model._candidates = all_c
+    # Adversarial: push gün1 and gün3's arr as far apart as their own windows
+    # allow (would violate X_dev=15 within the {1,2,3} cluster if G didn't bind).
+    model.objective = pyo.Objective(
+        expr=model.t_arr["IB", 9303, 3] - model.t_arr["IB", 9303, 1], sense=pyo.maximize,
+    )
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    # gün3's raw t_arr is ~2 calendar days (2*1440min) ahead of gün1's --
+    # maximizing the RAW difference is strategically equivalent to
+    # maximizing the day-normalized one (a fixed constant offset doesn't
+    # change which solution is optimal), but the ASSERTION must day-normalize
+    # to compare like with like (same lesson as G's own _day_offsets).
+    raw_diff = pyo.value(model.t_arr["IB", 9303, 3]) - pyo.value(model.t_arr["IB", 9303, 1])
+    day_normalized_diff = raw_diff - 2 * 1440  # gün3 is 2 calendar days after gün1
+    assert day_normalized_diff == pytest.approx(15.0), \
+        "G must still cap the {1,2,3} cluster's spread at X_dev=15"
+    assert len(model.G_FLIGHTS) == 1  # only the {1,2,3} cluster needs a constraint; the outlier is its own singleton
 
 
 def test_validate_no_false_x_dev_violation_at_midnight_wraparound(tmp_path):
@@ -238,5 +302,99 @@ def test_validate_no_false_x_dev_violation_at_midnight_wraparound(tmp_path):
     result = validate_output(
         output_path, od_path, L=L, U=U,
         adjustable_window_min=180, adjustable_set="all", x_dev=15,
+    )
+    assert not any("x_dev" in v.lower() or "regularity" in v.lower() for v in result.violations), result.violations
+
+
+def _clustering_fixture_od_table(tmp_path):
+    # TK flno=9401: gün1/2/3 baseline ~03:25 (close, reconcilable at
+    # baseline), gün5 baseline 14:10 (genuine outlier, own cluster).
+    # adjustable_window_min=30 -> close trio's reconcilability limit is
+    # 30+30+15=75, comfortably covering their ~10min baseline spread; the
+    # outlier's baseline gap (~645min) is far beyond any window.
+    import openpyxl
+
+    anchor = dt.datetime(2024, 1, 1)
+    rows = [
+        (9401, 1, anchor + dt.timedelta(minutes=205), 80101),   # 03:25
+        (9401, 2, anchor + dt.timedelta(days=1, minutes=210), 80102),  # 03:30
+        (9401, 3, anchor + dt.timedelta(days=2, minutes=200), 80103),  # 03:20
+        (9401, 5, anchor + dt.timedelta(days=4, minutes=850), 80105),  # 14:10, outlier
+    ]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(["Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "Arr Time",
+               "Cr2", "Dep2", "Arr2", "FlNo2", "Dep Time",
+               "Gate-to-Gate Uçuş Süresi", "O&D", "Gün"])
+    for flno1, gun, arr, flno2 in rows:
+        ws.append(["TK", "Turkish Airlines", "ZZM", "IST", flno1, arr,
+                   "TK", "IST", "ZZN", flno2, arr + dt.timedelta(minutes=100),
+                   dt.time(3, 20), "ZZM-ZZN", gun])
+    od_path = tmp_path / "od_table_clustering.xlsx"
+    wb.save(od_path)
+    load_od_table(od_path)
+    return od_path
+
+
+def test_validate_catches_within_cluster_violation_alongside_unreconcilable_outlier(tmp_path):
+    import json
+
+    from src.validate.independent_validator import validate_output
+
+    od_path = _clustering_fixture_od_table(tmp_path)
+    # Reported times: gün1 shifted to 225, gün2 shifted to 190, gün3 at 200
+    # (all within their own +-30min window) -- spread=225-190=35>X_dev=15,
+    # a GENUINE within-cluster violation (the trio IS reconcilable at
+    # baseline, so G's cluster requires them to actually comply). Outlier
+    # (gün5) reported at its own baseline (850) -- must NOT be flagged
+    # despite being wildly different from the trio's times.
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({
+        "objective_value": 0.0,
+        "selected_connections": [],
+        "adjusted_flight_times": [
+            {"role": "IB", "flno": 9401, "gun": 1, "time_min": 225},
+            {"role": "IB", "flno": 9401, "gun": 2, "time_min": 1440 + 190},
+            {"role": "IB", "flno": 9401, "gun": 3, "time_min": 2880 + 200},
+            {"role": "IB", "flno": 9401, "gun": 5, "time_min": 4 * 1440 + 850},
+        ],
+        "ranking_results": [],
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }))
+    result = validate_output(
+        output_path, od_path, L=L, U=U,
+        adjustable_window_min=30, adjustable_set="all", x_dev=15,
+    )
+    x_dev_violations = [v for v in result.violations if "x_dev" in v.lower() or "regularity" in v.lower()]
+    assert len(x_dev_violations) == 1, x_dev_violations
+    assert "9401" in x_dev_violations[0]
+    # The outlier (gün5) must not appear in the flagged cluster.
+    assert "5" not in x_dev_violations[0].split("küme=")[1].split(":")[0]
+
+
+def test_validate_allows_reconcilable_trio_when_within_x_dev_despite_outlier(tmp_path):
+    import json
+
+    from src.validate.independent_validator import validate_output
+
+    od_path = _clustering_fixture_od_table(tmp_path)
+    # Same shape, but the trio's reported spread is now within X_dev=15 --
+    # no violation, regardless of the outlier's reported time.
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({
+        "objective_value": 0.0,
+        "selected_connections": [],
+        "adjusted_flight_times": [
+            {"role": "IB", "flno": 9401, "gun": 1, "time_min": 205},
+            {"role": "IB", "flno": 9401, "gun": 2, "time_min": 1440 + 210},
+            {"role": "IB", "flno": 9401, "gun": 3, "time_min": 2880 + 200},
+            {"role": "IB", "flno": 9401, "gun": 5, "time_min": 4 * 1440 + 850},
+        ],
+        "ranking_results": [],
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }))
+    result = validate_output(
+        output_path, od_path, L=L, U=U,
+        adjustable_window_min=30, adjustable_set="all", x_dev=15,
     )
     assert not any("x_dev" in v.lower() or "regularity" in v.lower() for v in result.violations), result.violations

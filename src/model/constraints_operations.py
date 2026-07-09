@@ -18,6 +18,8 @@ girdisiyle -- bkz. `src.model.constraints_capacity.compute_out_of_scope_baseline
 """
 import pyomo.environ as pyo
 
+from src.model.day_clustering import cluster_flight_days
+
 
 def build_rotation_pairs(model, pairs_df, out_of_scope_baselines: dict = None):
     """Pair grubu içindeki ardışık (OB->IB, IST üzerinden) alt-çiftlerini
@@ -146,13 +148,38 @@ def _day_offsets(candidates, epoch_anchor):
     return offsets
 
 
+def _baseline_tod(candidates):
+    """(role,flno,gun) -> baseline saat-of-day dakikası [0,1440) -- cluster_flight_days'e
+    girdi (bkz. src.model.day_clustering)."""
+    tods = {}
+    for c in candidates:
+        for role, flno, ts in (("IB", c.flno1, c.arr_time), ("OB", c.flno2, c.dep_time)):
+            key = (role, flno, c.gun)
+            if key in tods:
+                continue
+            tods[key] = int((ts - ts.normalize()).total_seconds() // 60)
+    return tods
+
+
 def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
     """Referans-zaman formülasyonu (doğruluk argümanı: tests/solve/test_m3_constraints_g.py):
-    serbest T[role,flno], her gün (t-day_offset) in [T, T+x_dev] -- max-min<=x_dev
-    ile TAM eşdeğer (gün-içi saat-of-day üzerinden, bkz. _day_offsets), O(H)
-    kısıt (H=gün sayısı), naif O(H^2) çift-karşılaştırmadan daha sıkı.
-    Yalnızca 2+ farklı günde modelde bulunan (role,flno) çiftleri için kurulur."""
+    serbest T[role,flno,cluster], her gün (t-day_offset) in [T, T+x_dev] --
+    max-min<=x_dev ile TAM eşdeğer (gün-içi saat-of-day üzerinden, bkz.
+    _day_offsets), O(H) kısıt (H=gün sayısı), naif O(H^2) çift-karşılaştırmadan
+    daha sıkı. Yalnızca 2+ farklı günde modelde bulunan (role,flno) çiftleri
+    için kurulur.
+
+    M5 VARSAYIM-9 (ASSUMPTIONS.md, bkz. src.model.day_clustering docstring):
+    gerçek veride EN AZ BİR uçuş numarası (TK2841) TÜM günlerini TEK bir
+    X_dev-bandına sığdıramıyor (baseline'ın kendisi zaten uzlaştırılamaz --
+    645dk > 2*180+15=375dk). KOŞULSUZ (tüm günler tek grup) okuma TÜM modeli
+    infeasible yapardı. Çözüm: her (role,flno)'nun günlerini EN AZ sayıda
+    UZLAŞTIRILABİLİR kümeye ayır (`cluster_flight_days`) -- G yalnızca KÜME
+    İÇİNDE uygulanır, kümeler ARASI hiç kısıt YOK. Tüm günler zaten
+    uzlaştırılabilirse (yaygın durum) TEK küme oluşur = M3 davranışı
+    DEĞİŞMEDEN korunur."""
     day_offset = _day_offsets(candidates, epoch_anchor)
+    baseline_tod = _baseline_tod(candidates)
 
     role_flno_guns = {}
     for (role, flno, gun) in model.ARR_INSTANCES:
@@ -164,12 +191,32 @@ def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
 
     multi_day = {k: sorted(guns) for k, guns in role_flno_guns.items() if len(guns) >= 2}
 
-    model.G_FLIGHTS = pyo.Set(initialize=list(multi_day.keys()), dimen=2, ordered=True)
-    if not multi_day:
+    cluster_of_gun = {}
+    g_flights_index = []
+    for (role, flno), guns in multi_day.items():
+        var = model.t_arr if role == "IB" else model.t_dep
+        occurrences = []
+        for gun in guns:
+            lb, ub = var[role, flno, gun].lb, var[role, flno, gun].ub
+            half_width = (ub - lb) // 2
+            occurrences.append((gun, baseline_tod[role, flno, gun], half_width))
+        clusters = cluster_flight_days(occurrences, x_dev)
+        for cluster in clusters:
+            cluster_key = min(cluster)
+            for gun in cluster:
+                cluster_of_gun[role, flno, gun] = cluster_key
+            if len(cluster) >= 2:
+                g_flights_index.append((role, flno, cluster_key))
+
+    model.G_FLIGHTS = pyo.Set(initialize=g_flights_index, dimen=3, ordered=True)
+    if not g_flights_index:
         return multi_day
 
-    def t_bounds_rule(m, role, flno):
-        guns = multi_day[(role, flno)]
+    def cluster_guns(role, flno, cluster_key):
+        return [g for g in multi_day[(role, flno)] if cluster_of_gun[role, flno, g] == cluster_key]
+
+    def t_bounds_rule(m, role, flno, cluster_key):
+        guns = cluster_guns(role, flno, cluster_key)
         var = m.t_arr if role == "IB" else m.t_dep
         offs = [day_offset[(role, flno, g)] for g in guns]
         los = [var[role, flno, g].lb - off for g, off in zip(guns, offs)]
@@ -177,17 +224,21 @@ def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
         return (min(los), max(his))
     model.T_ref = pyo.Var(model.G_FLIGHTS, domain=pyo.Integers, bounds=t_bounds_rule)
 
-    day_index = [(role, flno, gun) for (role, flno), guns in multi_day.items() for gun in guns]
-    model.G_FLIGHT_DAYS = pyo.Set(initialize=day_index, dimen=3, ordered=True)
+    day_index = [
+        (role, flno, cluster_key, gun)
+        for (role, flno, cluster_key) in g_flights_index
+        for gun in cluster_guns(role, flno, cluster_key)
+    ]
+    model.G_FLIGHT_DAYS = pyo.Set(initialize=day_index, dimen=4, ordered=True)
 
-    def lower_rule(m, role, flno, gun):
+    def lower_rule(m, role, flno, cluster_key, gun):
         t = m.t_arr[role, flno, gun] if role == "IB" else m.t_dep[role, flno, gun]
-        return t - day_offset[(role, flno, gun)] >= m.T_ref[role, flno]
+        return t - day_offset[(role, flno, gun)] >= m.T_ref[role, flno, cluster_key]
     model.g_lower = pyo.Constraint(model.G_FLIGHT_DAYS, rule=lower_rule)
 
-    def upper_rule(m, role, flno, gun):
+    def upper_rule(m, role, flno, cluster_key, gun):
         t = m.t_arr[role, flno, gun] if role == "IB" else m.t_dep[role, flno, gun]
-        return t - day_offset[(role, flno, gun)] <= m.T_ref[role, flno] + x_dev
+        return t - day_offset[(role, flno, gun)] <= m.T_ref[role, flno, cluster_key] + x_dev
     model.g_upper = pyo.Constraint(model.G_FLIGHT_DAYS, rule=upper_rule)
 
     return multi_day
