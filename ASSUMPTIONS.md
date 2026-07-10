@@ -645,3 +645,56 @@ kapat). Full-data'da doğrulanmış (validator-onaylı) bir objective_value
 HÂLÂ YOK — M5c bu haliyle "kapsamlı üç-yönlü teşhis tamamlandı, kesin
 tek-nokta çözüm bulunamadı, ama artık NEDEN bulunamadığına dair güçlü,
 çok-açılı kanıt var" durumunda kapanıyor.
+
+## VARSAYIM-13: E2'nin Jbest değişkeni Integers değil Reals olmalı (M5d, gerçek bug — 2026-07-10)
+
+**Bulgu**: `add_e2_constraints`/`add_elastic_e2_constraints`'in `Jbest` değişkeni
+`domain=pyo.Integers` ile tanımlanmıştı (M4'ten beri, bu turda düzeltildi).
+E2'nin argmin-sandviç kısıtları, bir aday kendi pazar-yönünün argmin'i
+olduğunda (offered + w=1) `Jbest <= J_pi` VE `Jbest >= J_pi`'yi AYNI ANDA
+zorluyor (Big-M terimleri sıfırlanıyor) — yani `Jbest == J_pi` TAM EŞİTLİK.
+`J_pi = journey_constant + gap`, ve `journey_constant` (K_od) HER ZAMAN
+tamsayı DEĞİL:
+
+- **Direct (medyan-bazlı) K_od**: 780 örneklemde 737 tamsayı, **43 (%5.5)
+  kesirli** (çift sayıda satırın medyanı .5'e düşebilir).
+- **Estimate (bipartite least-squares) K_od, VARSAYIM-8**: 803 örneklemde
+  yalnızca 6 tamsayı, **797 (%99.3) KESİRLİ**.
+
+Full-data'da ~803/1583 pazar (yaklaşık YARISI) K_od'unu estimate'ten alıyor
+— bu pazarların HERHANGİ birinin bir adayı argmin olarak seçildiğinde,
+`Jbest`'in Integers domain'i o kesirli `J_pi`'ye EŞİT hiçbir değer
+alamıyor → **E2 o pazar-yönü için KOŞULSUZ infeasible**, hangi diğer
+seçim yapılırsa yapılsın.
+
+**Nasıl bulundu**: `scripts/warm_start_elastic.py`'nin full-data koşusunda
+HiGHS `Jbest[...]` değişkenlerine kesirli değer atanmaya çalışılırken
+Pyomo `W1001` uyarıları fırlattı (`Setting Var 'Jbest[...]' to a value
+...(float64) not in domain Integers`) — bu, warm-start denemesinin YAN
+ÜRÜNÜ olarak keşfedilen, ÖNCEDEN BİLİNMEYEN bir model formülasyon hatası
+(warm-start'ın KENDİSİNİN neden olduğu bir şey DEĞİL — model M4'ten beri
+bu haliyle var, hiçbir önceki solve denemesi bunu YÜZEYE ÇIKARMADI çünkü
+hiçbiri Jbest'e KESİN bir değer atamaya çalışmadı, hepsi solver'ın kendi
+iç arama sürecine bırakıyordu).
+
+**Etki değerlendirmesi**: bu, M5/M5c/M5d boyunca gözlemlenen "hızlı yakınsa
+sonra kök-düğümde tıkanma" semptomunun EN AZ BİR GERÇEK KAYNAĞI olabilir —
+full-data'daki BEŞ+ solve denemesinin (reward, min-sapma, F-fix, E2-fold,
+salt-fizibilite, elastik) HEPSİ bu formülasyon hatasını İÇERİYORDU. HiGHS
+muhtemelen bu ~803 pazarın adaylarını asla argmin olarak seçmemeye
+zorlanıyordu (yapay bir kombinatoryal kısıtlama) — bu da kök-düğüm
+cut-üretiminin neden bu kadar yavaş/verimsiz olduğunu KISMEN açıklayabilir.
+
+**Düzeltme (kullanıcı onaylı, "Integers değil Reals" seçeneği)**: `Jbest`
+`domain=pyo.Reals`'e değiştirildi (hem `constraints_balance.py` hem
+`constraints_elastic.py`). Gerekçe: $J$ zaten kavramsal olarak sürekli bir
+büyüklük (bir sabit + tamsayı gap) — Integers domain M4'ten kalma yanlış
+bir varsayımdı, veri yuvarlaması İÇERMEYEN matematiksel olarak doğru
+düzeltme (K_od'u yuvarlamak yerine). TDD: `tests/solve/test_m4_constraints_e2.py::test_e2_jbest_domain_accepts_fractional_journey_constant`
+(kesirli journey_constant'lı bir senaryo, KIRMIZI→YEŞİL — Integers ile
+kesin infeasible, Reals ile optimal). Fixture etkilenmedi (668.75 korunur
+— fixture'ın journey constant'ları hep tamsayı). 141 unit + 101 solve
+yeşil. Sıradaki adım: full-data'da warm-start denemesini bu düzeltmeyle
+TEKRARLA — bu ÖNCEKİ hiçbir solve denemesinde düzeltilmemişti, yani şimdiye
+kadarki TÜM full-data sonuçları (M5/M5c/M5d) bu formülasyon hatasının
+GÖLGESİNDE elde edildi.

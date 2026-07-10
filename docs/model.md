@@ -373,7 +373,15 @@ gerekiyor.
   ($a_{dir}=1$ ise tam bir $\pi$ seçilir; $a_{dir}=0$ ise hiçbiri.)
 - $J_{best}\in[JD_{lo},JD_{hi}]$: pazarın iddia edilen minimum seyahat
   süresi ($JD_{lo}/JD_{hi}$ = pazardaki TÜM candidate'ların
-  $J_\pi=K_{od}+gap_\pi$ achievable aralığının min/max'ı — `derive_e2_candidate_big_ms`).
+  $J_\pi=K_{od}+gap_\pi$ achievable aralığının min/max'ı —
+  `derive_e2_candidate_big_ms`). **Sürekli (Reals), Integers DEĞİL** — M5d
+  fix (VARSAYIM-13, ASSUMPTIONS.md): argmin sandviçi bir aday seçildiğinde
+  $J_{best}$'i TAM olarak o adayın $J_\pi$'sine eşitler (Big-M terimleri
+  sıfırlanır); $K_{od}$ tahmini (LS-estimate, VARSAYIM-8) neredeyse HER
+  ZAMAN kesirli (%99.3, full-data'da 803 pazardan 797'si) — $J_{best}$
+  Integers olsaydı bu pazarların HERHANGİ biri argmin olarak seçildiğinde
+  KOŞULSUZ infeasible olurdu. $J$ kavramsal olarak zaten sürekli bir
+  büyüklük, Integers M4'ten kalma yanlış bir varsayımdı.
 
 **Sandviç kısıtları** (her candidate $\pi$ için):
 $$J_{best}\le J_\pi + M^{up}_\pi(1-x_\pi) \qquad J_{best}\ge J_\pi - M^{down}_\pi(1-w_\pi)$$

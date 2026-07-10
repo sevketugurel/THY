@@ -147,7 +147,14 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
 
     def jbest_bounds_rule(m, o, d, gun):
         return market_j_bounds[(o, d, gun)]
-    model.Jbest = pyo.Var(model.E2_MARKETS, domain=pyo.Integers, bounds=jbest_bounds_rule)
+    # M5d fix (docs/decisions.md 2026-07-10): J itself is a continuous
+    # quantity (journey_constant, possibly a fractional LS-estimate, plus
+    # an integer gap) -- Integers domain forced Jbest to equal a fraction
+    # exactly whenever a candidate was its market's argmin, which NO
+    # integer can satisfy (found via a real full-data warm-start attempt:
+    # ~803/1583 markets have a fractional K_od, making E2 unconditionally
+    # infeasible for any argmin selection from one of them).
+    model.Jbest = pyo.Var(model.E2_MARKETS, domain=pyo.Reals, bounds=jbest_bounds_rule)
 
     def a_lb_rule(m, i):
         o, d, gun = candidate_market[i]

@@ -92,7 +92,10 @@ def add_elastic_e2_constraints(model, candidates, journey_constants: dict, gamma
 
     def jbest_bounds_rule(m, o, d, gun):
         return market_j_bounds[(o, d, gun)]
-    model.Jbest = pyo.Var(model.E2_MARKETS, domain=pyo.Integers, bounds=jbest_bounds_rule)
+    # M5d fix (docs/decisions.md 2026-07-10): same fix as the strict
+    # add_e2_constraints -- Jbest must be continuous, not Integers (see
+    # ultrathink there).
+    model.Jbest = pyo.Var(model.E2_MARKETS, domain=pyo.Reals, bounds=jbest_bounds_rule)
 
     def a_lb_rule(m, i):
         o, d, gun = candidate_market[i]

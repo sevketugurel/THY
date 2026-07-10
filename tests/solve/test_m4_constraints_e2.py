@@ -190,6 +190,34 @@ def test_e2_row_11_both_active_gamma_is_enforced():
     assert abs(j_fwd - j_bwd) <= GAMMA + 1e-6
 
 
+# --- M5d: Jbest's domain must be continuous, not Integers ---
+
+def test_e2_jbest_domain_accepts_fractional_journey_constant():
+    # Adversarial (found via scripts/warm_start_elastic.py on real full
+    # data, docs/decisions.md 2026-07-10): a fractional journey_constant
+    # (real full-data's LS-estimated K_od is fractional 99.3% of the time,
+    # ~803/1583 markets) forces Jbest == journey_const + gap EXACTLY for a
+    # singleton-direction's forced-offered candidate (a_dir/w fold to
+    # x[i]=1, sandwich goes tight both ways). If Jbest's domain were
+    # Integers, NO valid value would exist for a non-integer J -- the model
+    # would be UNCONDITIONALLY infeasible regardless of any other choice,
+    # for HALF of real full-data's markets. Jbest must be continuous (J
+    # itself is a continuous quantity: a possibly-fractional constant plus
+    # an integer gap).
+    fractional_journey_const = {("ZZG", "ZZH"): 100.5, ("ZZH", "ZZG"): 100.5}
+    c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)  # J=200.5
+    c_bwd = _unoffered_candidate("ZZH", "ZZG", 202, 302)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates, journey_constants=fractional_journey_const)
+    model.objective = pyo.Objective(expr=0)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal", (
+        "a fractional journey constant must not make an otherwise-trivial "
+        "model infeasible -- Jbest's domain must be continuous"
+    )
+    assert pyo.value(model.Jbest["ZZG", "ZZH", 1]) == pytest.approx(200.5)
+
+
 # --- M5c: exempt+log fully K-subset-frozen pairs that violate Gamma ---
 
 def test_e2_exempts_fully_frozen_pair_that_violates_gamma():
