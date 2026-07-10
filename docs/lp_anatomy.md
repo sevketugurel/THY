@@ -192,3 +192,33 @@ TAMAMLAYICI, biri diğerini gereksiz kılmıyor). Sıradaki adım: öncelik #2
 ölçülecek — F fix'in kanıtladığı olumlu yönü (daha hızlı/sıkı dual bound)
 w/x'in LP kalitesi iyileştirmesiyle birleşince kök düğümün açılıp
 açılmayacağı asıl soru.
+
+## E2 w/a_dir fold'un LP-seviyesi etkisi (2026-07-10)
+
+F fix ÜZERİNE E2'nin w/a_dir fold'u da uygulandıktan sonra LP anatomisi
+YENİDEN ölçüldü:
+
+| Metrik | F fix SONRASI (tek başına) | + E2 fold SONRASI |
+|---|---|---|
+| Toplam kısıt satırı | 329,842 | **314,118 (-%4.8)** |
+| a_dir binary sayısı | 7,642 | **3,711 (-%51.4)** |
+| w binary sayısı | 18,118 | **14,187 (-%21.7)** |
+| LP çözüm süresi | 115.1s | 132.8s (gürültü içinde, hafif kötüleşme) |
+| LP amaç değeri | 5,253,749.43 | 5,253,749.43 (DEĞİŞMEDİ — eşdeğerlik kanıtı) |
+| LP/tavan oranı | %65.01 | %65.01 (DEĞİŞMEDİ) |
+| w fractionality | %49.82 | %49.77 (NEREDEYSE AYNI — beklenen, aşağıda) |
+| x fractionality | %44.41 | %44.41 (DEĞİŞMEDİ, fold x'e dokunmuyor) |
+
+**Önemli bulgu**: w'nin fractionality YÜZDESİ neredeyse hiç değişmedi.
+Neden: LP anatomi script'i `model.w[i]`'yi TÜM 18118 candidate için okuyor
+(Expression artık singleton'lar için `x[i]`'ye eşit) — katlanmış
+candidate'ların "w" değeri LP'de kendi `x[i]`'sinin fractionality'sini
+DEVRALIYOR (x zaten %44.41 fractional), bu yüzden toplam oran neredeyse
+sabit kalıyor. Fold'un GERÇEK kazanımı fractionality YÜZDESİ değil, MUTLAK
+binary SAYISI (a_dir -%51.4, w -%21.7) — MIP'in dallanma uzayını küçültüyor
+ama LP'nin KENDİ gevşekliğini iyileştirmiyor. Bu, öncelik #2'nin
+beklentisini kısmen düzeltiyor: w/x'in fractionality'si asıl SORUN
+OLARAK kalıyor (x hiç dokunulmadı, w'nin kalan gerçek kısmı da hâlâ
+yüksek), fold yalnızca MIP boyutunu küçültüyor. Sıradaki ölçüm: bu iki
+değişikliğin (F+E2 fold) BİRLİKTE reward-amaçlı full-data MIP'i kök
+düğümden çıkarıp çıkaramadığı.
