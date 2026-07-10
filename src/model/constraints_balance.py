@@ -150,16 +150,57 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
         return m.Jbest[o, d, gun] >= j_pi - m_down * (1 - m.w[i])
     model.e2_jbest_ge = pyo.Constraint(model.CANDIDATES, rule=jbest_ge_rule)
 
-    pairs = []
+    all_pairs = []
     seen = set()
     for (o, d, gun) in groups:
         if (o, d, gun) in seen:
             continue
         if (d, o, gun) in groups:
-            pairs.append((o, d, gun))
+            all_pairs.append((o, d, gun))
             seen.add((o, d, gun))
             seen.add((d, o, gun))
+
+    # M5c (docs/lp_anatomy.md §1, VARSAYIM-9/11'in exempt+log deseninin
+    # E2'ye genellemesi): bir pazar çiftinin HER İKİ yönü de TAMAMEN
+    # dondurulmuşsa (K-subset'in Rfix'lediği, add_b_constraints zaten
+    # x[i]'yi buna göre .fix() etmiş), o yönün Jbest'i artık SABİTTİR
+    # (offered/forced adaylar arasında min -- hiçbiri offered değilse yön
+    # PASİF, E2 zaten koşullu aktivasyonla bağlayıcı değil). Bu sabit
+    # Jbest'ler Gamma'yı ihlal ediyorsa, kısıtı KURMAK modeli KOŞULSUZ
+    # infeasible yapar -- gerçek bir dengesizlik değil, K-subset'in kendi
+    # tractability gevşetmesinin bir yan etkisi. Çift MUAF tutulur + loglanır.
+    def _frozen_jbest(idxs):
+        offered = [i for i in idxs if model.x[i].fixed and pyo.value(model.x[i]) == 1]
+        if not offered:
+            return None  # inactive direction, not exempt-worthy (already non-binding via a_dir)
+        c0 = candidates[offered[0]]
+        return min(journey_constants[(c0.o, c0.d)] + candidates[i].gap_lo for i in offered)
+
+    def _is_fully_frozen(idxs):
+        return all(model.x[i].fixed for i in idxs)
+
+    pairs = []
+    exempted_count = 0
+    for (o, d, gun) in all_pairs:
+        fwd_idxs, bwd_idxs = groups[(o, d, gun)], groups[(d, o, gun)]
+        if _is_fully_frozen(fwd_idxs) and _is_fully_frozen(bwd_idxs):
+            j_fwd, j_bwd = _frozen_jbest(fwd_idxs), _frozen_jbest(bwd_idxs)
+            if j_fwd is None or j_bwd is None or abs(j_fwd - j_bwd) <= gamma:
+                pairs.append((o, d, gun))  # inactive-side or within-Gamma -- safe to build (or trivially satisfied)
+                continue
+            exempted_count += 1
+            continue  # unconditionally violated by frozen Jbest values alone -- exempt
+        pairs.append((o, d, gun))
+
+    if exempted_count:
+        print(
+            f"WARNING: E2 -- {exempted_count} market pair(s) exempted (M5c): "
+            f"fully K-subset-frozen and Gamma-unreconcilable, no adjustable freedom exists.",
+            flush=True,
+        )
+
     model.E2_PAIRS = pyo.Set(initialize=pairs, dimen=3, ordered=True)
+    model._e2_fold_counts = {"exempted": exempted_count, "genuine": len(pairs)}
 
     pair_ms = {}
     for (o, d, gun) in pairs:

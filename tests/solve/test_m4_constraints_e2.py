@@ -190,6 +190,67 @@ def test_e2_row_11_both_active_gamma_is_enforced():
     assert abs(j_fwd - j_bwd) <= GAMMA + 1e-6
 
 
+# --- M5c: exempt+log fully K-subset-frozen pairs that violate Gamma ---
+
+def test_e2_exempts_fully_frozen_pair_that_violates_gamma():
+    # M5c (docs/lp_anatomy.md §1, VARSAYIM-9/11's exempt+log pattern
+    # generalized to E2): both directions have exactly ONE fully-frozen
+    # candidate each (gap_lo==gap_hi -- K-subset's Rfix legs). fwd: gap=60
+    # -> J=100+60=160. bwd: gap=100 -> J=100+100=200. |200-160|=40>Gamma=30,
+    # but NEITHER side has any freedom to change its journey time -- forcing
+    # E2's pair constraint would make the model unconditionally infeasible
+    # for a reason that's an artifact of K-subset freezing, not a genuine
+    # data conflict. Must be exempted + logged, not hard-failed.
+    c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=60)
+    c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=100)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates)
+    assert ("ZZG", "ZZH", 1) not in model.E2_PAIRS, "fully-frozen violating pair must be exempted, not built"
+    assert model._e2_fold_counts["exempted"] == 1
+    model.objective = pyo.Objective(expr=0)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    assert pyo.value(model.Jbest["ZZG", "ZZH", 1]) == pytest.approx(160.0)
+    assert pyo.value(model.Jbest["ZZH", "ZZG", 1]) == pytest.approx(200.0)
+
+
+def test_e2_still_builds_for_fully_frozen_pair_within_gamma():
+    # Control case: fully-frozen pair whose FORCED Jbest values already
+    # satisfy Gamma (both gap=100 -> J=200 both ways, diff=0) -- must NOT
+    # be exempted (nothing to exempt).
+    c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
+    c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=100)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates)
+    assert model._e2_fold_counts["exempted"] == 0
+    model.objective = pyo.Objective(expr=0)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+
+
+def test_e2_still_binds_for_mixed_pair_with_one_adjustable_side():
+    # Mixed pair: fwd fully frozen (gap=60 -> J=160). bwd genuinely
+    # adjustable (gap free in [65,150], both endpoints inside [L,U] so B
+    # mandatorily forces x_bwd=1 regardless of choice; window straddles the
+    # Gamma boundary so both a satisfying and a violating gap are
+    # achievable) -- E2 must still be BUILT and BINDING (there IS freedom).
+    # Adversarial objective wants bwd's gap as LARGE as possible (J_bwd as
+    # large as possible, which alone would reach J=250, diff=90>Gamma=30);
+    # E2 must cap it at J_fwd+Gamma=190 (gap<=90).
+    c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=60)
+    c_bwd = _adjustable_candidate("ZZH", "ZZG", 202, 302, gap_lo=65, gap_hi=150)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates)
+    assert ("ZZG", "ZZH", 1) in model.E2_PAIRS, "mixed pair (one adjustable side) must still be built"
+    assert model._e2_fold_counts["exempted"] == 0
+    model.objective = pyo.Objective(expr=model.t_dep["OB", 302, 1], sense=pyo.maximize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    j_fwd = pyo.value(model.Jbest["ZZG", "ZZH", 1])
+    j_bwd = pyo.value(model.Jbest["ZZH", "ZZG", 1])
+    assert abs(j_fwd - j_bwd) <= GAMMA + 1e-6
+
+
 # --- adversarial: cannot fabricate a fraudulently low Jbest ---
 
 def test_e2_sandwich_cannot_fabricate_jbest_below_true_min():
