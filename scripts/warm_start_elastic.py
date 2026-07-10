@@ -25,9 +25,12 @@ from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
+from src.output.writer import write_output
+from src.validate.independent_validator import recompute_objective, validate_output
 
 FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
 FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
+FULL_CR = "data_raw/change_ranking_input.xlsx"
 FULL_FP = "data_raw/Flight Pairs.xlsx"
 CORE_WORKER = Path(__file__).resolve().parent / "_core_feasibility_step_worker.py"
 WARM_START_WORKER = Path(__file__).resolve().parent / "_warm_start_elastic_step_worker.py"
@@ -165,6 +168,40 @@ def main():
         "warm_start_confirmed_in_log": warm_start_confirmed,
         "model_stats": result.model_stats,
     }
+
+    # M5d step 4 (docs/decisions.md 2026-07-10, user protocol): whatever
+    # incumbent we get, close the loop -- write it out, validate against
+    # the FULL strict A-G validator (this is the elastic model's own
+    # solution, so E1/E2 violations up to whatever slack was accepted are
+    # EXPECTED, not a bug -- the interesting number is the reward value and
+    # the violation breakdown for the closing report / Phase-2 seed).
+    if result.status in ("optimal", "time_limit") and result.objective_value is not None and result.selected:
+        output_path = Path("runs/warm_start_elastic_output.json")
+        write_output(output_path, result)
+        validation = validate_output(
+            output_path, FULL_OD, L=L, U=U,
+            adjustable_window_min=config["adjustable_window_min"], adjustable_set=config["adjustable_set"],
+            flight_pairs_path=FULL_FP, tau=config["tau"], x_dev=config["X_dev"],
+            alpha=config["alpha"], gamma=config["gamma"],
+            bucket_size_min=bucket_size_min, capacity_departure=config["capacity_departure"],
+            capacity_arrival=config["capacity_arrival"],
+        )
+        recompute_total, _ = recompute_objective(
+            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U, strict=False,
+            breakdown_path=output_path.with_suffix(".objective_breakdown.json"),
+        )
+        n_offered = sum(1 for v in result.selected.values() if v == 1)
+        log["n_offered"] = n_offered
+        log["validation_is_valid"] = validation.is_valid
+        log["n_violations"] = len(validation.violations)
+        log["violations_by_family"] = {}
+        for v in validation.violations:
+            fam = v.split(" ", 1)[0]
+            log["violations_by_family"][fam] = log["violations_by_family"].get(fam, 0) + 1
+        log["reward_objective_value"] = recompute_total
+        print(f"[warm_start_elastic] n_offered={n_offered} validation_is_valid={validation.is_valid} "
+              f"n_violations={len(validation.violations)} reward_objective={recompute_total}", flush=True)
+        print(f"[warm_start_elastic] violations_by_family={log['violations_by_family']}", flush=True)
     log_path = Path("runs") / f"warm_start_elastic_{stamp}.log.json"
     log_path.write_text(json.dumps(log, indent=2, sort_keys=True, default=str))
     print(json.dumps(log, indent=2, sort_keys=True, default=str), flush=True)
