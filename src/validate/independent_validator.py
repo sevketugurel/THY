@@ -621,7 +621,15 @@ def recompute_objective(
         rank_component = 0.0
         rank = None
         if rivals:
-            journey_const = provider.get_journey_constant(o, d)
+            # VARSAYIM-8 fallback (direct median -> LS-estimate), matching
+            # journey_constants dict construction in main.py/run_full_data.py
+            # -- direct-only would raise an UNCAUGHT KeyError (crashing the
+            # whole recompute) on any full-data market whose K_od is only
+            # LS-estimated (571/1329 markets, docs/baseline_autopsy.md #2).
+            try:
+                journey_const = provider.get_journey_constant(o, d)
+            except KeyError:
+                journey_const = provider.get_journey_constant_estimate(o, d)
             journeys = [journey_const + g for g in gaps]
             beaten = {k for k, tc in rivals.items() if any(j <= tc for j in journeys)}
             rank = max(1, len(rivals) - len(beaten))
@@ -644,3 +652,44 @@ def recompute_objective(
         Path(breakdown_path).write_text(json.dumps(breakdown, indent=2, sort_keys=True, default=str))
 
     return total, breakdown
+
+
+def finalize_reported_objective(
+    output_path: Path, recompute_total: float, solver_status: str, solver_objective_value: float,
+    tolerance: float = 1e-6,
+):
+    """M5c §2 (docs/decisions.md 2026-07-10): the OFFICIAL reported
+    objective_value must always equal the independently-recomputed value,
+    never the solver's raw internal claim -- with folding (M5c §0/§1), the
+    model's own beat/beaten/rank machinery is no longer a 1:1 mirror of
+    "what the final times actually support", so trusting the solver's own
+    number as the headline result would reintroduce exactly the kind of
+    silent-drift risk the independent validator exists to catch. This
+    OVERWRITES output_path's objective_value field with recompute_total,
+    making "reported == recompute" true by construction from this point on
+    -- and checks the OTHER invariant (recompute_total is never WORSE than
+    what the solver internally believed it achieved; equality is required
+    only when status=="optimal", since a time_limit incumbent's own claim
+    may itself be stale/lazy, per docs/decisions.md's "gerçek gap <=
+    solver'ın raporladığı gap" note).
+
+    Returns (ok: bool, message: str). Does NOT raise -- the caller decides
+    whether a violated invariant is fatal (it should be, in production, but
+    exploratory/diagnostic runs may want to just log and keep going)."""
+    if recompute_total < solver_objective_value - tolerance:
+        return False, (
+            f"recompute_total({recompute_total}) < solver's own objective_value("
+            f"{solver_objective_value}) -- the solver claimed a reward the final "
+            f"reported times do not actually support. This should never happen."
+        )
+    if solver_status == "optimal" and abs(recompute_total - solver_objective_value) > tolerance:
+        return False, (
+            f"status=optimal but recompute_total({recompute_total}) != solver's "
+            f"objective_value({solver_objective_value}) -- an optimal solution's own "
+            f"internal accounting should exactly match the independently-recomputed truth."
+        )
+
+    data = json.loads(Path(output_path).read_text())
+    data["objective_value"] = recompute_total
+    Path(output_path).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+    return True, "ok"

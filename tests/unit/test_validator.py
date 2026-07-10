@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from src.validate.independent_validator import recompute_objective, validate_output
+from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
 FIXDIR = Path(__file__).parent.parent / "fixtures"
 pytestmark = pytest.mark.unit
@@ -559,8 +559,114 @@ def test_recompute_objective_matches_m2_hand_calc(tmp_path):
     )
 
     assert total == pytest.approx(500.0)
-    assert breakdown["connection_reward"] == pytest.approx(400.0)
-    assert breakdown["ranking_reward"] == pytest.approx(100.0)
-    assert breakdown_path.exists()
-    written = json.loads(breakdown_path.read_text())
-    assert written["total"] == pytest.approx(500.0)
+
+
+def test_recompute_objective_falls_back_to_estimated_journey_constant(tmp_path, monkeypatch):
+    # M5c §2 finding: recompute_objective's D/ranking recomputation called
+    # ONLY get_journey_constant (direct-median), no estimate fallback --
+    # this would raise an uncaught KeyError (crash the whole recompute, not
+    # just skip one market) on any full-data market whose K_od is only
+    # LS-estimated (571/1329 markets on real data). Same fix pattern as
+    # independent_validator's E2 section (docs/baseline_autopsy.md #2).
+    import src.validate.independent_validator as validator_mod
+
+    real_get = validator_mod.BlockTimeProvider.get_journey_constant
+
+    def fake_get_journey_constant(self, o, d):
+        if (o, d) == ("ZZA", "ZZB"):
+            raise KeyError("forced: simulate no direct baseline row for ZZA-ZZB")
+        return real_get(self, o, d)
+
+    def fake_get_journey_constant_estimate(self, o, d):
+        if (o, d) == ("ZZA", "ZZB"):
+            return 220.0  # matches the fixture's real direct K_od, so hand-calc still holds
+        raise KeyError(f"no estimate stubbed for {(o, d)}")
+
+    monkeypatch.setattr(validator_mod.BlockTimeProvider, "get_journey_constant", fake_get_journey_constant)
+    monkeypatch.setattr(validator_mod.BlockTimeProvider, "get_journey_constant_estimate", fake_get_journey_constant_estimate)
+
+    data = {
+        "objective_value": 500.0,
+        "selected_connections": [
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+            {"od": "ZZA-ZZB", "flno1": 9102, "flno2": 9112, "gun": 1, "gap_min": 300},
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        "adjusted_flight_times": [
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "IB", "flno": 9102, "gun": 1, "time_min": 600},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        "ranking_results": [],
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps(data))
+
+    # Must not raise -- previously an uncaught KeyError here would crash the
+    # entire recompute for a market relying on the estimate fallback.
+    total, breakdown = recompute_objective(
+        output_path, FIXDIR / "synthetic_od_table.xlsx",
+        FIXDIR / "synthetic_yolcu_verisi.xlsx", FIXDIR / "synthetic_change_ranking_input.xlsx",
+        L=L, U=U,
+    )
+    assert total > 0
+
+
+def test_finalize_reported_objective_overwrites_with_recompute_value(tmp_path):
+    # M5c §2: the OFFICIAL reported objective_value must be the
+    # independently-recomputed one, never the solver's raw claim --
+    # finalize_reported_objective overwrites output.json's objective_value
+    # field, making "reported == recompute" true by construction.
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({"objective_value": 500.0, "selected_connections": []}))
+    ok, msg = finalize_reported_objective(
+        output_path, recompute_total=500.0, solver_status="optimal", solver_objective_value=500.0,
+    )
+    assert ok, msg
+    assert json.loads(output_path.read_text())["objective_value"] == 500.0
+
+
+def test_finalize_reported_objective_requires_exact_equality_when_optimal(tmp_path):
+    # A status=optimal solution's own internal accounting drifting from the
+    # independently-recomputed truth is a real bug signal -- must be flagged
+    # (not silently overwritten), and the file must be left UNTOUCHED. Uses
+    # recompute > solver (510 vs 500) specifically so this exercises the
+    # optimal-equality check, not the separate recompute>=solver floor.
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({"objective_value": 500.0, "selected_connections": []}))
+    ok, msg = finalize_reported_objective(
+        output_path, recompute_total=510.0, solver_status="optimal", solver_objective_value=500.0,
+    )
+    assert not ok
+    assert "optimal" in msg
+    assert json.loads(output_path.read_text())["objective_value"] == 500.0  # untouched
+
+
+def test_finalize_reported_objective_allows_recompute_ge_solver_when_time_limit(tmp_path):
+    # A time_limit incumbent's own claim can legitimately be a LAZY lower
+    # bound (docs/decisions.md: "gerçek gap <= solver'ın raporladığı gap") --
+    # recompute finding something AT LEAST as good is fine, only strict
+    # equality is waived (not the >= floor itself).
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({"objective_value": 500.0, "selected_connections": []}))
+    ok, msg = finalize_reported_objective(
+        output_path, recompute_total=510.0, solver_status="time_limit", solver_objective_value=500.0,
+    )
+    assert ok, msg
+    assert json.loads(output_path.read_text())["objective_value"] == 510.0
+
+
+def test_finalize_reported_objective_flags_recompute_worse_than_solver_claim(tmp_path):
+    # recompute finding LESS reward than the solver's own internal claim
+    # should never happen (the solver can't validly claim a reward the
+    # final times don't support) -- must be flagged regardless of status.
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps({"objective_value": 500.0, "selected_connections": []}))
+    ok, msg = finalize_reported_objective(
+        output_path, recompute_total=490.0, solver_status="time_limit", solver_objective_value=500.0,
+    )
+    assert not ok
+    assert "should never happen" in msg

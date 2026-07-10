@@ -21,7 +21,7 @@ from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_rank
 from src.model.build import build_model_m4
 from src.output.writer import write_output
 from src.solve.runner import solve
-from src.validate.independent_validator import validate_output
+from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
 FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
 FIXTURE_YV = "tests/fixtures/synthetic_yolcu_verisi.xlsx"
@@ -148,13 +148,25 @@ def main(argv=None) -> int:
         capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
     )
 
+    # M5c §2 (docs/decisions.md 2026-07-10): the OFFICIAL reported
+    # objective_value is always the independently-recomputed one, never the
+    # solver's raw internal claim -- overwrites output.json in place.
+    reconciliation_ok = True
+    if result.status in ("optimal", "time_limit") and result.objective_value is not None:
+        recompute_total, _ = recompute_objective(output_path, od_path, yv_path, cr_path, L=config["L"], U=config["U"])
+        reconciliation_ok, reconciliation_msg = finalize_reported_objective(
+            output_path, recompute_total, result.status, result.objective_value,
+        )
+        if not reconciliation_ok:
+            print(f"  RECONCILIATION FAILURE: {reconciliation_msg}")
+
     n_selected = sum(result.selected.values()) if result.selected else 0
     print(f"status={result.status} objective={result.objective_value} "
           f"selected={n_selected} valid={validation.is_valid}")
     for v in validation.violations:
         print(f"  VIOLATION: {v}")
 
-    return 0 if validation.is_valid else 1
+    return 0 if (validation.is_valid and reconciliation_ok) else 1
 
 
 if __name__ == "__main__":

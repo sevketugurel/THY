@@ -28,7 +28,7 @@ from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_tab
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
 from src.output.writer import write_output
 from src.solve.ladder import solve_with_ladder
-from src.validate.independent_validator import validate_output
+from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
 FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
 FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
@@ -212,6 +212,25 @@ def main(argv=None):
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if result.status in ("optimal", "time_limit") and result.objective_value is not None:
         write_output(output_path, result, k_od_sources=k_od_sources)
+
+        # M5c §2 (docs/decisions.md 2026-07-10): the OFFICIAL reported
+        # objective_value is always the independently-recomputed one, never
+        # the solver's raw internal claim -- overwrites output.json in place,
+        # BEFORE validate_output runs (so validation checks the same number
+        # that gets reported).
+        recompute_total, recompute_breakdown = recompute_objective(
+            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U,
+            breakdown_path=output_path.with_suffix(".objective_breakdown.json"),
+        )
+        reconciliation_ok, reconciliation_msg = finalize_reported_objective(
+            output_path, recompute_total, result.status, result.objective_value,
+        )
+        log["recompute_objective_value"] = recompute_total
+        log["reconciliation_ok"] = reconciliation_ok
+        if not reconciliation_ok:
+            log["reconciliation_message"] = reconciliation_msg
+            print(f"[run_full_data] RECONCILIATION FAILURE: {reconciliation_msg}", flush=True)
+
         validation = validate_output(
             output_path, FULL_OD, L=L, U=U,
             adjustable_window_min=config["adjustable_window_min"],
@@ -221,8 +240,8 @@ def main(argv=None):
             bucket_size_min=config["bucket_size_min"],
             capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
         )
-        log["validation_is_valid"] = validation.is_valid
-        log["validation_violations"] = validation.violations
+        log["validation_is_valid"] = validation.is_valid and reconciliation_ok
+        log["validation_violations"] = validation.violations + ([] if reconciliation_ok else [reconciliation_msg])
     else:
         log["validation_is_valid"] = None
         reason = ("STEP0: wall-clock budget exceeded before any ladder step could complete "
