@@ -72,18 +72,29 @@ OB-IB çiftleri (VARSAYIM-10 düzeltmesinden SONRA bile 382/1571, %24.3) istisna
 mı tutulmalı, yoksa R_o tahminimizde/eşleştirme kuralımızda bir hata mı var?
 → `src/model/constraints_operations.py::add_a_constraints`.
 
-**12. (VARSAYIM-12, GÜNCEL — `docs/baseline_autopsy.md` ile daraltıldı)
-Full-adjustable modelin (K-subset'siz, tüm 18118 aday) çözüm süresi** —
-derin otopsi K-subset'in K-şemasının (50/100/200/400) full-data ölçeğinde
-YETERSİZ olduğunu nicel olarak gösterdi (K=400'de bile E1 ihlallerinin
-%54'ü, E2'ninkilerin %51'i top-K ayarlanabilir pazarların HİÇBİRİNE
-dokunmuyor — K arttıkça oran düzenli düşüyor, mekanizma çalışıyor, sadece
-K yetersiz). Full-adjustable (step1) modelin KENDİSİ yapısal olarak
-infeasible OLMADIĞI biliniyor ama BÜYÜKLÜĞÜ (756174 satır presolve öncesi)
-nedeniyle 660s'lik dış-bekçi bütçesinde sonuçlanamadı. Organizatörün bu
-ölçekte (18000+ aday, ~900+ pazar) beklediği bir çözüm süresi/referans
-benchmark'ı var mı? → `scripts/run_full_data.py`, `scripts/diagnose_e1_e2_f.py`,
-`scripts/baseline_feasibility_witness.py`, `docs/baseline_autopsy.md`.
+**12. (VARSAYIM-12, M5c KAPANIŞI — çok-açılı teşhis tüketildi, full-adjustable
+modelin çözüm süresi HÂLÂ açık) Full-adjustable modelin (K-subset'siz, tüm
+18118 aday) çözüm süresi** — K-subset merdiveninin kendisi (leg-sharing
+nedeniyle) yapısal olarak etkisiz bulunup emekliye ayrıldıktan sonra, bu
+turda full-adjustable modelin kök-düğümde takılı kalma sorununa üç bağımsız
+yönden saldırıldı: (1) model sıkılaştırma (F'nin satır-patlaması -%54.4
+düzeltildi, E2'nin singleton-pazar binary'leri katlandı — ikisi de LP
+eşdeğerliğini bozmadan ölçülebilir iyileşme sağladı ama kök-düğümü
+AÇMADI), (2) beş bağımsız model/amaç/solver-ayarı kombinasyonu (reward,
+min-sapma, reward-only-A/B/E1/E2/F/G, symmetry-detection kapalı) HEPSİ AYNI
+"hızlı yakınsa sonra tam sessizlik, sıfır incumbent" desenini gösterdi —
+model boyutu 756K'dan 205K satıra değişse bile, (3) E1/E2'nin KENDİSİNİN
+statik/saf-pandas necessary-condition sertifikalarla PROVABLY infeasible
+OLMADIĞI kanıtlandı (üç sertifika de temiz), ve saf-Python bir kurucu
+tanık denemesi baseline'dan başlayıp onarmayı denedi (koordinesiz onarım
+adımları nedeniyle bir turda regresyona uğradı — bu heuristiğin kabalığından,
+problemin kendisinden değil). Organizatörün bu ölçekte (18000+ aday, ~900+
+pazar) beklediği bir çözüm süresi/referans benchmark'ı var mı, yoksa
+brief'in gerçek veri ölçeğinde ticari bir solver (Gurobi/CPLEX) veya daha
+uzun bir bütçe (saatler) mi öngörülüyor? → `docs/lp_anatomy.md`,
+`docs/feasibility_certificates.md`, `scripts/run_full_data.py`,
+`scripts/feasibility_certificates.py`, `scripts/greedy_feasibility_witness.py`,
+`docs/decisions.md` (2026-07-10 kronolojisi).
 
 **12b. (Otopsi'den yeni) Gamma=30dk gerçek veri ölçeğinde uygulanabilir mi?**
 — E2'nin 1219 gerçek ihlalinin %78'inde (949) K_od'un YAPISAL asimetrisi

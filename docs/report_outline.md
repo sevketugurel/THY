@@ -106,6 +106,33 @@ determinizm testleri; rapor kriter 4'ü yalnızca "nasıl doğrulanır" diye
   **En büyük kategori E2 (1181)** — başlangıç şüphesi olan E1'den (296) bile
   fazla. Yorum: TEK bir suçlu kısıt değil, binlerce koordineli ayarlamanın
   eş zamanlı bulunması gereken bir arama-zorluğu problemi.
+- **Çözüm stratejisi yolculuğu** (M5c, 2026-07-10, `docs/lp_anatomy.md` +
+  `docs/feasibility_certificates.md` + `docs/decisions.md`): full-adjustable
+  modelin kök-düğümde takılı kalmasına üç bağımsız yönden saldırıldı, hepsi
+  aynı ölçülebilir "hiçbir tek lever kök düğümü açmıyor" sonucuna vardı —
+  bu tabloya girecek:
+
+  | Deneme | Model boyutu (satır) | Sonuç (600-720s) |
+  |---|---|---|
+  | Reward, tam model (F/E2 fix öncesi) | 756,174 | `watchdog_killed`, sıfır incumbent, Nodes=0 |
+  | Min-sapma amaç, tam model | 756,174 | Hızlı yakınsa (142→4219), 800s+ TAM sessizlik |
+  | Reward, F row-fix sonrası | 329,842 | Dual bound daha hızlı/sıkı (5.13M→4.19M) ama Nodes=0 |
+  | Reward, F+E2-fold birlikte | 314,118 | F-tek-başınayla PRATİK OLARAK ÖZDEŞ, Nodes=0 |
+  | Min-sapma, salt-fizibilite (A/B/E1/E2/F/G, C/D YOK) | 205,799 | Aynı "hızlı yakınsa sonra sessizlik" (214s'de donuk) |
+  | Reward, salt-fizibilite + `mip_detect_symmetry=False` | 205,799 | Symmetry-off'un ÖLÇÜLEBİLİR hiçbir etkisi yok |
+  | Statik E1/E2 sertifikaları (saf pandas, MIP yok) | — | ÜÇÜ DE TEMİZ (0/0/0) — E1/E2 provably infeasible DEĞİL |
+  | Saf-Python greedy repair (MIP yok, validator oracle) | — | 1 turda 2137→2380 (regresyon, KOORDİNESİZ onarımlardan) |
+
+  Yorum: bu, "amaç fonksiyonu seçimi" ve "solver ayarı" hipotezlerini
+  ELEDİ (hepsi aynı davranışı gösteriyor), model BOYUTUNUN TEK BAŞINA
+  sorumlu OLMADIĞINI gösterdi (205K satırlık en küçük model bile aynı
+  duvara çarpıyor), ve E1/E2'nin KENDİSİNİN basit bir formülasyon hatası
+  OLMADIĞINI (statik kanıt) doğruladı — en olası açıklama HiGHS'in bu
+  problem sınıfındaki (yoğun candidate-bazlı Big-M zincirleri +
+  cross-product'tan gelen aşırı bacak-paylaşımı) kesme-düzlemi davranışının
+  kendine özgü bir sınırı. Gurobi karşılaştırması (ücretsiz lisans
+  ~2000 satır/değişkenle sınırlı, akademik lisans temin edilemedi bu
+  turda) bunu netleştirebilirdi ama kapsam dışı bırakıldı.
 
 ## Sayfa 6 · Kod Kalitesi Referansı + Sonuç Tartışması (Kriter 4 referans, Kriter 5)
 

@@ -581,3 +581,67 @@ maks 183 pazar/bacak) göstermesi, Benders dekompozisyonu gibi
 "pazar-bazlı ayrıştırma" yaklaşımlarının erken elenmesini DOĞRULUYOR
 (ağ GERÇEKTEN ayrıştırılamaz — herhangi bir alt-küme seçimi, paylaşılan
 bacaklar üzerinden geri kalan ağa sızıyor).
+
+**GÜNCELLEME 3 (2026-07-10, M5c kapanışı — sıkılaştırma + statik kanıt +
+kurucu tanık, hepsi tüketildi, full-adjustable feasibility HÂLÂ kanıtsız)**:
+Bu turda full-data step1'in (tam-ayarlanabilir, K-subset YOK) kök-düğümde
+takılı kalma sorununa üç bağımsız yönden saldırıldı:
+
+1. **Model sıkılaştırma** (`docs/lp_anatomy.md`): kök LP/tavan oranı %65
+   (aşırı gevşek değil). F'nin per-reachable-bucket Big-M çifti tek bir
+   bijective eşitliğe indirgendi (satır -%54.4, 756174→329842, F satırları
+   -%96.8) — LP amaç değeri/oranı BİREBİR AYNI kaldı (eşdeğerlik kanıtlı).
+   E2'nin singleton-pazar-yönü w/a_dir'i `x[i]`'ye katlandı (binary -%21-51,
+   ama fractionality YÜZDESİ neredeyse değişmedi — fold sayıyı azaltıyor,
+   LP gevşekliğini değil). Reward-amaçlı full-data step1 AYNI 600s+120s
+   bütçesiyle üç kez koşuldu (öncesi/F-tek/F+E2-birlikte): dual bound
+   yörüngesi F fix'le HIZLANDI (5.53M→4.90M idi, 5.13M→4.19M'e düştü) ama
+   `Nodes=0` ÜÇÜNDE DE değişmedi, hiçbiri incumbent bulamadı.
+2. **Alternatif hipotezler denendi ve elendi**: min-sapma amaç fonksiyonu
+   (reward yerine Σ|t-baseline|) full-model'de aynı "hızlı yakınsa sonra
+   TAM sessizlik" desenini gösterdi (142→4219, sonra 800s+ sıfır hareket).
+   `build_feasibility_model` (yalnızca A/B/E1/E2/F/G, C/D YOK — reward
+   hesaplama makinesi TAMAMEN çıkarıldı, satır 756174→205799) AYNI
+   semptomu gösterdi (214s'de dual bound ~4466'da donup 500s+ sessiz
+   kaldı). HiGHS'in `mip_detect_symmetry=False` ayarı denendi — dual
+   bound yörüngesi SATIR SATIR ÖZDEŞ kaldı, ölçülebilir hiçbir etkisi
+   yok, symmetry-detection hipotezi REDDEDİLDİ. **BEŞ bağımsız
+   model/amaç/ayar kombinasyonunun HEPSİ aynı kök-düğüm-cut'ta-tıkanma
+   desenini gösterdi** — model boyutu 756K'dan 205K'ya değişse bile.
+3. **Statik fizibilite sertifikaları** (`scripts/feasibility_certificates.py`,
+   `docs/feasibility_certificates.md`, saf pandas, MIP YOK): B'nin
+   bidirectional reifikasyonundan türetilen forced_on/forced_off/
+   undetermined durumuyla (mevcut `.fix()`'ten DAHA GENİŞ bir küme) üç
+   NECESSARY-condition sertifikası — E1a (forced-on vs sıfır-ters-yön,
+   `add_e1_constraints`'in pair-build koşuluyla kod-taramasıyla çapraz
+   doğrulandı), E1b ([F,K]×[F,K] kutu-araması), E2 (forced-only Jbest
+   dış-sınır ayrıklığı). **ÜÇÜ DE TEMİZ (0/0/0)** — E1/E2 bu analiz
+   altında PROVABLY infeasible DEĞİL. Ardından saf-Python greedy repair
+   (`scripts/greedy_feasibility_witness.py`, MIP yok, `validate_output`'u
+   oracle kullanarak baseline'dan onarım dener) denendi: iter=1'de 2137
+   ihlal (baseline autopsy'nin sayılarıyla tutarlı), TEK bir toplu onarım
+   turu SONRASINDA 2380'e KÖTÜLEŞTİ (E1 690→1201) — kök neden onarımların
+   KOORDİNESİZLİĞİ (paylaşılan bacaklar üzerinden birbirini bozan
+   düzeltmeler, K-subset'in leg-sharing bulgusuyla AYNI yapısal gerçek) —
+   **bu bir infeasibility kanıtı DEĞİL**, heuristiğin kendi kabalığının
+   sonucu.
+
+**Sonuç (kullanıcı onaylı kapanış)**: full-adjustable modelin feasibility'si
+HÂLÂ ne kanıtlandı ne çürütüldü. Ama artık ELİMİZDE ÇOK DAHA GÜÇLÜ bir
+resim var: (a) model TEK BAŞINA aşırı gevşek değil (LP/tavan %65), (b) iki
+BAĞIMSIZ tightening'in (F row-reduction, E2 fold) HİÇBİRİ kök-düğümü
+açmadı, (c) BEŞ farklı model/amaç/solver-ayarı kombinasyonu AYNI semptomu
+gösterdi (amaç fonksiyonu ya da symmetry-detection SORUN DEĞİL), (d) E1/E2
+statik olarak PROVABLY infeasible DEĞİL (saf pandas kanıt), (e) saf-Python
+bir kurucu tanık denemesi TEK turda regresyona uğradı ama bu heuristiğin
+kabalığından, problemin kendisinden değil. **En olası açıklama**: bu
+HiGHS'in bu problem sınıfındaki (yoğun candidate-bazlı Big-M/reifikasyon
+zincirleri, cross-product'tan gelen aşırı bacak-paylaşımı) kesme-düzlemi
+davranışının kendine özgü bir sınırı — Gurobi karşılaştırması (pip'in
+ücretsiz lisansı ~2000 satır/değişkenle SINIRLI, akademik lisans
+gerekiyor, GÜNCELLEME 3 kapanışında henüz temin edilmedi) bunu netleştirebilir
+ama bu turun kapsamı DIŞINDA bırakıldı (kullanıcı onaylı: mevcut kanıtla
+kapat). Full-data'da doğrulanmış (validator-onaylı) bir objective_value
+HÂLÂ YOK — M5c bu haliyle "kapsamlı üç-yönlü teşhis tamamlandı, kesin
+tek-nokta çözüm bulunamadı, ama artık NEDEN bulunamadığına dair güçlü,
+çok-açılı kanıt var" durumunda kapanıyor.
