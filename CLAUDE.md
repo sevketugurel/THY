@@ -100,6 +100,24 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   sıkılaştırması (lp_anatomy'nin "iki ayrı hedef"i). Ayrıntı:
   `docs/decisions.md` (kronolojik) + `docs/lp_anatomy.md` (karşılaştırma
   tablosu).
+- **M5c sıkılaştırma turu TÜKENDİ (2026-07-10) — Gurobi kararı kullanıcıda**.
+  Öncelik #1 (F satır-patlaması): per-bucket Big-M çifti tek bijective
+  eşitliğe (`t=bucket_start*z+offset`) indirgendi — satır 722,947→329,842
+  (-%54.4), F satırları -%96.8, LP çözüm süresi -%41, LP amaç/oranı
+  BİREBİR AYNI (eşdeğerlik kanıtlı). Öncelik #2 (E2 w/a_dir fold): singleton
+  pazar-yönleri (%51.4'ü, adayların %21.7'si) `pyo.Expression`'a katlandı —
+  a_dir binary -%51.4, w binary -%21.7, ama w fractionality NEREDEYSE
+  DEĞİŞMEDİ (%49.8) çünkü fold binary SAYISINI azaltıyor, LP GEVŞEKLİĞİNİ
+  değil (x hiç dokunulmadı). Reward-amaçlı full-data step1 AYNI 600s+120s
+  bütçesiyle ÜÇ kez koşuldu (F öncesi / F tek başına / F+E2 birlikte):
+  dual bound yörüngesi F fix'le HIZLANDI (5.53M→4.90M idi, 5.13M→4.19M'e
+  düştü) ama E2 fold'un ek katkısı YOK (5.13M→4.20M, ayırt edilemez), ve
+  `Nodes=0` ÜÇÜNDE DE değişmedi — HiGHS hiçbir zaman kök-düğüm cut
+  üretiminden dallanmaya geçemedi, `watchdog_killed`, sıfır incumbent.
+  Kullanıcının kendi eşiği ("bu sıkılaştırma turu da kök düğümü açamazsa
+  Gurobi kartını, aynı modeli iki solver'da koşan tek karşılaştırma
+  tablosuyla") artık karşılandı — Gurobi kurulumu bir bağımlılık/lisans
+  kararı olduğundan otonom ilerlenmedi, kullanıcıya soruldu.
 
 ## Kilit Kararlar
 
