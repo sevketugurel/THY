@@ -103,3 +103,29 @@ LP GEVŞEKLİĞİ değil, SAF SATIR HACMİ (cut üretimi yavaşlatıyor).
 **Bu iki hedef BAĞIMSIZ ve TAMAMLAYICI** — F satır azaltımı HIZI, w/x
 sıkılaştırması LP KALİTESİNİ (ve dolayısıyla dolaylı olarak hızı) hedefliyor.
 İkisi birden denenecek, fixture'da 668.75 korunarak.
+
+## Amaç fonksiyonu karşılaştırması: reward vs min-sapma (2026-07-10, M5c §5 Faz-1)
+
+§0/§1 (D-folding, x-fix, E1/E2 exempt+log) sonrası full-data step1'i HEM
+reward amacıyla HEM min-sapma amacıyla (`src/model/deviation_objective.py`)
+denendi — kısıt seti AYNI, yalnızca amaç fonksiyonu değişti:
+
+| Metrik | Reward amacı (M5b/M5c öncesi) | Min-sapma amacı (§5 Faz-1) |
+|---|---|---|
+| Model boyutu (orijinal satır) | 756,174 | 728,332 (D-folding sonrası küçük fark) |
+| Presolve sonrası satır | 604,925 | 604,164 (neredeyse AYNI) |
+| Maliyet katsayı aralığı | Değişken (ρ-ağırlıklı) | **TEK TİP (1.0, hepsi)** |
+| Kök LP/kaba dual bound | ~5.53M (milyonlar mertebesi) | 142→4108→4219 (dakika mertebesi, doğal olarak küçük) |
+| Dual bound YAKINSAMA deseni | SÜREKLİ yavaş azalma, hiç durmadı (1280s+'de bile) | HIZLI yakınsadı (~200s'de 4219'a), SONRA TAMAMEN DURDU |
+| İlk 200s'de incumbent | Yok | Yok |
+| 720s (600s+bekçi) sonunda | `watchdog_killed`, sıfır incumbent | `watchdog_killed`, sıfır incumbent |
+| 1920s (1800s+bekçi, TEK uzatma) sonunda | (denenmedi bu ölçekte) | HâLÂ `watchdog_killed` — 202.4s'den SONRA log'da 800s+ HİÇ yeni satır yok |
+
+**Yorum**: amaç fonksiyonunun KENDİSİ (reward'ın ρ-ağırlıklı asimetrisi vs
+min-sapmanın tekdüze katsayıları) kök-düğüm davranışını YÜZEYSEL olarak
+DEĞİŞTİRDİ (dual bound çok daha hızlı yakınsadı, çok daha küçük bir
+ölçekte) ama YAPISAL sorunu ÇÖZMEDİ — ikisi de sonunda AYNI şekilde
+tıkanıyor (sıfır B&B düğümü, sıfır incumbent, saatlerce). **Bu, sorunun
+amaç fonksiyonu DEĞİL, kısıt seti + model BOYUTU olduğunu DOĞRULUYOR**
+(DAL P1-C, kullanıcı protokolü) — sıradaki adım Gurobi DEĞİL, F'nin satır
+patlaması ve E2/slot-binding sıkılaştırması (yukarıdaki "İki AYRI hedef").
