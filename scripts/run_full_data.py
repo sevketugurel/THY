@@ -63,6 +63,17 @@ def main(argv=None):
     parser.add_argument("--watchdog-margin-sec", type=float, default=60.0,
                          help="grace period beyond time_limit_sec before the external watchdog "
                               "sends SIGTERM to a step's subprocess")
+    parser.add_argument("--enable-step2-ladder", action="store_true",
+                         help="M5c (docs/decisions.md 2026-07-10): step2's K-subset ladder is "
+                              "DEPRECATED by default -- apply_adjustable_subset freezes by MARKET, "
+                              "but candidate generation's full inbound x outbound cross-product "
+                              "means a physical leg touches 4.4 markets on average (max 183), so "
+                              "leg-sharing propagates 'adjustable' status transitively until ~0%% "
+                              "of candidates are ever fully frozen even at K=50 -- the mechanism "
+                              "does not meaningfully shrink the model's true degrees of freedom. "
+                              "Kept for reference/comparison only; the leg-level freezing idea now "
+                              "lives in the proximity-search incumbent engine instead. Default: "
+                              "step1 only, straight to step3 diagnosis if it fails.")
     args = parser.parse_args(argv)
 
     script_t0 = time.time()
@@ -186,6 +197,8 @@ def main(argv=None):
     )
     if args.step2_time_limit is not None:
         ladder_kwargs["step2_time_limit_sec"] = args.step2_time_limit
+    if not args.enable_step2_ladder:
+        ladder_kwargs["step2_k_schedule"] = ()  # M5c: deprecated by default, see --enable-step2-ladder help
 
     t3 = time.time()
     model, result, ladder_log = solve_with_ladder(**ladder_kwargs)

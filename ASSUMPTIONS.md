@@ -532,3 +532,52 @@ nedeniyle 660s'de sonuçlanamıyor, infeasibility DEĞİL. Organizatör sorusu
 (c) (Gamma'nın gerçek ölçekte uygunluğu) hâlâ geçerli: 1219 E2 ihlalinin
 949'unda (%78) K_od'un YAPISAL asimetrisi TEK BAŞINA Gamma(30dk)'yı aşıyor
 — gap seçimiyle çözülemeyecek bir durum.
+
+**GÜNCELLEME 2 (2026-07-10, M5c — K-subset merdiveninin KENDİSİ
+işlevsiz bulundu, DAHA DA daraltıldı)**: VARSAYIM-9/11'in exempt+log
+deseni E1/E2'ye genellendi (`add_e1_constraints`/`add_e2_constraints`,
+TDD ile, `src/model/constraints_balance.py`) — HER İKİ yönü de TAMAMEN
+dondurulmuş bir pazar çifti, dondurulmuş sayılar E1/E2'yi ihlal ediyorsa
+MUAF tutuluyor artık. Full-data K=50'de test edildiğinde: **SIFIR
+exemption tetiklendi** — çünkü **K=50'de 13273 adayın HİÇBİRİ (0/13273)
+tam-donmuş değil** (`gap_lo==gap_hi`)! Kök neden: `apply_adjustable_subset`
+bir BACAĞI (r1_id/r2_id) yalnızca O bacağı kullanan HİÇBİR aday top-K
+pazarlardan birine ait DEĞİLSE donduruyor — ama aday üretimi TAM
+inbound×outbound cross-product olduğundan, bir bacak ORTALAMA 4.4 farklı
+(o,d) pazarına katılıyor (maks 183!). Yalnızca 297/2702 IB bacağı ve
+254/2690 OB bacağı top-50 pazara DOĞRUDAN dokunsa da, bu küçük "tohum"
+küme bacak-paylaşımı üzerinden GEÇİŞKEN olarak DEVASA sayıda pazara
+yayılıyor — sonuçta K=50'de bile pratik olarak HİÇBİR aday tam donmuyor.
+**Bu, `docs/baseline_autopsy.md`'nin "baked-in" yüzdelerinin (K=50'de E1
+%96) PAZAR-SEVİYESİNDE ("hiçbir yönü top-K pazarına dokunmuyor") ölçüldüğünü,
+`apply_adjustable_subset`'in GERÇEK (BACAK-SEVİYESİNDE) davranışını
+YANSITMADIĞINI gösteriyor** — otopsi K-subset'in NEDEN başarısız olduğunu
+doğru teşhis etmişti (baked-in ihlaller) ama BAKED-IN'in KENDİSİNİN neden
+K arttıkça beklenen hızda düşmediğini (bacak-paylaşımı nedeniyle K-subset
+GERÇEKTE serbestlik derecesini neredeyse hiç kısıtlamıyor) açıklamıyordu.
+
+**Karar (kullanıcı onaylı)**: K-subset merdiveni (step2, K=50/100/200/400)
+AYRI bir mekanizma olarak EMEKLİYE AYRILDI (kod SİLİNMEDİ, config'te
+varsayılan KAPALI — `scripts/run_full_data.py` artık yalnızca step1'i
+dener). "Bacak-seviyesinde dondurma" fikri TAMAMEN TERK EDİLMEDİ —
+§5'in (M5c) proximity/local-branching incumbent motoruna GÖMÜLDÜ: orada
+her ADAYIN KENDİ [t_lo,t_hi] penceresi güven-bölgesi büyüklüğüne göre
+DOĞRU şekilde daraltılacak (bir "pazar" değil bir "uçuş, incumbent'tan
+en fazla k uçuş taşınabilir" ilkesiyle), fold makinesi (§0/§1a) bu
+daraltılmış alt-problemi otomatik küçültecek — YAPISAL OLARAK aynı
+bacak-paylaşımı sorunu, ama artık "K market seç" yerine "incumbent'a en
+yakın k UÇUŞ seç" ilkesiyle, ki bu doğrudan bacak-düzeyinde çalışıyor.
+
+**Organizatör sorusundan DÜŞÜRÜLDÜ**: full-data'nın adjustable-subset
+alt-probleminin K-şeması sorusu (VARSAYIM-12'nin orijinal (b) şıkkı)
+artık AÇIK bir belirsizlik değil — KENDİ kodumuzdaki bir tasarım
+sınırlaması olarak teşhis edildi ve M5c'de ayrı bir yaklaşımla (proximity
+search) ele alınıyor. Yalnızca (c) (Gamma'nın gerçek ölçekte uygunluğu,
+yukarıda) organizatör sorusu olarak AÇIK kalıyor.
+
+**Rapor değeri**: bu bulgu aynı zamanda M6/rapor için VERİ-KANITLI bir
+gerekçe — hub-ve-spoke ağının bu kadar YOĞUN bacak-paylaşımı (ort. 4.4,
+maks 183 pazar/bacak) göstermesi, Benders dekompozisyonu gibi
+"pazar-bazlı ayrıştırma" yaklaşımlarının erken elenmesini DOĞRULUYOR
+(ağ GERÇEKTEN ayrıştırılamaz — herhangi bir alt-küme seçimi, paylaşılan
+bacaklar üzerinden geri kalan ağa sızıyor).

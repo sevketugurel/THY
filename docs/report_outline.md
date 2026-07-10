@@ -54,6 +54,17 @@ determinizm testleri; rapor kriter 4'ü yalnızca "nasıl doğrulanır" diye
     G'yle aynı mantıkla (kendi en-iyi-durumunda bile imkansızsa) muaf tutuldu.
   - Bu üç bulgu, brief'in kendisinin çözülemez bir problem tasarlamadığı
     varsayımına dayanıyor — organizatöre üç somut soru olarak yansıtıldı.
+- **Hub yoğunluğu ve ayrıştırılamazlık** (M5c, 2026-07-10 bulgusu):
+  full-data'da bir fiziksel uçuş bacağı ORTALAMA 4.4 farklı (o,d) pazarına
+  katılıyor (maksimum 183) — aday üretiminin TAM inbound×outbound
+  cross-product olmasının doğal sonucu. Bu, "pazar bazında ayrıştır"
+  türü yaklaşımların (adjustable-subset K-merdiveni, Benders dekompozisyonu)
+  neden ERKEN elendiğinin/başarısız olduğunun VERİ-KANITI: küçük bir
+  "tohum" pazar kümesini bile serbest bırakmak, bacak-paylaşımı üzerinden
+  geçişken olarak AĞIN NEREDEYSE TAMAMINA yayılıyor (K=50'de bile
+  candidate'ların %100'ü en az bir bacağı serbest kalıyor) — IST hub'ı
+  GERÇEKTEN ayrıştırılamaz bir ağ, alt-problem bölme stratejileri
+  yapısal olarak beklenen kazancı sağlamıyor.
 
 ## Sayfa 4 · Doğrusallaştırma Seçimleri (Kriter 1 + Kriter 3)
 
