@@ -54,3 +54,40 @@ def test_extra_highs_options_default_none_is_a_noop():
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
     assert result.status == "optimal"
     assert result.objective_value == pytest.approx(100.0)
+
+
+def test_maxiterations_termination_is_treated_like_time_limit(monkeypatch):
+    # M5d (docs/decisions.md 2026-07-10): appsi_highs maps HiGHS's "Solution
+    # limit reached" (mip_max_improving_sols -- used to force a clean early
+    # stop for a warm-started full-data run, since HiGHS's own time_limit
+    # does not reliably interrupt root-node cutting) to Pyomo's
+    # maxIterations termination condition, NOT maxTimeLimit -- before this
+    # fix, runner.py's status mapping silently dropped a genuinely-found
+    # feasible incumbent (status fell through to str(term)=="maxIterations",
+    # which wasn't in the ("optimal","time_limit") extraction gate, so
+    # objective_value/selected stayed empty even though HiGHS reported a
+    # real incumbent). Forcing this deterministically via a real solve is
+    # unreliable (trivial models often close the gap on their first/only
+    # improving solution and report "optimal" instead) -- monkeypatch the
+    # termination condition directly, matching the existing pattern in
+    # test_runner_time_limit_no_incumbent.py.
+    model = _build()
+    import src.solve.runner as runner_mod
+    real_factory = pyo.SolverFactory
+
+    def fake_factory(name):
+        opt = real_factory(name)
+        real_opt_solve = opt.solve
+
+        def fake_solve(*a, **kw):
+            actual_result = real_opt_solve(*a, **kw)
+            actual_result.solver.termination_condition = pyo.TerminationCondition.maxIterations
+            return actual_result
+        opt.solve = fake_solve
+        return opt
+
+    monkeypatch.setattr(runner_mod.pyo, "SolverFactory", fake_factory)
+    result = runner_mod.solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "time_limit"
+    assert result.objective_value == pytest.approx(100.0)
+    assert result.selected != {}

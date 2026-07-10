@@ -40,6 +40,12 @@ def main():
     parser.add_argument("--watchdog-margin-sec", type=float, default=120.0)
     parser.add_argument("--mip-heuristic-effort", type=float, default=0.3)
     parser.add_argument("--mip-gap", type=float, default=0.08)
+    parser.add_argument("--max-improving-sols", type=int, default=None,
+                         help="M5d (docs/decisions.md 2026-07-10): HiGHS's own time_limit does not "
+                              "reliably interrupt root-node cutting -- when the goal is RECOVERING a "
+                              "warm-started incumbent (not proving optimality), stopping after N "
+                              "improving solutions (mip_max_improving_sols) lets HiGHS terminate itself "
+                              "cleanly instead of relying on the external watchdog's SIGKILL.")
     args = parser.parse_args()
 
     t0 = time.time()
@@ -131,6 +137,8 @@ def main():
         mip_gap=args.mip_gap, mip_heuristic_effort=args.mip_heuristic_effort,
         log_file=highs_log_file,
     )
+    if args.max_improving_sols is not None:
+        elastic_solve_kwargs["extra_highs_options"] = {"mip_max_improving_sols": args.max_improving_sols}
 
     print(f"[warm_start_elastic] solving WITH warmstart=True (time_limit={args.time_limit_sec}s, "
           f"highs_log={highs_log_file})...", flush=True)

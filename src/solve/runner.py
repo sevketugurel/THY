@@ -122,7 +122,19 @@ def solve(
         status = "optimal"
     elif term == pyo.TerminationCondition.infeasible:
         status = "infeasible"
-    elif term == pyo.TerminationCondition.maxTimeLimit:
+    elif term in (
+        pyo.TerminationCondition.maxTimeLimit,
+        # M5d (docs/decisions.md 2026-07-10): appsi_highs maps HiGHS's
+        # "Solution limit reached" (mip_max_improving_sols, used to force a
+        # clean early stop instead of relying on the external watchdog's
+        # SIGKILL when HiGHS's own time_limit doesn't cut root-node cutting)
+        # to maxIterations, not a dedicated condition -- must be treated
+        # the same as time_limit (attempt to extract whatever incumbent
+        # exists, guarded by the same try/except below), or a genuinely
+        # found feasible solution gets silently dropped.
+        pyo.TerminationCondition.maxIterations,
+        pyo.TerminationCondition.feasible,
+    ):
         status = "time_limit"
     else:
         status = str(term)
