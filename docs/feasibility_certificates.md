@@ -71,6 +71,26 @@ infeasibility'yi exempt+log'a YAKALATMADAN solver'a göndermeye devam eder —
 ayrı bir iyileştirme fırsatı olarak not edildi (bu turda KOD DEĞİŞTİRİLMEDİ,
 yalnızca analiz).
 
+## Düzeltme (2026-07-11, M5d — gerekli/yeterli ayrımı netleştirildi)
+
+Bu üç sertifika yalnızca bir **GEREKLİ-koşul** testidir (E1/E2'nin statik/
+gevşek dış-sınırları altında bir çelişki YOK) — bir **YETERLİLİK** kanıtı
+DEĞİLDİR. "ÜÇÜ DE TEMİZ" ifadesi hâlâ doğru ama şu şekilde okunmalı:
+"E1/E2'yi provably infeasible yapan basit bir statik çelişki yok" — bu,
+"full-data'da E1/E2'yi tam tatmin eden (slack=0) bir nokta VAR" anlamına
+GELMEZ. Elimizdeki tek full-data elastik-model incumbent'ı
+(`runs/warm_start_elastic_20260710T203810Z.log.json`, objective=388889.16)
+slack=0 DEĞİL — 1879 ihlal (E1=665, E2=1214) içeriyor, ve elastik model
+warm-start OLMADAN kendi başına full-data'da hiçbir incumbent bulamadı
+(`Nodes=0`, `watchdog_killed`). Yani **full-data'da E1/E2'yi (bizim
+yorumumuz altında) tatmin eden bir noktanın VAR OLUP OLMADIĞI hâlâ AÇIK
+bir soru** — sertifikalar bunu ne kanıtlıyor ne çürütüyor, yalnızca "basit
+bir statik çelişki yok" diyor. M5d'nin Fix-and-Optimize LNS turu
+(`docs/decisions.md` 2026-07-11) bu soruyu doğrudan hedefliyor: elastik
+modelin KENDİ incumbent'ından başlayıp Σslack'i iteratif azaltarak
+slack=0'a (yeterlilik) ulaşmayı ya da düz bir platoda takılıp kalarak
+(yorum altında feasibility şüphesinin nicel kanıtı) durmayı deniyor.
+
 ## Sıradaki adım (kullanıcı onaylı dallanma, branch 2)
 
 Sertifikalar temiz olduğu için kullanıcının talimatı gereği "kurucu tanık"
