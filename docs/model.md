@@ -143,6 +143,16 @@ bidirectional forcing eklenir (ikisi de kodda hazır,
 
 $$M^{fwd}_{\pi,k}=\max(0,J^{hi}_\pi-T^{comp}_k), \quad J^{hi}_\pi=K_{od}+gap^{hi}_\pi$$
 
+**M5c D-folding** (`docs/lp_anatomy.md`): $beat_{\pi,k}$'ye HER ZAMAN bir
+Binary değişken açılmaz — $J^{hi}_\pi\le T^{comp}_k$ ise $\pi$ pencerenin
+TAMAMINDA rakip $k$'yı yeniyor (veri-gerçeği, $beat\equiv x_\pi$'ye
+katlanır, değişken üretilmez); $J^{lo}_\pi>T^{comp}_k$ ise HİÇBİR zaman
+yenmiyor ($beat\equiv 0$'a katlanır). Bu, monoton VE bidirectional-fallback
+modlarının İKİSİNDE de geçerli (adayın penceresine dair bir veri-gerçeği,
+zorlama yönünden bağımsız) — değişken/kısıt eklemek yerine ELEME, LP
+gevşemesini de sıkılaştırır (fractionality full-data'da $beat$ için
+%14→katlanan çiftler için 0).
+
 **OR-aggregation** ($beaten_{o,d,h,k}$) HER ZAMAN iki yönlü — monotonluktan
 bağımsız yapısal bir gereklilik (iç tutarlılık):
 

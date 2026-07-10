@@ -53,10 +53,14 @@ def _build(candidates, journey_constants, rival_data):
 def test_rank_values_clamped_to_one_when_all_rivals_beaten():
     # Single rival R1, easily beaten (J=280<=300) -- raw model.rank = 1-1 = 0,
     # but the real ranking table never has an r=0 row; the reported value
-    # must be the clamped max(1,0)=1.
+    # must be the clamped max(1,0)=1. M5c: this is an ALWAYS-beats fold
+    # (fixed-point gap, J<=T_comp for the whole -- single-point -- window),
+    # so beat[0,"R1"] doesn't exist as a Var; B already forces x[0]=1 (gap=60
+    # legal), which alone drives the folded beaten_lb constraint.
     c = _fixed_candidate("ZZA", "ZZB", 1, gap=60, flno1=1, flno2=2)
     model = _build([c], {("ZZA", "ZZB"): 220}, {("ZZA", "ZZB", 1): {"R1": 300}})
-    model.objective = pyo.Objective(expr=model.beat[0, "R1"], sense=pyo.maximize)
+    assert (0, "R1") not in model.BEAT_PAIRS
+    model.objective = pyo.Objective(expr=model.x[0], sense=pyo.maximize)
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
     assert result.status == "optimal"
     assert pyo.value(model.rank["ZZA", "ZZB", 1]) == pytest.approx(0.0), \

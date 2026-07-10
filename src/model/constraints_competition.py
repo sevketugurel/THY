@@ -22,7 +22,18 @@ from src.model.big_m import derive_d_big_ms
 
 
 def add_d_constraints(model, candidates, journey_constants: dict, rival_data: dict, monotonic: bool):
-    beat_pairs = []
+    """M5c D-folding (docs/lp_anatomy.md): beat_{pi,k} is a genuine decision
+    ONLY when the candidate's OWN adjustable window [gap_lo,gap_hi] leaves
+    J_pi straddling T_comp_k. When J_hi<=T_comp_k, pi beats k for EVERY
+    achievable gap -- beat is a data-fact equal to x_pi (offered => beats),
+    not a variable. When J_lo>T_comp_k, pi NEVER beats k regardless of gap --
+    beat is a data-fact equal to 0. Folding these away (no Var, no Big-M
+    constraint) rather than adding a tightening constraint is BOTH smaller
+    (fewer rows/vars, faster build) and tighter (LP relaxation has zero
+    slack for a value that was never actually free) -- valid in monotonic
+    AND bidirectional-fallback mode alike, since it's a data fact about the
+    candidate's window, independent of which forcing direction is active."""
+    all_pairs = []
     market_rivals = []
     for (o, d, gun) in model.MARKETS:
         rivals = rival_data.get((o, d, gun), {})
@@ -32,16 +43,39 @@ def add_d_constraints(model, candidates, journey_constants: dict, rival_data: di
             c = candidates[i]
             if (c.o, c.d, c.gun) != (o, d, gun):
                 continue
-            beat_pairs.extend((i, k) for k in rivals)
+            all_pairs.extend((i, k) for k in rivals)
 
-    model.BEAT_PAIRS = pyo.Set(initialize=beat_pairs, dimen=2, ordered=True)
+    always_beats, never_beats, conditional = set(), set(), []
+    for (i, k) in all_pairs:
+        c = candidates[i]
+        t_comp = rival_data[(c.o, c.d, c.gun)][k]
+        j_lo = journey_constants[(c.o, c.d)] + c.gap_lo
+        j_hi = journey_constants[(c.o, c.d)] + c.gap_hi
+        if j_hi <= t_comp:
+            always_beats.add((i, k))
+        elif j_lo > t_comp:
+            never_beats.add((i, k))
+        else:
+            conditional.append((i, k))
+
+    model.BEAT_PAIRS = pyo.Set(initialize=conditional, dimen=2, ordered=True)
     model.MARKET_RIVALS = pyo.Set(initialize=market_rivals, dimen=4, ordered=True)
 
     model.beat = pyo.Var(model.BEAT_PAIRS, domain=pyo.Binary)
     model.beaten = pyo.Var(model.MARKET_RIVALS, domain=pyo.Binary)
+    model._d_fold_counts = {
+        "always_beats": len(always_beats), "never_beats": len(never_beats), "conditional": len(conditional),
+    }
+
+    def _beat_expr(m, i, k):
+        if (i, k) in always_beats:
+            return m.x[i]
+        if (i, k) in never_beats:
+            return 0
+        return m.beat[i, k]
 
     big_ms = {}
-    for (i, k) in beat_pairs:
+    for (i, k) in conditional:
         c = candidates[i]
         t_comp = rival_data[(c.o, c.d, c.gun)][k]
         big_ms[i, k] = derive_d_big_ms(c, journey_constants[(c.o, c.d)], t_comp)
@@ -67,14 +101,17 @@ def add_d_constraints(model, candidates, journey_constants: dict, rival_data: di
             return j_pi >= t_comp + 1 - m_bwd * m.beat[i, k]
         model.d_beat_backward = pyo.Constraint(model.BEAT_PAIRS, rule=backward_rule)
 
+    beaten_lb_pairs = [(i, k) for (i, k) in all_pairs if (i, k) not in never_beats]
+    model.D_BEATEN_LB_PAIRS = pyo.Set(initialize=beaten_lb_pairs, dimen=2, ordered=True)
+
     def beaten_lb_flat_rule(m, i, k):
         c = candidates[i]
-        return m.beaten[c.o, c.d, c.gun, k] >= m.beat[i, k]
-    model.d_beaten_lb = pyo.Constraint(model.BEAT_PAIRS, rule=beaten_lb_flat_rule)
+        return m.beaten[c.o, c.d, c.gun, k] >= _beat_expr(m, i, k)
+    model.d_beaten_lb = pyo.Constraint(model.D_BEATEN_LB_PAIRS, rule=beaten_lb_flat_rule)
 
     def beaten_ub_rule(m, o, d, gun, k):
-        relevant = [i for (i, kk) in beat_pairs if kk == k and (candidates[i].o, candidates[i].d, candidates[i].gun) == (o, d, gun)]
-        return m.beaten[o, d, gun, k] <= sum(m.beat[i, k] for i in relevant)
+        relevant = [i for (i, kk) in all_pairs if kk == k and (candidates[i].o, candidates[i].d, candidates[i].gun) == (o, d, gun)]
+        return m.beaten[o, d, gun, k] <= sum(_beat_expr(m, i, k) for i in relevant)
     model.d_beaten_ub = pyo.Constraint(model.MARKET_RIVALS, rule=beaten_ub_rule)
 
     n_by_market = {}
