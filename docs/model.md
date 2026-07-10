@@ -397,6 +397,21 @@ $w_\pi$'nin kendi $J_\pi$ değeriyle ÇELİŞEN bir "$\ge$" kısıtına çarpar
 pazarın diğer bir candidate'ının çok düşük achievable aralığı bilerek
 $M^{down}$'ı ayartmaya çalışıyor ve başarısız oluyor).
 
+**M5c $w$/$a_{dir}$ fold (`docs/lp_anatomy.md` öncelik #2, ultrathink)**: bir
+pazar-yönünün TEK candidate'ı ($|\pi\in\text{group}|=1$) varsa, $a_{dir}\ge
+x_\pi$ ile $a_{dir}\le\sum x_\pi=x_\pi$ birlikte $a_{dir}=x_\pi$'yi cebirsel
+olarak ZORUNLU kılar; $\sum w_\pi=a_{dir}$ tek terimli olduğundan
+$w_\pi=a_{dir}=x_\pi$ de ZORUNLU. Ayrı bir binary hiçbir yeni bilgi
+taşımıyor — D-folding'deki AYNI desen (gerçek bir seçim özgürlüğü yoksa
+değişken ELE). Full-data'da singleton pazar-yönleri grupların %51.4'ü
+(3935/7656), adayların %21.7'si (3935/18118) — gerçek bir yapısal fold
+(K-subset'in aksine, bkz. `docs/decisions.md` 2026-07-10). `model.a_dir`/
+`model.w` artık `pyo.Expression` (Var DEĞİL): çoklu-adaylı yönler için
+gerçek bir arka-plan binary'e ($\_a\_dir\_var$/$\_w\_var$) sarılır, singleton
+yönler için doğrudan $x_\pi$'ye çözülür — dışarıya (testler,
+`e1_diagnostics`) HER ZAMAN aynı `pyo.value(model.a_dir[key])` arayüzünü
+sunar, katlanmış olsun ya da olmasın.
+
 **E2'nin kendisi** (fwd/bwd pazar çifti, aynı gün):
 $$J_{best}^{fwd}-J_{best}^{bwd}\le\Gamma+M_{pair}(2-a_{fwd}-a_{bwd})$$
 $$J_{best}^{bwd}-J_{best}^{fwd}\le\Gamma+M_{pair}(2-a_{fwd}-a_{bwd})$$

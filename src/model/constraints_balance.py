@@ -106,8 +106,44 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
         market_j_bounds[(o, d, gun)] = (min(j_los), max(j_his))
 
     model.E2_MARKETS = pyo.Set(initialize=list(groups.keys()), dimen=3, ordered=True)
-    model.a_dir = pyo.Var(model.E2_MARKETS, domain=pyo.Binary)
-    model.w = pyo.Var(model.CANDIDATES, domain=pyo.Binary)
+
+    # M5c w/a_dir fold (docs/lp_anatomy.md öncelik #2, ultrathink): bir pazar
+    # yönünün TEK adayı varsa (group size==1), a_dir bu adayın x'inin
+    # AYNISI olmak ZORUNDA (a_dir>=x[i] VE a_dir<=Sum(x in group)=x[i] ->
+    # a_dir=x[i] cebirsel olarak), ve Sum(w)=a_dir tek terimli olduğundan
+    # w[i]=a_dir=x[i] de ZORUNLU -- ayrı bir binary hiçbir yeni bilgi
+    # taşımıyor (D-folding'deki AYNI desen: gerçek bir seçim özgürlüğü
+    # yoksa değişken ELE). Full-data'da singleton pazar-yönleri grupların
+    # %51.4'ü (3935/7656), adayların %21.7'si (3935/18118) -- K-subset'in
+    # aksine burada gerçek bir yapısal fold var (bkz. `docs/decisions.md`).
+    # `model.a_dir[key]`/`model.w[i]` dışarıya HER ZAMAN aynı arayüzü
+    # (Expression, pyo.value() ile okunabilir) sunar -- katlanmış olsun ya
+    # olmasın çağıran kod (testler, e1_diagnostics) fark etmez.
+    singleton_markets = {k for k, idxs in groups.items() if len(idxs) == 1}
+    multi_markets = [k for k in groups if k not in singleton_markets]
+    multi_candidates = [i for i in range(len(candidates)) if candidate_market[i] not in singleton_markets]
+
+    model.A_DIR_MARKETS = pyo.Set(initialize=multi_markets, dimen=3, ordered=True)
+    model.W_CANDIDATES = pyo.Set(initialize=multi_candidates, ordered=True)
+    model._a_dir_var = pyo.Var(model.A_DIR_MARKETS, domain=pyo.Binary)
+    model._w_var = pyo.Var(model.W_CANDIDATES, domain=pyo.Binary)
+    model._e2_fold_counts = {
+        "singleton_markets": len(singleton_markets), "multi_markets": len(multi_markets),
+        "singleton_candidates": len(candidates) - len(multi_candidates),
+        "multi_candidates": len(multi_candidates),
+    }
+
+    def a_dir_expr_rule(m, o, d, gun):
+        if (o, d, gun) in singleton_markets:
+            return m.x[groups[(o, d, gun)][0]]
+        return m._a_dir_var[o, d, gun]
+    model.a_dir = pyo.Expression(model.E2_MARKETS, rule=a_dir_expr_rule)
+
+    def w_expr_rule(m, i):
+        if candidate_market[i] in singleton_markets:
+            return m.x[i]
+        return m._w_var[i]
+    model.w = pyo.Expression(model.CANDIDATES, rule=w_expr_rule)
 
     def jbest_bounds_rule(m, o, d, gun):
         return market_j_bounds[(o, d, gun)]
@@ -115,20 +151,20 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
 
     def a_lb_rule(m, i):
         o, d, gun = candidate_market[i]
-        return m.a_dir[o, d, gun] >= m.x[i]
-    model.e2_a_lb = pyo.Constraint(model.CANDIDATES, rule=a_lb_rule)
+        return m._a_dir_var[o, d, gun] >= m.x[i]
+    model.e2_a_lb = pyo.Constraint(model.W_CANDIDATES, rule=a_lb_rule)
 
     def a_ub_rule(m, o, d, gun):
-        return m.a_dir[o, d, gun] <= sum(m.x[i] for i in groups[(o, d, gun)])
-    model.e2_a_ub = pyo.Constraint(model.E2_MARKETS, rule=a_ub_rule)
+        return m._a_dir_var[o, d, gun] <= sum(m.x[i] for i in groups[(o, d, gun)])
+    model.e2_a_ub = pyo.Constraint(model.A_DIR_MARKETS, rule=a_ub_rule)
 
     def w_sum_rule(m, o, d, gun):
-        return sum(m.w[i] for i in groups[(o, d, gun)]) == m.a_dir[o, d, gun]
-    model.e2_w_sum = pyo.Constraint(model.E2_MARKETS, rule=w_sum_rule)
+        return sum(m._w_var[i] for i in groups[(o, d, gun)]) == m._a_dir_var[o, d, gun]
+    model.e2_w_sum = pyo.Constraint(model.A_DIR_MARKETS, rule=w_sum_rule)
 
     def w_le_x_rule(m, i):
-        return m.w[i] <= m.x[i]
-    model.e2_w_le_x = pyo.Constraint(model.CANDIDATES, rule=w_le_x_rule)
+        return m._w_var[i] <= m.x[i]
+    model.e2_w_le_x = pyo.Constraint(model.W_CANDIDATES, rule=w_le_x_rule)
 
     e2_candidate_ms = {}
     for i, c in enumerate(candidates):
@@ -200,7 +236,7 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
         )
 
     model.E2_PAIRS = pyo.Set(initialize=pairs, dimen=3, ordered=True)
-    model._e2_fold_counts = {"exempted": exempted_count, "genuine": len(pairs)}
+    model._e2_fold_counts.update({"exempted": exempted_count, "genuine": len(pairs)})
 
     pair_ms = {}
     for (o, d, gun) in pairs:

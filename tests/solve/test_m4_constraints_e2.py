@@ -251,6 +251,47 @@ def test_e2_still_binds_for_mixed_pair_with_one_adjustable_side():
     assert abs(j_fwd - j_bwd) <= GAMMA + 1e-6
 
 
+# --- M5c: fold a_dir/w for singleton market directions (öncelik #2) ---
+
+def test_e2_folds_w_and_a_dir_for_singleton_market_direction():
+    # M5c var/row reduction (docs/lp_anatomy.md öncelik #2): a market
+    # direction with exactly ONE candidate makes a_dir and w REDUNDANT as
+    # separate binaries -- a_dir>=x[i] and a_dir<=Sum(x in group)=x[i] force
+    # a_dir=x[i] algebraically, and Sum(w)=a_dir with a single term then
+    # forces w[i]=a_dir=x[i] too. Both fold to Expressions over x[i] (no new
+    # binary, no a_lb/a_ub/w_sum/w_le_x rows for these markets/candidates)
+    # -- but model.a_dir[key]/model.w[i] stay readable via pyo.value()
+    # exactly as before (uniform interface, callers unaffected).
+    c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
+    c_bwd = _unoffered_candidate("ZZH", "ZZG", 202, 302)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates)
+    assert ("ZZG", "ZZH", 1) not in model.A_DIR_MARKETS
+    assert ("ZZH", "ZZG", 1) not in model.A_DIR_MARKETS
+    assert 0 not in model.W_CANDIDATES
+    assert 1 not in model.W_CANDIDATES
+    assert model._e2_fold_counts["singleton_markets"] == 2
+    model.objective = pyo.Objective(expr=model.Jbest["ZZG", "ZZH", 1], sense=pyo.minimize)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    assert pyo.value(model.a_dir["ZZG", "ZZH", 1]) == pytest.approx(1.0)
+    assert pyo.value(model.w[0]) == pytest.approx(1.0)
+
+
+def test_e2_does_not_fold_multi_candidate_market_direction():
+    # Control: a direction with 2+ candidates must KEEP real a_dir/w
+    # binaries -- there is a genuine argmin choice, not algebraically forced.
+    c1 = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
+    c2 = _fixed_candidate("ZZG", "ZZH", 205, 305, gap=150)
+    c_bwd = _unoffered_candidate("ZZH", "ZZG", 202, 302)
+    candidates = [c1, c2, c_bwd]
+    model = _build(candidates)
+    assert ("ZZG", "ZZH", 1) in model.A_DIR_MARKETS
+    assert 0 in model.W_CANDIDATES
+    assert 1 in model.W_CANDIDATES
+    assert model._e2_fold_counts["singleton_markets"] == 1  # only the bwd direction
+
+
 # --- adversarial: cannot fabricate a fraudulently low Jbest ---
 
 def test_e2_sandwich_cannot_fabricate_jbest_below_true_min():
