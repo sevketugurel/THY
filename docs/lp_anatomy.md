@@ -9,14 +9,25 @@ yoksa bir FORMÜLASYON gevşekliği/boyutu sorunu mu olduğunu ayırt etmek.
 
 ## Özet sayılar
 
-| Metrik | Değer |
-|---|---|
-| LP çözüm süresi | 172.0s |
-| LP amaç değeri | 5,258,422.37 |
-| Teorik tavan (veri-only, çözümsüz) | 8,081,699.10 |
-| **LP/tavan oranı** | **%65.07** |
-| Toplam kısıt satırı | 756,174 |
-| Model kurulum süresi | 27.5s |
+| Metrik | Öncesi (M5b) | §0 sonrası (D-folding) |
+|---|---|---|
+| LP çözüm süresi | 172.0s | 194.9s (gürültü içinde, iyileşme YOK) |
+| LP amaç değeri | 5,258,422.37 | 5,253,749.43 |
+| Teorik tavan (veri-only) | 8,081,699.10 | (değişmedi) |
+| **LP/tavan oranı** | **%65.07** | **%65.01** (değişmedi) |
+| Toplam kısıt satırı | 756,174 | **722,947 (-%4.4)** |
+| Model kurulum süresi | 27.5s | 35.6s |
+| beat değişken sayısı | 33,748 | **21,969 (-%35, katlanan çiftler kaldırıldı)** |
+| beat fractionality | %14.02 | %19.05 (kalan set daha küçük ama GERÇEKTEN koşullu — beklenen) |
+
+**Yorum**: §0 (D-folding) temiz bir kazanç (satır/değişken sayısı düştü,
+LP/tavan oranı BOZULMADI — değişmedi, bekleneni doğruluyor) ama LP çözüm
+SÜRESİNİ iyileştirmedi ve w/x'in (asıl fractionality sorunu) veya F'nin
+(asıl satır hacmi sorunu) HİÇBİRİNE dokunmadı — bunlar D'den TAMAMEN
+bağımsız aileler. **§1 (K-subset genelleştirmesi) hâlâ asıl iş** — full
+step1 modelinde §0 tek başına MIP'in kök-düğüm darboğazını çözmeye
+yetmiyor, K-subset modunda dondurulmuş uçuşların tüm modele (yalnızca D
+değil) katlanması gerekiyor.
 
 **LP/tavan oranı %65** — AŞIRI gevşek değil (bir "kayıp" formülasyon %95+
 gösterirdi), ama MIP'in kendi kök-düğüm cut'larıyla ulaştığı sınır (~4.90M)
