@@ -219,7 +219,7 @@ def main(argv=None):
         # BEFORE validate_output runs (so validation checks the same number
         # that gets reported).
         recompute_total, recompute_breakdown = recompute_objective(
-            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U,
+            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U, strict=False,
             breakdown_path=output_path.with_suffix(".objective_breakdown.json"),
         )
         reconciliation_ok, reconciliation_msg = finalize_reported_objective(

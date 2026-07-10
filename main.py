@@ -153,7 +153,9 @@ def main(argv=None) -> int:
     # solver's raw internal claim -- overwrites output.json in place.
     reconciliation_ok = True
     if result.status in ("optimal", "time_limit") and result.objective_value is not None:
-        recompute_total, _ = recompute_objective(output_path, od_path, yv_path, cr_path, L=config["L"], U=config["U"])
+        recompute_total, _ = recompute_objective(
+            output_path, od_path, yv_path, cr_path, L=config["L"], U=config["U"], strict=not args.full_data,
+        )
         reconciliation_ok, reconciliation_msg = finalize_reported_objective(
             output_path, recompute_total, result.status, result.objective_value,
         )

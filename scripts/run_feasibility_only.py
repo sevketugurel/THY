@@ -153,7 +153,7 @@ def main():
         # worth under the real scoring objective (useful as a Phase-2 warm
         # start seed, and for the closing report).
         recompute_total, _ = recompute_objective(
-            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U,
+            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U, strict=False,
             breakdown_path=output_path.with_suffix(".objective_breakdown.json"),
         )
         log["reward_objective_at_this_schedule"] = recompute_total

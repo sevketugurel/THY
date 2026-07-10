@@ -615,6 +615,54 @@ def test_recompute_objective_falls_back_to_estimated_journey_constant(tmp_path, 
     assert total > 0
 
 
+def test_recompute_objective_passes_strict_through_to_yolcu_loader(tmp_path, monkeypatch):
+    # M5d (docs/decisions.md 2026-07-10): recompute_objective previously
+    # hardcoded load_yolcu_verisi's default strict=True -- would raise
+    # SchemaError on full data's 3 known missing-dest rows (VARSAYIM-2).
+    # Never caught before because no prior full-data run reached this code
+    # path (all ended watchdog_killed first). strict must now be a real
+    # pass-through parameter.
+    import src.validate.independent_validator as validator_mod
+
+    real_load = validator_mod.load_yolcu_verisi
+    calls = []
+
+    def fake_load(path, strict=True):
+        calls.append(strict)
+        return real_load(path, strict=strict)
+    monkeypatch.setattr(validator_mod, "load_yolcu_verisi", fake_load)
+
+    data = {
+        "objective_value": 500.0,
+        "selected_connections": [
+            {"od": "ZZA-ZZB", "flno1": 9101, "flno2": 9112, "gun": 1, "gap_min": 60},
+        ],
+        "adjusted_flight_times": [
+            {"role": "IB", "flno": 9101, "gun": 1, "time_min": 840},
+            {"role": "OB", "flno": 9112, "gun": 1, "time_min": 900},
+        ],
+        "ranking_results": [],
+        "solver_metrics": {"status": "optimal", "solve_time_sec": 0.1},
+    }
+    output_path = tmp_path / "output.json"
+    output_path.write_text(json.dumps(data))
+
+    recompute_objective(
+        output_path, FIXDIR / "synthetic_od_table.xlsx",
+        FIXDIR / "synthetic_yolcu_verisi.xlsx", FIXDIR / "synthetic_change_ranking_input.xlsx",
+        L=L, U=U, strict=False,
+    )
+    assert calls == [False]
+
+    calls.clear()
+    recompute_objective(
+        output_path, FIXDIR / "synthetic_od_table.xlsx",
+        FIXDIR / "synthetic_yolcu_verisi.xlsx", FIXDIR / "synthetic_change_ranking_input.xlsx",
+        L=L, U=U,
+    )
+    assert calls == [True], "default must stay strict=True -- no behavior change for existing callers"
+
+
 def test_finalize_reported_objective_overwrites_with_recompute_value(tmp_path):
     # M5c §2: the OFFICIAL reported objective_value must be the
     # independently-recomputed one, never the solver's raw claim --

@@ -165,7 +165,7 @@ def main():
         if validation.is_valid:
             print("[greedy] SUCCESS -- zero violations, feasibility witness found", flush=True)
             recompute_total, _ = recompute_objective(
-                out_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U,
+                out_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U, strict=False,
                 breakdown_path=out_path.with_suffix(".objective_breakdown.json"),
             )
             print(f"[greedy] reward_objective_at_witness={recompute_total}", flush=True)

@@ -560,7 +560,7 @@ def validate_output(
 
 def recompute_objective(
     output_path: Path, od_table_path: Path, yolcu_path: Path, ranking_path: Path,
-    L: int, U: int, breakdown_path: Path = None,
+    L: int, U: int, breakdown_path: Path = None, strict: bool = True,
 ):
     """Doğruluk borcu: CLI'ın raporladığı objective_value'yu, output.json'un
     selected_connections + adjusted_flight_times alanlarından ve HAM veriden
@@ -573,11 +573,19 @@ def recompute_objective(
     b_od per-(o,d) pazar sabiti main.py'nin KENDİ davranışıyla TUTARLI
     hesaplanır: main.py candidates'ı gün-sıralı üretir ve b_od'yi İLK
     karşılaşılan gün için hesaplar (bkz. main.py rival_data/b_od_data döngüsü)
-    -- burada da aynı tutarlılık için EN KÜÇÜK gun değeri kullanılır."""
+    -- burada da aynı tutarlılık için EN KÜÇÜK gun değeri kullanılır.
+
+    `strict` (M5d, docs/decisions.md 2026-07-10): VARSAYIM-2'nin full-data
+    3-satır eksik-dest sorunuyla AYNI parametre, `load_yolcu_verisi`'ye
+    doğrudan geçiyor -- bu fonksiyon önceki hiçbir full-data koşusunda
+    GERÇEKTEN çağrılmamıştı (hepsi watchdog_killed olarak bitti, recompute
+    dalına hiç girilmedi), bu yüzden default=True'nun full-data'da
+    SchemaError fırlatacağı fark edilmemişti; ilk gerçek full-data
+    çağrısında (derive_warm_start.py) bulundu."""
     data = json.loads(Path(output_path).read_text())
     od_table = load_od_table(od_table_path)
     tk = od_table[od_table.cr1 == "TK"]
-    yolcu = load_yolcu_verisi(yolcu_path)
+    yolcu = load_yolcu_verisi(yolcu_path, strict=strict)
     rho = {(r.orig, r.dest): r.rho for r in yolcu.itertuples()}
     ranking_table = load_change_ranking(ranking_path)
     weight_lookup = {(row.n, row.b, row.r): row.weight for row in ranking_table.itertuples()}

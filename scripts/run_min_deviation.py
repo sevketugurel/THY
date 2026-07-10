@@ -151,7 +151,7 @@ def main():
     if result.status in ("optimal", "time_limit") and result.objective_value is not None:
         write_output(output_path, result, k_od_sources=k_od_sources)
         recompute_total, _ = recompute_objective(
-            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U,
+            output_path, FULL_OD, FULL_YV, FULL_CR, L=L, U=U, strict=False,
             breakdown_path=output_path.with_suffix(".objective_breakdown.json"),
         )
         # NOTE: this recompute is the REWARD objective's truth (connection +
