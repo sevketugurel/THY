@@ -78,6 +78,28 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   log akışı, HiGHS log parse, wall-clock bütçe koruması), çıktı şemasına
   `k_od_sources[]`, `docs/report_outline.md`/`organizer_questions.md`/`output_format.md`.
   190+ test yeşil (127 unit + 63 solve + yeni watchdog/parse testleri).
+- **M5c sürüyor — M5 kapanışı ASKIDA** (kullanıcı: "M5'i 'kapalı' değil
+  'yarım' ilan et", VARSAYIM-12 organizatöre gitmeden bu teşhis turu
+  bitecek). LP anatomisi (`docs/lp_anatomy.md`): kök LP/tavan oranı %65
+  (aşırı gevşek değil), ama F (kova/kapasite) TEK BAŞINA satırların
+  %53.7'si (405,982/756,174, per-reachable-bucket Big-M) ve w/x en
+  kararsız ikili (LP'de %50.3/%44.5 fractional) — iki AYRI tamamlayıcı
+  sıkılaştırma hedefi. §0 D-folding uygulandı (beat değişkeni -%35, satır
+  -%4.4, LP/tavan oranı DEĞİŞMEDİ — F/w-x'e dokunmadı, beklenen). §1
+  K-subset merdiveni YAPISAL OLARAK ETKİSİZ bulundu (K=50'de 0/13273 aday
+  tam donuyor, aday üretimi leg-bazlı değil market-bazlı cross-product,
+  bacak başına ortalama 4.4 market) — emekliye ayrıldı (config'te
+  `step2_k_schedule` default kapalı, kod silinmedi), VARSAYIM-12
+  güncellendi. §5 Faz-1: reward yerine min-sapma amacıyla (Σ|t-baseline|,
+  `src/model/deviation_objective.py`) full-data denendi — dual bound çok
+  daha hızlı/küçük ölçekte yakınsadı (142→4219.48) ama 1800s uzatmada
+  (DAL P1-B tek hakkı) dahi 800s+ hiç B&B düğümü/incumbent üretmeden
+  durdu → **DAL P1-C (zaman-aşımı, sonuçsuz)**: amaç fonksiyonu sorunu
+  DEĞİL, doğrulandı. Sıradaki adım (kullanıcı onaylı sıra): Gurobi DEĞİL,
+  önce F'nin satır patlamasını azaltan bir ön-filtre + w/x fractionality
+  sıkılaştırması (lp_anatomy'nin "iki ayrı hedef"i). Ayrıntı:
+  `docs/decisions.md` (kronolojik) + `docs/lp_anatomy.md` (karşılaştırma
+  tablosu).
 
 ## Kilit Kararlar
 
