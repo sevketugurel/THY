@@ -86,3 +86,36 @@ def test_integer_boundary_x_zero_reachable_at_gap_just_below_l():
     result = _build_and_solve([c], sense=pyo.minimize, weight_x=1)
     assert result.status == "optimal"
     assert result.selected[c] == 0
+
+
+def test_x_is_fixed_to_one_for_a_forced_legal_candidate():
+    # M5c fold (docs/lp_anatomy.md §1): a candidate whose gap is a single
+    # POINT (gap_lo==gap_hi -- adjustable_set='none' globally, or a K-subset
+    # Rfix-frozen leg) has a data-determined x value: B's own "gap in
+    # [L,U] => x=1 mandatory" rule applies whether gap is a free variable or
+    # a known constant. Fixing x[i] lets every downstream family that
+    # references m.x[i] (E1/E2/D's folded beat, F's capacity sums) see a
+    # constant through Pyomo/HiGHS presolve, no per-family rewrite needed.
+    c = _fixed_candidate(gap=100)  # legal, in [60,300]
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c])
+    add_b_constraints(model, [c], L=L, U=U)
+    assert model.x[0].fixed
+    assert pyo.value(model.x[0]) == 1
+
+
+def test_x_is_fixed_to_zero_for_a_forced_illegal_candidate():
+    c = _fixed_candidate(gap=400)  # illegal, > U
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c])
+    add_b_constraints(model, [c], L=L, U=U)
+    assert model.x[0].fixed
+    assert pyo.value(model.x[0]) == 0
+
+
+def test_x_stays_free_for_a_genuinely_adjustable_candidate():
+    c = _straddling_candidate()  # gap_lo=45 != gap_hi=65 -- real window
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c])
+    add_b_constraints(model, [c], L=L, U=U)
+    assert not model.x[0].fixed

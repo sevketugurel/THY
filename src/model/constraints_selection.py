@@ -63,6 +63,21 @@ def add_b_constraints(model, candidates, L: int, U: int):
         return m.gap[i] == m.t_dep[c.r2_id] - m.t_arr[c.r1_id]
     model.gap_definition = pyo.Constraint(model.CANDIDATES, rule=gap_def_rule)
 
+    # M5c fold (docs/lp_anatomy.md §1): a candidate whose gap is a single
+    # POINT (gap_lo==gap_hi -- adjustable_set='none' globally, or a K-subset
+    # Rfix-frozen leg) has a data-determined x value: B's own "gap in [L,U]
+    # => x=1 mandatory" rule applies whether gap is a free variable or a
+    # known constant. Fixing x[i] (and gap[i], already forced via
+    # gap_definition + t_arr/t_dep's own .fix()) lets EVERY downstream
+    # family that references m.x[i] (D's folded beat, E1/E2's sums, F's
+    # capacity) see a constant through Pyomo/HiGHS presolve -- no
+    # per-family rewrite needed for the row-count/speed side of this.
+    for i, c in enumerate(candidates):
+        if c.gap_lo == c.gap_hi:
+            forced = 1 if L <= c.gap_lo <= U else 0
+            model.x[i].fix(forced)
+            model.gap[i].fix(c.gap_lo)
+
     big_ms = {}
     for i, c in enumerate(candidates):
         ms = derive_b_big_ms(c, L, U)
