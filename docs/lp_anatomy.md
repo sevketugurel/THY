@@ -222,3 +222,31 @@ OLARAK kalıyor (x hiç dokunulmadı, w'nin kalan gerçek kısmı da hâlâ
 yüksek), fold yalnızca MIP boyutunu küçültüyor. Sıradaki ölçüm: bu iki
 değişikliğin (F+E2 fold) BİRLİKTE reward-amaçlı full-data MIP'i kök
 düğümden çıkarıp çıkaramadığı.
+
+## F + E2 fold BİRLİKTE de root'u açmadı — sıkılaştırma turu TÜKENDİ (2026-07-10)
+
+Aynı 600s+120s bekçi bütçesiyle full-data step1 reward-amaçlı ÜÇÜNCÜ kez
+koşuldu (F fix + E2 fold BİRLİKTE):
+
+| Metrik | F fix ÖNCESİ | F fix TEK BAŞINA | F + E2 fold BİRLİKTE |
+|---|---|---|---|
+| Presolve sonrası satır | ~604,925 | 220,239 | 220,187 (neredeyse aynı) |
+| Dual bound yörüngesi (639-659s'de) | 5.53M→4.90M | 5.13M→4.19M | **5.13M→4.20M (F fix'ten AYIRT EDİLEMEZ)** |
+| Nodes (B&B düğümü) | 0 | 0 | **0 (YİNE KÖK'TE TAKILI)** |
+| 720s sonunda incumbent | Yok | Yok | **Yok** |
+
+**Sonuç**: E2 fold'un dual bound yörüngesine ÖLÇÜLEBİLİR bir katkısı YOK —
+F fix'in tek başına ürettiği eğriyle pratik olarak ÖZDEŞ. Bu, LP-seviyesi
+ölçümün (w fractionality %'sinin neredeyse değişmemesi) öngördüğü sonuç:
+fold binary SAYISINI azalttı ama LP'nin kendi gevşekliğini iyileştirmedi,
+ve HiGHS'in kök-düğüm cut-üretimi asıl LP gevşekliğine (x/w'nin GERÇEK
+kalan kısmının hâlâ ~%44-50 fractional olması) tepki veriyor, ham binary
+SAYISINA değil.
+
+**DAL P1-C branch 3'ün sıkılaştırma turu artık TÜKENDİ**: kullanıcının
+kendi eşiği ("bu sıkılaştırma turu da kök düğümü açamazsa Gurobi
+kartını... aynı modeli iki solver'da koşan tek karşılaştırma tablosuyla")
+karşılandı — hem öncelik #1 (F, satır hacmi) hem öncelik #2 (E2 fold,
+binary sayısı) uygulandı, İKİSİ DE tek başına ve BİRLİKTE root-düğümü
+açmaya yetmedi. Sıradaki karar kullanıcıya soruluyor (Gurobi kurulumu bir
+bağımlılık/lisans kararı, otonom ilerlenmez).
