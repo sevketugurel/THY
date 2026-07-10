@@ -11,11 +11,12 @@ bazında), Sum_b z=1 KOŞULSUZ.
 z'nin binary sayısını patlatmamak için (M5'te ~5.471 ayarlanabilir örnek x
 144 kova/gün = ~788K binary olurdu) yalnızca PENCERE-ULAŞILABİLİR kovalar
 (t'nin kendi [lo,hi] Var bounds'unun kesiştiği kovalar) için z tanımlanır --
-`derive_window_reachable_buckets`. Bucket-time bağlama, B/D'yle aynı
-Big-M reifikasyon deseni (candidate-bazlı, global sabit değil):
+`derive_window_reachable_buckets`. Bucket-time bağlama (M5c row-explosion
+fix, `docs/lp_anatomy.md` öncelik #1): kovalar ARDIŞIK/AYRIK bir bölme
+olduğundan t, bijective bir eşitlikle tek satırda çözülür (Big-M YOK):
 
-    t >= bucket_lo(b) - M_lo(1-z[r,b])
-    t <= bucket_hi(b) + M_hi(1-z[r,b])
+    t = bucket_size*b*z[r,b] (toplam, yalnızca seçilen b hayatta kalır) + offset[r]
+    offset[r] in [0, bucket_size-1]
     Sum_b z[r,b] = 1
 
 Kapasite (ayrı departure/arrival aileleri, ayrı kapasiteler):
@@ -149,3 +150,19 @@ def test_f_departure_and_arrival_capacities_are_independent():
     # competition despite numerically identical bucket index.
     assert pyo.value(model.t_arr["IB", 1, 1]) == pytest.approx(95.0)
     assert pyo.value(model.t_dep["OB", 2, 1]) == pytest.approx(95.0)
+
+
+def test_f_bucket_linking_is_one_equality_per_instance_not_two_per_bucket():
+    # M5c row-explosion fix (docs/lp_anatomy.md öncelik #1): buckets partition
+    # the window CONTIGUOUSLY, so t decomposes bijectively as
+    # t = bucket_start(b)*z[b] + offset, offset in [0, bucket_size-1] --
+    # exactly one z[b] is 1 (sum-to-1), so this single equality pins t into
+    # that bucket's canonical range with NO Big-M slack at all. Replaces the
+    # old per-bucket lower/upper Big-M pair (~2*37=74 rows for a wide
+    # window) with ONE row per instance -- row count must scale with
+    # N_INSTANCES, not N_INSTANCES*N_BUCKETS.
+    c = _dep_candidate(1, dep_lo=500 - 180, dep_hi=500 + 180)
+    model = _build([c])
+    assert not hasattr(model, "f_dep_lower")
+    assert not hasattr(model, "f_dep_upper")
+    assert len(model.f_dep_decompose) == 1

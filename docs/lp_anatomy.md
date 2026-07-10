@@ -104,6 +104,40 @@ LP GEVŞEKLİĞİ değil, SAF SATIR HACMİ (cut üretimi yavaşlatıyor).
 sıkılaştırması LP KALİTESİNİ (ve dolayısıyla dolaylı olarak hızı) hedefliyor.
 İkisi birden denenecek, fixture'da 668.75 korunarak.
 
+## F satır-patlaması FİİLEN çözüldü (2026-07-10, DAL P1-C branch 3, öncelik #1)
+
+`add_f_constraints` (`src/model/constraints_capacity.py`) per-bucket
+Big-M çiftini (kova başına lower+upper, örnek başına ~2×37≈74 satır) TEK
+bir bijective eşitlikle değiştirdi: kovalar $t$ ekseninde ARDIŞIK/AYRIK bir
+bölme olduğundan $t_r=\sum_b b\Delta z_{r,b}+o_r$ ($o_r\in[0,\Delta-1]$ yeni
+offset değişkeni, $\sum_b z_{r,b}=1$ zaten var) — Big-M SIFIRLANDI, satır
+sayısı örnek başına 1'e düştü. Fixture'da 668.75 korunur (`main.py
+--fixture` → `objective=668.75 valid=True`), 140 unit + 80 solve testi
+yeşil (6 F testi, yeni bir "row count scales with instances not
+instances×buckets" testi dahil, red→green kanıtlı).
+
+| Metrik | Öncesi (§0 D-fold sonrası) | Sonrası (F eşitlik-formülasyonu) |
+|---|---|---|
+| Toplam kısıt satırı | 722,947 | **329,842 (-%54.4)** |
+| F satırları (dep+arr lower/upper/decompose) | 405,982 | **~12,900 (-%96.8)** |
+| Model kurulum süresi | 35.6s | 26.2s |
+| LP çözüm süresi | 194.9s | **115.1s (-%41)** |
+| LP amaç değeri | 5,253,749.43 | 5,253,749.43 (DEĞİŞMEDİ — eşdeğerlik kanıtı) |
+| LP/tavan oranı | %65.01 | %65.01 (DEĞİŞMEDİ, beklenen) |
+| w fractionality | %50.3 | %49.82 (~aynı, F w/x'e dokunmuyor — beklenen) |
+| x fractionality | %44.5 | %44.41 (~aynı) |
+| z_dep/z_arr fractionality | %8.2 / %6.1 | %4.34 / %4.57 (küçük yan-iyileşme) |
+
+**Yorum**: LP değeri ve LP/tavan oranının birebir DEĞİŞMEMESİ, yeni
+formülasyonun eski Big-M ile TAM AYNI fizibilite kümesini ürettiğinin
+(sadece daha az satırla) doğrudan kanıtı — bir yaklaşıklama değil, saf
+satır-azaltımı. LP çözüm süresi %41 iyileşti (satır sayısı %54.4 azaldı,
+ama F'nin z_dep/z_arr'ı zaten göreli sıkıydı — kazanç ORANTILI değil ama
+YÖNÜ doğru). Full step1'in kök-düğüm cut davranışını (MIP, LP değil) bu
+formülasyonla YENİDEN ölçmek sıradaki adım; w/x fractionality (öncelik
+#2) HENÜZ denenmedi — ikisi birlikte kök-düğüm darboğazını çözmeye yeter
+mi, yoksa üçüncü bir MIP-seviyesi deneme mi gerekiyor, ölçülecek.
+
 ## Amaç fonksiyonu karşılaştırması: reward vs min-sapma (2026-07-10, M5c §5 Faz-1)
 
 §0/§1 (D-folding, x-fix, E1/E2 exempt+log) sonrası full-data step1'i HEM

@@ -441,13 +441,23 @@ kesiştiği TÜM $k$'lar, GÜNÜN TÜM kovaları (144, $\Delta=10$) DEĞİL — 
 **Doğruluk argümanı**: her örnek x_\pi'den (bağlantı sunuluyor mu) bağımsız
 olarak HER ZAMAN hub'da fiziksel bir kovaya denk gelir — bu yüzden $\sum_b
 z_{r,b}=1$ KOŞULSUZ (D/E1/E2 gibi x_\pi'ye bağlı değil, F ARR/DEP_INSTANCES
-üzerinde çalışır, CANDIDATES üzerinde değil). Kova-zaman bağlama, B/D'yle
-AYNI candidate-bazlı Big-M reifikasyon deseni:
+üzerinde çalışır, CANDIDATES üzerinde değil). Kova-zaman bağlama (M5c
+row-explosion fix, `docs/lp_anatomy.md` öncelik #1): kovalar $t$ ekseninde
+ARDIŞIK/AYRIK bir bölme olduğundan, $t_r$ Big-M'SİZ, tek bir eşitlikle
+bijective olarak çözülür:
 
-$$b\Delta - M^{lo}_{r,b}(1-z_{r,b}) \le t_r \le (b+1)\Delta-1+M^{hi}_{r,b}(1-z_{r,b})$$
+$$t_r = \sum_b b\Delta\, z_{r,b} + o_r, \qquad o_r\in[0,\Delta-1]\ \text{(yeni tamsayı değişken, offset)}$$
 
-$M^{lo}_{r,b}=\max(0,b\Delta-t_{r,lo})$, $M^{hi}_{r,b}=\max(0,t_{r,hi}-((b+1)\Delta-1))$
-— her ikisi de $r$'nin KENDİ $[t_{lo},t_{hi}]$ Var bounds'undan türetilir.
+$\sum_b z_{r,b}=1$ sayesinde toplamda yalnızca SEÇİLEN $b$'nin terimi
+hayatta kalır; $t_r$'nin kendi $[t_{lo},t_{hi}]$ Var bound'u zaten ayrıca
+uygulandığından, bu eşitlik $t_r$'yi seçilen kovanın $[t_{lo},t_{hi}]$ ile
+kesişen kısmına pinler — eski per-bucket Big-M ÇİFTİNİN (kova başına
+lower+upper, örnek başına ~2×37≈74 satır) ürettiğiyle BİREBİR aynı fizibilite
+kümesi, ama Big-M GEREKMİYOR ve satır sayısı örnek başına 1'e düşüyor.
+Full-data ölçümü (`docs/lp_anatomy.md`): F satırları 405,982→~12,900
+(-%96.8), toplam model satırı 722,947→329,842 (-%54.4), LP çözüm süresi
+194.9s→115.1s, LP objective/LP-tavan oranı DEĞİŞMEDİ (%65.01, eşdeğerliği
+doğruluyor).
 
 **Kapasite** (ayrı departure/arrival aileleri, ayrı taban kapasiteler
 10/15):

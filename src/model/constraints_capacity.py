@@ -9,6 +9,21 @@ tanımlanır (t'nin kendi [lo,hi] Var bounds'unun kesiştiği kovalar) --
 GÜNÜN TÜM kovaları (144, bucket_size=10) DEĞİL, M5 ölçek performansı için
 kritik bir budama (kullanıcının kendi tahmini: ~19/uçuş).
 
+Bucket-time bağlama (M5c row-explosion fix, `docs/lp_anatomy.md` öncelik
+#1, ultrathink): kovalar t'nin ekseninde ARDIŞIK ve AYRIK bir bölme
+oluşturduğundan (kova b == [b*bucket_size, (b+1)*bucket_size)), t HER ZAMAN
+t = bucket_start(b)*z[r,b] + offset[r] şeklinde tek-anlamlı (bijective)
+çözülür -- offset[r] in [0, bucket_size-1] YENİ bir tamsayı değişken, z
+Sum_b z=1 (zaten var) sayesinde toplamda yalnızca SEÇİLEN b'nin terimi
+hayatta kalır. Bu TEK eşitlik, eski per-bucket Big-M ÇİFTİNİN (~2*37 satır,
+kova başına biri lower biri upper) yerini alır -- hem Big-M SIFIRLANIR
+(gevşeklik yok, LP'yi de sıkılaştırır) hem satır sayısı N_INSTANCES*N_BUCKETS
+yerine N_INSTANCES'a düşer. Doğruluk: t'nin kendi [lo,hi] Var bound'u zaten
+solver tarafından ayrıca uygulanıyor: seçilen b, t'nin [lo,hi] içindeki
+gerçek konumuna göre offset ile tam eşleşir (eski Big-M'in b'nin uç
+kovalarında zaten REDÜNDAN ürettiği davranışla birebir aynı sonuç, bkz.
+`tests/solve/test_m4_constraints_f.py`).
+
 Kapsam-dışı (modelin hiç değişkeni olmayan) TK bacakları, kendi HAM
 baseline zamanlarında SABİT işgal ettikleri kabul edilir (VARSAYIM,
 ASSUMPTIONS.md) ve kapasiteden düşülür (`compute_residual_capacity`) --
@@ -103,31 +118,24 @@ def add_f_constraints(model, bucket_size_min: int, capacity_departure: int, capa
         return sum(m.z_arr[role, flno, gun, b] for b in arr_buckets[role, flno, gun]) == 1
     model.f_arr_sum = pyo.Constraint(model.ARR_INSTANCES, rule=arr_sum_rule)
 
-    def dep_lower_rule(m, role, flno, gun, b):
-        lo = m.t_dep[role, flno, gun].lb
-        m_lo = max(0, b * bucket_size_min - lo)
-        return m.t_dep[role, flno, gun] >= b * bucket_size_min - m_lo * (1 - m.z_dep[role, flno, gun, b])
-    model.f_dep_lower = pyo.Constraint(model.DEP_Z_INDEX, rule=dep_lower_rule)
+    model.dep_offset = pyo.Var(model.DEP_INSTANCES, domain=pyo.NonNegativeIntegers,
+                                bounds=(0, bucket_size_min - 1))
+    model.arr_offset = pyo.Var(model.ARR_INSTANCES, domain=pyo.NonNegativeIntegers,
+                                bounds=(0, bucket_size_min - 1))
 
-    def dep_upper_rule(m, role, flno, gun, b):
-        hi = m.t_dep[role, flno, gun].ub
-        bucket_hi = (b + 1) * bucket_size_min - 1
-        m_hi = max(0, hi - bucket_hi)
-        return m.t_dep[role, flno, gun] <= bucket_hi + m_hi * (1 - m.z_dep[role, flno, gun, b])
-    model.f_dep_upper = pyo.Constraint(model.DEP_Z_INDEX, rule=dep_upper_rule)
+    def dep_decompose_rule(m, role, flno, gun):
+        return m.t_dep[role, flno, gun] == (
+            sum(b * bucket_size_min * m.z_dep[role, flno, gun, b] for b in dep_buckets[role, flno, gun])
+            + m.dep_offset[role, flno, gun]
+        )
+    model.f_dep_decompose = pyo.Constraint(model.DEP_INSTANCES, rule=dep_decompose_rule)
 
-    def arr_lower_rule(m, role, flno, gun, b):
-        lo = m.t_arr[role, flno, gun].lb
-        m_lo = max(0, b * bucket_size_min - lo)
-        return m.t_arr[role, flno, gun] >= b * bucket_size_min - m_lo * (1 - m.z_arr[role, flno, gun, b])
-    model.f_arr_lower = pyo.Constraint(model.ARR_Z_INDEX, rule=arr_lower_rule)
-
-    def arr_upper_rule(m, role, flno, gun, b):
-        hi = m.t_arr[role, flno, gun].ub
-        bucket_hi = (b + 1) * bucket_size_min - 1
-        m_hi = max(0, hi - bucket_hi)
-        return m.t_arr[role, flno, gun] <= bucket_hi + m_hi * (1 - m.z_arr[role, flno, gun, b])
-    model.f_arr_upper = pyo.Constraint(model.ARR_Z_INDEX, rule=arr_upper_rule)
+    def arr_decompose_rule(m, role, flno, gun):
+        return m.t_arr[role, flno, gun] == (
+            sum(b * bucket_size_min * m.z_arr[role, flno, gun, b] for b in arr_buckets[role, flno, gun])
+            + m.arr_offset[role, flno, gun]
+        )
+    model.f_arr_decompose = pyo.Constraint(model.ARR_INSTANCES, rule=arr_decompose_rule)
 
     dep_bucket_values = sorted(set(b for (_, _, _, b) in dep_index))
     arr_bucket_values = sorted(set(b for (_, _, _, b) in arr_index))
