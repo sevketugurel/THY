@@ -132,3 +132,49 @@ def build_model_m4(
     add_f_constraints(model, bucket_size_min, capacity_departure, capacity_arrival, residual_dep, residual_arr)
 
     return model
+
+
+def build_feasibility_model(
+    candidates: list[Candidate], journey_constants: dict, pairs_df, r_o_lookup: dict, tau: int, x_dev: int,
+    epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
+    capacity_departure: int, capacity_arrival: int, L: int = 60, U: int = 300,
+) -> pyo.ConcreteModel:
+    """M5c §3 (docs/decisions.md 2026-07-10, kullanıcı "Plan B" talebi):
+    reward'ı TAMAMEN dışarıda bırakan, yalnızca OPERASYONEL fizibiliteyi
+    (A/E1/E2/F/G + B'nin pencere-uygunluğu) kuran küçültülmüş model.
+
+    Ultrathink (tek paragraf, model.md'ye de işlenecek): C (monoton slot) ve
+    D (rakip yenme + rank_onehot) SADECE ödül fonksiyonunun sıralama
+    terimini hesaplamak için var -- hiçbiri t_arr/t_dep/x/gap üzerinde bir
+    kısıt KURMUYOR (C'nin `s` değişkenleri ve D'nin `beat`/`beaten`/
+    `rank_onehot` değişkenleri yalnızca BİRBİRLERİNE ve x_pi'ye bakan, x'i
+    GERİYE doğru kısıtlamayan yardımcı makine). Dolayısıyla (t,x,gap)
+    üzerindeki ortak fizibilite kümesi build_model_m4 ile TAMAMEN AYNI --
+    bu modelde bulunan HER feasible (t,x,gap) noktası tam modelde de
+    feasible'dır (C/D'nin kendi değişkenleri, x sabitken HER ZAMAN ayrıca
+    inşa edilebilir: s monoton/toplam kısıtı x'in TOPLAMINA göre her zaman
+    çözülebilir bir LP'dir, D'nin beat/rank_onehot'u candidate-bazlı Big-M
+    reifikasyonlarla x'e göre HER ZAMAN tutarlı bir atama kabul eder).
+    Yani bu bir gevşetme DEĞİL, reward-hesaplama makinesinin feasibility'ye
+    hiç katkısı olmayan kısmının ÇIKARILMASI -- warm-start/local-branching
+    tohumu olarak tam modele TAŞINABİLİR.
+    """
+    model = pyo.ConcreteModel()
+    model._candidates = candidates
+
+    add_flight_time_variables(model, candidates)
+    add_b_constraints(model, candidates, L=L, U=U)
+
+    out_of_scope_baselines = compute_out_of_scope_baselines(tk_rows, model, epoch_anchor)
+    add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau, out_of_scope_baselines)
+    add_g_constraints(model, candidates, epoch_anchor, x_dev)
+
+    add_e1_constraints(model, candidates, alpha)
+    add_e2_constraints(model, candidates, journey_constants, gamma)
+
+    residual_dep, residual_arr = compute_residual_capacity(
+        out_of_scope_baselines, bucket_size_min, capacity_departure, capacity_arrival,
+    )
+    add_f_constraints(model, bucket_size_min, capacity_departure, capacity_arrival, residual_dep, residual_arr)
+
+    return model

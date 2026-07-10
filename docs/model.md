@@ -502,3 +502,40 @@ adayın FARKLI kovalara zorlandığı (`capacity_departure=1` fixture'ı),
 kapsam-dışı bir uçuşun rezidüel kapasiteyi gerçekten düşürdüğü, ve
 departure/arrival ailelerinin birbirinden BAĞIMSIZ olduğu (aynı sayısal
 kova indeksini paylaşsalar bile rekabet etmiyorlar).
+
+### Salt-Fizibilite Modeli (M5c §3, `build_feasibility_model`)
+
+**Amaç**: `build_model_m4`'ün REWARD hesaplama makinesini (C + D) tamamen
+çıkaran, yalnızca A/B/E1/E2/F/G'yi kuran küçültülmüş bir model — full-data
+MIP'in kök-düğümde takılı kalması karşısında bir "Plan B" (docs/decisions.md
+2026-07-10): HiGHS'in kök-düğüm cut üretimini yavaşlatan hacmin büyük kısmı
+zaten F'den geliyordu (satır-patlaması fix'inden SONRA bile), ama reward'ın
+KENDİSİ (C'nin slot değişkenleri + D'nin beat/beaten/rank_onehot Big-M
+zinciri) ayrı bir yük katıyor — bu modelde HİÇBİRİ yok.
+
+**Ultrathink (tek paragraf doğruluk argümanı)**: C (monoton slot, `model.s`)
+ve D (rakip yenme + sıralama, `model.beat`/`beaten`/`rank_onehot`) SADECE
+ödül fonksiyonunun sıralama terimini hesaplamak için var — hiçbiri
+$t_{arr}/t_{dep}/x_\pi/gap_\pi$ üzerinde bir kısıt KURMUYOR (C'nin `s`
+değişkenleri ve D'nin Big-M reifikasyonları yalnızca BİRBİRLERİNE ve
+$x_\pi$'ye bakan, $x_\pi$'yi GERİYE doğru kısıtlamayan yardımcı makine —
+$x_\pi$ sabitken her ikisi de HER ZAMAN tutarlı bir atama kabul eder: `s`'in
+monoton/toplam kısıtı $\sum x_\pi$'ye göre her zaman çözülebilir bir LP'dir,
+D'nin candidate-bazlı Big-M reifikasyonları $x_\pi$'ye göre her zaman
+feasible bir beat/rank ataması bulur). Dolayısıyla $(t,x,gap)$ üzerindeki
+ortak fizibilite kümesi `build_model_m4` ile TAMAMEN AYNI — bu modelde
+bulunan HER feasible $(t,x,gap)$ noktası tam modelde de feasible'dır. Bu bir
+GEVŞETME değil, feasibility'ye hiç katkısı olmayan bir alt-sistemin
+ÇIKARILMASI — bulunan bir çözüm warm-start/local-branching tohumu olarak
+tam modele TAŞINABİLİR.
+
+**Kapsam**: `add_flight_time_variables` + `add_b_constraints` (B) +
+`add_a_constraints` (A) + `add_g_constraints` (G) + `add_e1_constraints`
+(E1) + `add_e2_constraints` (E2) + `add_f_constraints` (F, rezidüel
+kapasite dahil). Reward objective YOK — çağıran taraf bir amaç ekler
+(M5c'de `add_min_deviation_objective`, min-sapma feasibility amacı).
+
+**Test kapsamı** (`tests/solve/test_build_feasibility_model.py`): C/D'ye
+ait hiçbir bileşenin (`s`/`beat`/`beaten`/`rank_onehot`) oluşmadığı,
+A/B/E1/E2/F/G'nin tümünün mevcut olduğu, ve fixture'da min-sapma amacıyla
+gerçekten OPTIMAL bir çözüme ulaştığı doğrulanıyor.
