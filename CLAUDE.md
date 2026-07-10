@@ -118,6 +118,39 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   Gurobi kartını, aynı modeli iki solver'da koşan tek karşılaştırma
   tablosuyla") artık karşılandı — Gurobi kurulumu bir bağımlılık/lisans
   kararı olduğundan otonom ilerlenmedi, kullanıcıya soruldu.
+- **M5c KAPANDI (2026-07-10, tag: `m5c-diagnosis-closed`) — çözüm
+  bulunamadan, ÇOK-AÇILI teşhisle**. Gurobi'nin pip lisansı ~2000
+  satır/değişkenle SINIRLI olduğu doğrulandı (bizim model ~314K satır,
+  sığmıyor) — akademik lisans temin edilemedi, Gurobi kartı OYNANAMADI.
+  Kullanıcı redirect: "Seçenek 2 erken, önce fizibiliteyi kesin
+  cevaplıyoruz". Üç ek yön denendi: (1) `build_feasibility_model`
+  (yalnızca A/B/E1/E2/F/G, C/D'nin reward-hesaplama makinesi TAMAMEN
+  çıkarıldı — ultrathink: C/D hiçbir t/x/gap kısıtı KURMUYOR, salt-fizibilite
+  modelinde feasible olan HER nokta tam modelde de feasible) full-data'da
+  min-sapma amacıyla denendi — satır 756174→205799'a düşse BİLE AYNI
+  "hızlı yakınsa sonra tam sessizlik" semptomu (214s'de donuk). (2)
+  `mip_detect_symmetry=False` denendi — dual bound yörüngesi SATIR SATIR
+  ÖZDEŞ kaldı, symmetry-detection hipotezi REDDEDİLDİ. Artık BEŞ bağımsız
+  model/amaç/ayar kombinasyonu AYNI semptomu gösteriyor. (3) Statik E1/E2
+  fizibilite sertifikaları (`scripts/feasibility_certificates.py`, saf
+  pandas, MIP yok — B'nin reifikasyonundan forced_on/forced_off/undetermined
+  türetilip üç necessary-condition testi kuruldu) **ÜÇÜ DE TEMİZ (0/0/0)**
+  — E1/E2 provably infeasible DEĞİL. Saf-Python greedy repair
+  (`scripts/greedy_feasibility_witness.py`, `validate_output`'u oracle
+  kullanarak baseline'dan onarım) denendi — iter=1'de 2137 ihlal
+  (baseline_autopsy'yle tutarlı), TEK toplu onarım turu SONRASINDA 2380'e
+  KÖTÜLEŞTİ (koordinesiz onarımlar paylaşılan bacaklar üzerinden birbirini
+  bozuyor — K-subset'in leg-sharing bulgusuyla AYNI yapısal gerçek, bu bir
+  infeasibility kanıtı DEĞİL, heuristiğin kabalığı). Kullanıcı kararı:
+  mevcut kanıtla kapat. ASSUMPTIONS.md VARSAYIM-12 GÜNCELLEME 3,
+  organizer_questions.md madde 12 yeniden yazıldı, report_outline.md'ye
+  8 satırlık "çözüm stratejisi yolculuğu" karşılaştırma tablosu eklendi.
+  140 unit + 87 solve yeşil. **Full-data'da doğrulanmış objective_value
+  HÂLÂ YOK** — ama artık NEDEN bulunamadığına dair beş bağımsız
+  model/amaç/ayar denemesi + statik kanıt + kurucu-tanık denemesinden
+  gelen çok-açılı, tutarlı bir kanıt zinciri var (tek bir kısıt hatası
+  değil, HiGHS'in bu problem sınıfındaki kesme-düzlemi davranışının
+  kendine özgü bir sınırı gibi görünüyor).
 
 ## Kilit Kararlar
 
