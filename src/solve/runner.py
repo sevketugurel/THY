@@ -69,7 +69,7 @@ class SolveResult:
 def solve(
     model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: int,
     mip_gap: float = None, log_file=None, mip_heuristic_effort: float = None,
-    extra_highs_options: dict = None,
+    extra_highs_options: dict = None, warmstart: bool = False,
 ) -> SolveResult:
     pyomo_solver_name = _SOLVER_NAMES[solver]
     opt = pyo.SolverFactory(pyomo_solver_name)
@@ -106,8 +106,15 @@ def solve(
     # load -- letting the default (True) crash with a RuntimeError instead of
     # a clean TerminationCondition would make it impossible for callers (and
     # the M4/F/G solve tests) to assert on result.status=="infeasible".
+    #
+    # warmstart (M5d, docs/decisions.md 2026-07-10): appsi_highs's legacy
+    # solve() interface accepts warmstart=True, which triggers its own
+    # _warm_start() -- reads every Var's CURRENT .value (caller must set
+    # them before calling solve()) and passes them to HiGHS via
+    # highspy.HighsSolution/setSolution as a MIP start. A no-op if no
+    # variable has a value set.
     t0 = time.time()
-    result = opt.solve(model, load_solutions=False)
+    result = opt.solve(model, load_solutions=False, warmstart=warmstart)
     solve_time_sec = time.time() - t0
 
     term = result.solver.termination_condition
