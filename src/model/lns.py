@@ -58,12 +58,65 @@ def compute_pair_slack(candidates, journey_constants: dict, arr_times: dict, dep
     return result
 
 
-def select_worst_pairs(pair_slack: dict, m: int) -> list:
+def compute_gamma_infeasible_pairs(candidates, journey_constants: dict, L: int, U: int, gamma: int) -> set:
+    """Static (schedule-independent) set of (o,d,gun) pairs where E2 can
+    NEVER be satisfied regardless of which candidate is chosen or how gap is
+    adjusted within its own window -- i.e. the BEST-CASE achievable Jbest
+    ranges for the two directions are still more than gamma apart. Depends
+    only on candidates' own gap_lo/gap_hi and journey_constants, so it's
+    computed ONCE per run, not per iteration.
+
+    Found empirically (docs/decisions.md 2026-07-11): selecting "worst
+    slack" pairs for LNS disproportionately picks these -- the underlying
+    journey_constant ASYMMETRY between directions (VARSAYIM-12 GÜNCELLEME 1:
+    ~78%% of real E2 violations) makes them unfixable by construction, and
+    including even one in a free set stalls the whole sub-solve (HiGHS never
+    stops trying to satisfy something that provably cannot be satisfied)."""
+    groups = defaultdict(list)
+    for i, c in enumerate(candidates):
+        groups[(c.o, c.d, c.gun)].append(i)
+
+    def best_case_j_range(direction):
+        o, d, _ = direction
+        los, his = [], []
+        for i in groups.get(direction, []):
+            c = candidates[i]
+            lo, hi = max(c.gap_lo, L), min(c.gap_hi, U)
+            if lo <= hi:
+                los.append(journey_constants[(o, d)] + lo)
+                his.append(journey_constants[(o, d)] + hi)
+        return (min(los), max(his)) if los else None
+
+    pairs, seen = [], set()
+    for (o, d, gun) in groups:
+        if (o, d, gun) in seen:
+            continue
+        if (d, o, gun) in groups:
+            pairs.append((o, d, gun))
+            seen.add((o, d, gun))
+            seen.add((d, o, gun))
+
+    infeasible = set()
+    for (o, d, gun) in pairs:
+        r_fwd = best_case_j_range((o, d, gun))
+        r_bwd = best_case_j_range((d, o, gun))
+        if r_fwd is None or r_bwd is None:
+            continue  # neither side can ever be offered -- E2 is non-binding, not infeasible
+        best_gap = max(0.0, r_fwd[0] - r_bwd[1], r_bwd[0] - r_fwd[1])
+        if best_gap > gamma:
+            infeasible.add((o, d, gun))
+    return infeasible
+
+
+def select_worst_pairs(pair_slack: dict, m: int, exclude: set = frozenset()) -> list:
     """Top-m (o,d,gun) pairs by total slack, descending, ties broken by the
     pair tuple itself (determinism). Stops early once slack hits 0 -- freeing
-    an already-satisfied pair wastes budget without helping."""
+    an already-satisfied pair wastes budget without helping. `exclude` (e.g.
+    compute_gamma_infeasible_pairs' output) is skipped entirely -- freeing a
+    provably-unfixable pair's instances only wastes the free-instance budget
+    and stalls the solve for nothing."""
     ranked = sorted(pair_slack.items(), key=lambda kv: (-kv[1]["total"], kv[0]))
-    return [pair for pair, s in ranked if s["total"] > 0][:m]
+    return [pair for pair, s in ranked if s["total"] > 0 and pair not in exclude][:m]
 
 
 def free_instances_for_pairs(candidates, pairs: list) -> tuple:

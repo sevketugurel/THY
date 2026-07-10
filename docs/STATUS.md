@@ -37,12 +37,33 @@ birlikte tetiklendi, kullanıcıya soruldu.
 | 2026-07-10T18:49:48 | `derive_warm_start.py` | valid=False | ilk warm-start türetme denemesi |
 | 2026-07-10T19:09–20:38 (5 koşu) | `warm_start_elastic.py` | 3× `watchdog_killed`, 2× `time_limit` (obj=388889.16) | warm-start borusu proven (log-kanıtlı kabul), ama incumbent STRICT validator'dan geçmiyor (1879 ihlal) — Phase-2 seed, "ilk doğrulanmış değer" DEĞİL |
 
-## Sıradaki adım
+## Kullanıcı redirect'i (2026-07-11): kapanış yok, Fix-and-Optimize LNS
 
-Kullanıcıya soruldu (bu oturumda otonom ilerlenmedi): (a) çok daha büyük bir
-k (binlerce, ayak-izi analizinin gösterdiği ~4536'ya yakın) ile local-branching
-denemek — bu pratikte full-adjustable'a geri dönmek demek ve muhtemelen aynı
-sonucu verecek; (b) Gurobi/başka bir solver'ı yeniden değerlendirmek (pip
-lisansı ~2000 satır/değişkenle sınırlı, akademik lisans gerekiyor — M5c'de
-temin edilemediği için kartı oynanamamıştı); (c) M5d'yi de M5c gibi
-"doğrulanmış değer olmadan, çok-açılı kanıtla" kapatıp M6'ya geçmek.
+Yukarıdaki "Sıradaki adım" sorusu kullanıcıya soruldu; kullanıcı kapanışı
+reddetti ve ayrıntılı bir LNS (Large Neighborhood Search) protokolü verdi.
+Sonuç: **İLK GERÇEK slack azalması elde edildi** (ayrıntı: `docs/decisions.md`
+2026-07-11 girdisi):
+
+- `src/model/lns.py` + `scripts/run_lns.py`/`_lns_step_worker.py` yazıldı
+  (TDD, 262 test yeşil). Mekanik: referans noktadan (mevcut elastik
+  incumbent) en kötü m pair'i seç, o pair'lerin uçuş-instance'larını
+  serbest bırak, GERİ KALANINI GERÇEKTEN `.fix()`'le (Big-M göstergesi
+  DEĞİL), warm-start'la (`derive_and_set_warm_start`) yeniden çöz.
+- İlk smoke-test (epsilon=1e-6, filtre yok): AYNI eski semptom (`Nodes=0`,
+  gerçek slack hiç değişmedi).
+- Kök neden bulundu: worst-slack seçimi, 1214 E2-ihlalli pair'in yalnızca
+  19'unu oluşturan GERÇEKTEN düzeltilemez (journey_constant asimetrisi
+  Gamma'yı en-iyi-durumda bile aşıyor) pair'leri EN ÖNCE seçiyordu — bunlardan
+  biri bile serbest kümedeyse tüm alt-solve tıkanıyor. `compute_gamma_infeasible_pairs`
+  ile bunlar kalıcı olarak hariç tutuldu. Ayrıca epsilon=1e-6→0 (deviation
+  tie-breaker) kök-düğüm donmasına katkıda bulunuyormuş (nedeni tam
+  açıklanamadı, ampirik).
+- **Doğrulama testi (30 en-kötü E1-only pair, 182 serbest örnek, epsilon=0,
+  filtre uygulanmış): `status=optimal` (kesilmeden!), Σslack 68865.62→45455.37
+  — 23,410 puanlık kanıtlı azalma.** Kontrol (aynı ölçek ama filtresiz):
+  220s'de hâlâ tamamlanmadı — filtre zorunlu, tek başına epsilon=0 yetmiyor.
+
+## LNS İlerleme (M5d)
+
+Gerçek (tam-bütçeli) LNS koşusu bu bulgularla başlatıldı — ilerleme
+`runs/lns_progress.log`'da (gitignored) ve bu bölümde periyodik güncellenir.

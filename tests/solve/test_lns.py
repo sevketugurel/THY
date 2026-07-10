@@ -16,7 +16,10 @@ from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.model.build import build_core_feasibility_model, build_elastic_feasibility_model
 from src.model.constraints_elastic import add_elastic_feasibility_objective
-from src.model.lns import compute_pair_slack, fix_reference_except_free, free_instances_for_pairs, select_worst_pairs
+from src.model.lns import (
+    compute_gamma_infeasible_pairs, compute_pair_slack, fix_reference_except_free,
+    free_instances_for_pairs, select_worst_pairs,
+)
 from src.solve.runner import solve
 
 FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
@@ -128,6 +131,45 @@ def test_select_worst_pairs_orders_by_total_descending():
     assert select_worst_pairs(pair_slack, m=2) == [("C", "D", 1), ("G", "H", 1)]
     # zero-slack pairs never selected, even with a huge m.
     assert select_worst_pairs(pair_slack, m=10) == [("C", "D", 1), ("G", "H", 1), ("A", "B", 1)]
+
+
+def test_select_worst_pairs_skips_excluded():
+    pair_slack = {
+        ("A", "B", 1): {"e1": 1.0, "e2": 0.0, "total": 1.0},
+        ("C", "D", 1): {"e1": 5.0, "e2": 2.0, "total": 7.0},
+        ("G", "H", 1): {"e1": 0.0, "e2": 3.0, "total": 3.0},
+    }
+    # ("C","D",1) is the worst pair but is provably Gamma-infeasible --
+    # freeing its instances would only waste budget, must be skipped.
+    result = select_worst_pairs(pair_slack, m=2, exclude={("C", "D", 1)})
+    assert result == [("G", "H", 1), ("A", "B", 1)]
+
+
+# --- compute_gamma_infeasible_pairs ---
+
+def test_compute_gamma_infeasible_pairs_flags_asymmetric_journey_constants():
+    # fwd: journey_const=1275, only achievable gap range (clipped to [L,U])
+    # is [60,300] -> best-case J in [1335,1575]. bwd: journey_const=890,
+    # same clipped range -> best-case J in [950,1190]. Best-case gap
+    # 1335-1190=145 > Gamma=30 -- unfixable by ANY schedule choice (mirrors
+    # the real VCE-CUN/CUN-VCE example from docs/decisions.md 2026-07-11).
+    c_fwd = _candidate("ZZG", "ZZH", 201, 301, arr=0, dep=155)
+    c_bwd = _candidate("ZZH", "ZZG", 202, 302, arr=0, dep=65)
+    candidates = [c_fwd, c_bwd]
+    journey_constants = {("ZZG", "ZZH"): 1275.0, ("ZZH", "ZZG"): 890.0}
+    infeasible = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, GAMMA)
+    assert ("ZZG", "ZZH", 1) in infeasible
+
+
+def test_compute_gamma_infeasible_pairs_clean_when_ranges_overlap():
+    # Same journey_constants but close enough (both 1000) that gap windows
+    # can always bring Jbest within Gamma of each other.
+    c_fwd = _candidate("ZZG", "ZZH", 201, 301, arr=0, dep=155)
+    c_bwd = _candidate("ZZH", "ZZG", 202, 302, arr=0, dep=155)
+    candidates = [c_fwd, c_bwd]
+    journey_constants = {("ZZG", "ZZH"): 1000.0, ("ZZH", "ZZG"): 1000.0}
+    infeasible = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, GAMMA)
+    assert infeasible == set()
 
 
 # --- free_instances_for_pairs ---
