@@ -163,3 +163,32 @@ tıkanıyor (sıfır B&B düğümü, sıfır incumbent, saatlerce). **Bu, sorunu
 amaç fonksiyonu DEĞİL, kısıt seti + model BOYUTU olduğunu DOĞRULUYOR**
 (DAL P1-C, kullanıcı protokolü) — sıradaki adım Gurobi DEĞİL, F'nin satır
 patlaması ve E2/slot-binding sıkılaştırması (yukarıdaki "İki AYRI hedef").
+
+## F fix'i TEK BAŞINA root'u açmadı — reward amacıyla MIP re-ölçümü (2026-07-10)
+
+F satır-patlaması düzeltmesinden (§ yukarıdaki "F satır-patlaması FİİLEN
+çözüldü") SONRA, reward amacıyla (min-sapma DEĞİL, gerçek step1) AYNI
+600s+120s bekçi bütçesiyle full-data step1 yeniden koşuldu — soru: F fix'in
+TEK BAŞINA kök-düğümü açıp açmadığı.
+
+| Metrik | F fix ÖNCESİ (M5 kapanışı) | F fix SONRASI |
+|---|---|---|
+| Presolve sonrası satır | ~604,925 | **220,239 (-%63.6)** |
+| Dual bound (BestBound) yörüngesi | 5.53M→4.90M (660s'de) | **5.13M→4.19M (659s'de)** |
+| Dual bound düşüş HIZI | ~0.63M/660s | **~0.94M/659s (daha hızlı)** |
+| 659s'de hâlâ hareket ediyor mu | Evet (yavaş) | Evet (yavaş, benzer eğim) |
+| Nodes (B&B düğümü) | 0 (kök'te takılı) | **0 (KÖK'TE HÂLÂ TAKILI)** |
+| 720s sonunda incumbent | Yok (`watchdog_killed`) | Yok (`watchdog_killed`) |
+
+**Yorum**: F fix'i dual bound'un DAHA HIZLI ve DAHA DÜŞÜK (daha sıkı) bir
+değere yakınsamasını sağladı (presolve satırları da %63.6 azaldı) — bu
+ÖLÇÜLEBİLİR bir iyileşme ve F'nin doğru hedef olduğunu doğruluyor. AMA
+`Nodes=0` hâlâ değişmedi: HiGHS 720s boyunca hâlâ SADECE kök-düğüm
+cut-üretiminde, hiç dallanmaya (branching) geçemedi — **F TEK BAŞINA kök
+düğümü açmaya YETMEDİ**. Bu, lp_anatomy'nin baştaki "İki AYRI hedef"
+öngörüsünü doğruluyor (F HIZ için, w/x LP KALİTESİ için — ikisi
+TAMAMLAYICI, biri diğerini gereksiz kılmıyor). Sıradaki adım: öncelik #2
+(w/x fractionality sıkılaştırması) uygulanıp, İKİSİ BİRDEN bir kez daha
+ölçülecek — F fix'in kanıtladığı olumlu yönü (daha hızlı/sıkı dual bound)
+w/x'in LP kalitesi iyileştirmesiyle birleşince kök düğümün açılıp
+açılmayacağı asıl soru.
