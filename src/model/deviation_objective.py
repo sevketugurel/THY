@@ -16,17 +16,16 @@ def _baseline(lo, hi):
     return lo + (hi - lo) // 2
 
 
-def add_min_deviation_objective(model):
+def add_deviation_tracking(model):
     """Requires add_flight_time_variables to have already run (model.t_arr,
-    model.t_dep, model.ARR_INSTANCES, model.DEP_INSTANCES). Replaces
-    model.objective if one already exists (matches
-    add_ranking_reward_objective's del_component pattern). Already-Rfix
-    (lo==hi) instances naturally settle at zero deviation (t is already
-    fixed to baseline) -- no special-casing needed, just slightly wasted
-    (always-zero) variables for them."""
-    if hasattr(model, "objective"):
-        model.del_component(model.objective)
-
+    model.t_dep, model.ARR_INSTANCES, model.DEP_INSTANCES). Builds the
+    deviation-tracking vars/links/`model.total_deviation` expression WITHOUT
+    touching model.objective -- split out (M5d, docs/decisions.md
+    2026-07-10) so the elastic feasibility objective can reuse
+    total_deviation as a tie-breaking term alongside slack, not just as a
+    standalone objective. Already-Rfix (lo==hi) instances naturally settle
+    at zero deviation (t is already fixed to baseline) -- no special-casing
+    needed, just slightly wasted (always-zero) variables for them."""
     model._arr_baseline = {r: _baseline(model.t_arr[r].lb, model.t_arr[r].ub) for r in model.ARR_INSTANCES}
     model._dep_baseline = {r: _baseline(model.t_dep[r].lb, model.t_dep[r].ub) for r in model.DEP_INSTANCES}
 
@@ -49,4 +48,12 @@ def add_min_deviation_objective(model):
         expr=sum(model.arr_dev_plus[r] + model.arr_dev_minus[r] for r in model.ARR_INSTANCES)
         + sum(model.dep_dev_plus[r] + model.dep_dev_minus[r] for r in model.DEP_INSTANCES)
     )
+
+
+def add_min_deviation_objective(model):
+    """Replaces model.objective if one already exists (matches
+    add_ranking_reward_objective's del_component pattern)."""
+    if hasattr(model, "objective"):
+        model.del_component(model.objective)
+    add_deviation_tracking(model)
     model.objective = pyo.Objective(expr=model.total_deviation, sense=pyo.minimize)
