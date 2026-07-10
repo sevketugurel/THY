@@ -69,6 +69,7 @@ class SolveResult:
 def solve(
     model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: int,
     mip_gap: float = None, log_file=None, mip_heuristic_effort: float = None,
+    extra_highs_options: dict = None,
 ) -> SolveResult:
     pyomo_solver_name = _SOLVER_NAMES[solver]
     opt = pyo.SolverFactory(pyomo_solver_name)
@@ -85,6 +86,12 @@ def solve(
             # cutting for a faster shot at ANY feasible incumbent, which is
             # what an exploratory run needs (gap/optimality is secondary).
             highs_options["mip_heuristic_effort"] = mip_heuristic_effort
+        if extra_highs_options:
+            # M5c (docs/decisions.md 2026-07-10): generic escape hatch for
+            # ad-hoc HiGHS options not worth a named parameter -- e.g.
+            # testing whether root-node stalls are a symmetry/cut-generation
+            # artifact (mip_detect_symmetry) rather than a size artifact.
+            highs_options.update(extra_highs_options)
         if log_file is not None:
             # Stream to terminal (visible under nohup/tee) AND persist to a
             # parseable per-step file -- M5's observability requirement

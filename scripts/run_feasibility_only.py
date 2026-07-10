@@ -43,6 +43,11 @@ def main():
     parser.add_argument("--watchdog-margin-sec", type=float, default=120.0)
     parser.add_argument("--mip-heuristic-effort", type=float, default=0.3)
     parser.add_argument("--mip-gap", type=float, default=0.08)
+    parser.add_argument("--no-detect-symmetry", action="store_true",
+                         help="M5c symmetry hypothesis (docs/decisions.md 2026-07-10): "
+                              "the root-node stall recurs across every model size tried, "
+                              "which points at HiGHS's own cut/symmetry-detection behavior "
+                              "rather than pure row volume -- test mip_detect_symmetry=off.")
     args = parser.parse_args()
 
     t0 = time.time()
@@ -110,6 +115,8 @@ def main():
         mip_gap=args.mip_gap, mip_heuristic_effort=args.mip_heuristic_effort,
         log_file=highs_log_file,
     )
+    if args.no_detect_symmetry:
+        solve_kwargs["extra_highs_options"] = {"mip_detect_symmetry": False}
 
     print(f"[feasibility_only] build+solve starting (time_limit={args.time_limit_sec}s, "
           f"watchdog_margin={args.watchdog_margin_sec}s, mip_heuristic_effort={args.mip_heuristic_effort}, "
