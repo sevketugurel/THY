@@ -21,7 +21,18 @@ def add_e1_constraints(model, candidates, alpha: float):
     """n_fwd,n_bwd zaten Sum(x_pi) -- Big-M/reifikasyon gerekmiyor, doğrudan
     lineer iki-yönlü mutlak-değer eşitsizliği. Yalnızca HER İKİ yönde de
     candidate'ı olan pazar çiftlerine uygulanır -- tek-yönlü pazarlar (bwd
-    modelin kapsamı dışındaysa) VARSAYIM gereği atlanır (ASSUMPTIONS.md)."""
+    modelin kapsamı dışındaysa) VARSAYIM gereği atlanır (ASSUMPTIONS.md).
+
+    M5c (docs/lp_anatomy.md §1, VARSAYIM-9/11'in exempt+log deseninin E1'e
+    genellemesi): bir pazar çiftinin HER İKİ yönü de TAMAMEN dondurulmuşsa
+    (K-subset'in Rfix'lediği, gap_lo==gap_hi -- add_b_constraints zaten
+    x[i]'yi buna göre .fix() etmiş), n_fwd/n_bwd artık SABİT sayılardır,
+    karar değişkeni DEĞİL. Bu sabit sayılar E1'i ihlal ediyorsa, kısıtı
+    KURMAK modeli KOŞULSUZ infeasible yapar -- bu gerçek bir dengesizlik
+    değil, K-subset'in kendi tractability gevşetmesinin bir yan etkisi
+    (aynen VARSAYIM-9'un G için, VARSAYIM-11'in A için yaptığı gibi). Bu
+    çift MUAF tutulur + loglanır. KARIŞIK (bir taraf hâlâ ayarlanabilir)
+    çiftler her zaman kurulur -- orada gerçek bir seçim özgürlüğü var."""
     groups = _market_groups(candidates)
 
     pairs = []
@@ -34,7 +45,33 @@ def add_e1_constraints(model, candidates, alpha: float):
             seen.add((o, d, gun))
             seen.add((d, o, gun))
 
-    model.E1_PAIRS = pyo.Set(initialize=pairs, dimen=3, ordered=True)
+    def _is_fully_frozen(idxs):
+        return all(model.x[i].fixed for i in idxs)
+
+    def _frozen_count(idxs):
+        return sum(int(pyo.value(model.x[i])) for i in idxs)
+
+    genuine_pairs = []
+    exempted_count = 0
+    for (o, d, gun) in pairs:
+        fwd_idxs, bwd_idxs = groups[(o, d, gun)], groups[(d, o, gun)]
+        if _is_fully_frozen(fwd_idxs) and _is_fully_frozen(bwd_idxs):
+            n_fwd, n_bwd = _frozen_count(fwd_idxs), _frozen_count(bwd_idxs)
+            if n_fwd + n_bwd == 0 or abs(n_fwd - n_bwd) <= alpha * (n_fwd + n_bwd):
+                continue  # trivially satisfied by fixed values -- redundant row, skip
+            exempted_count += 1
+            continue  # unconditionally violated by frozen values alone -- exempt
+        genuine_pairs.append((o, d, gun))
+
+    if exempted_count:
+        print(
+            f"WARNING: E1 -- {exempted_count} market pair(s) exempted (M5c): "
+            f"fully K-subset-frozen and unreconcilable, no adjustable freedom exists.",
+            flush=True,
+        )
+
+    model.E1_PAIRS = pyo.Set(initialize=genuine_pairs, dimen=3, ordered=True)
+    model._e1_fold_counts = {"exempted": exempted_count, "genuine": len(genuine_pairs)}
 
     def fwd_rule(m, o, d, gun):
         fwd = sum(m.x[i] for i in groups[(o, d, gun)])
