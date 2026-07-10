@@ -646,6 +646,39 @@ HÂLÂ YOK — M5c bu haliyle "kapsamlı üç-yönlü teşhis tamamlandı, kesin
 tek-nokta çözüm bulunamadı, ama artık NEDEN bulunamadığına dair güçlü,
 çok-açılı kanıt var" durumunda kapanıyor.
 
+**GÜNCELLEME 4 (2026-07-11, M5d — Jbest fix TEK BAŞINA yetmiyor +
+instance-bazlı ihlal-ayak-izi bağımsız ikinci doğrulama)**: VARSAYIM-13'ün
+Jbest domain düzeltmesi SONRASI full-adjustable step1 (`scripts/run_full_data.py`,
+900s+120s bekçi) YİNE `watchdog_killed`/`Nodes=0`/sıfır incumbent verdi
+(`runs/full_data_run_20260710T211554Z.log.json`) — Jbest bug'ı GÜNCELLEME
+3'ün beş-kombinasyonluk listesine bir ALTINCISINI ekliyor, hipotez
+REDDEDİLDİ. Ardından (M5c'nin proximity/local-branching fikrinin ilk gerçek
+denemesi) `src/model/local_branching.py::add_local_branching` (k=200,
+Fischetti-Lodi tarzı Big-M/moved-indicator, TDD 4 test yeşil) full-data'da
+denendi — AYNI semptom (`runs/local_branching_20260710T214039Z.log.json`,
+`Nodes=0`, 720s). Kök neden HiGHS log'undan görüldü: presolve/probing
+278163 binary'nin yalnızca 3765'ini işleyebildi ("moved=0⇒t=referans"
+çıkarımı hiç gerçek satır/sütun azalmasına dönüşmedi).
+
+Üçüncü kör bir k denemesi yerine ucuz bir ölçüm yapıldı
+(`scripts/analyze_violation_footprint.py`, solve YOK): aynı A+G+F referans
+noktasında E1/E2 ihlallerini düzeltmeye şans tanımak için kaç FARKLI
+t_arr/t_dep örneğinin (candidate/market DEĞİL, doğrudan uçuş-zaman
+değişkeni granülaritesi) serbest bırakılması gerektiği hesaplandı. **Sonuç:
+arr instance'larının %85.7'si (2311/2697), dep instance'larının %82.8'i
+(2225/2688) — toplam 4536 örnek.** Bu, GÜNCELLEME 2'nin candidate/market
+granülaritesindeki bacak-paylaşımı bulgusunun (K=50'de bile 0/13273 aday
+tam donuyor) FLIGHT-INSTANCE granülaritesinde BAĞIMSIZ bir ikinci
+doğrulaması: iki farklı yöntem, iki farklı granülarite, AYNI sonuca
+varıyor — bu problem sınıfında E1/E2'yi tatmin eden bir nokta (varsa) ağın
+neredeyse TAMAMINI aynı anda gerektiriyor, yerelleştirilmiş/kısmi bir
+düzeltme yapısal olarak umut vermiyor. **Karar (kullanıcı onayı bekleniyor)**:
+üçüncü bir kör k-denemesi çalıştırılmadı (ayak izi analizi sonucunu zaten
+gösteriyordu) — M5d bu turda da doğrulanmış bir full-data objective_value
+ÜRETMEDEN, ama GÜNCELLEME 3'ün "HiGHS'in kesme-düzlemi davranışının kendine
+özgü sınırı" hipotezine ALTINCI VE YEDİNCİ bağımsız kanıtı ekleyerek
+kapanıyor.
+
 ## VARSAYIM-13: E2'nin Jbest değişkeni Integers değil Reals olmalı (M5d, gerçek bug — 2026-07-10)
 
 **Bulgu**: `add_e2_constraints`/`add_elastic_e2_constraints`'in `Jbest` değişkeni

@@ -151,6 +151,38 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   gelen çok-açılı, tutarlı bir kanıt zinciri var (tek bir kısıt hatası
   değil, HiGHS'in bu problem sınıfındaki kesme-düzlemi davranışının
   kendine özgü bir sınırı gibi görünüyor).
+- **M5d sürüyor — bu turda da doğrulanmış objective_value bulunamadan
+  kapandı** (tag YOK — hedeflenen `m5d-first-incumbent` tag'i
+  ÜRETİLEMEDİ). Bu turun somut bulguları (hepsi `docs/decisions.md`
+  2026-07-10/11 kayıtlarında, `ASSUMPTIONS.md` VARSAYIM-12 GÜNCELLEME 4 ve
+  VARSAYIM-13'te ayrıntılı): (1) **gerçek formülasyon bug'ı bulundu ve
+  düzeltildi**: E2'nin `Jbest` değişkeni `Integers` yerine `Reals` olmalıydı
+  (full-data pazarlarının ~yarısının LS-estimate K_od'u kesirli — Integers
+  domain bunları KOŞULSUZ infeasible yapıyordu, M4'ten beri TÜM full-data
+  denemelerini zehirlemiş bir bug). (2) Warm-start borusu
+  (`src/model/warm_start.py::derive_and_set_warm_start`, `solve(warmstart=True)`)
+  full-data'da HiGHS tarafından GERÇEKTEN kabul edildiği log-kanıtlandı
+  ("MIP start solution is feasible") ve `mip_max_improving_sols=1` kurtarma
+  hilesi çalışıyor — ama kurtarılan nokta (elastik model, obj=388889.16)
+  STRICT validator'dan GEÇMEDİ (1879 ihlal: E1=665, E2=1214) — bu Phase-2
+  seed'dir, "ilk doğrulanmış değer" SAYILMAZ. (3) `runner.py`'nin appsi
+  status eşlemesi düzeltildi (`maxIterations`/`feasible`→`"time_limit"`,
+  artık incumbent'ları sessizce düşürmüyor). (4) Jbest fix'i TEK BAŞINA
+  (K-subset/fold/warm-start olmadan, full-adjustable, 900s+120s bekçi)
+  kök-düğüm davranışını DEĞİŞTİRMEDİ — yine `watchdog_killed`/`Nodes=0`.
+  (5) `src/model/local_branching.py::add_local_branching` (Fischetti-Lodi
+  tarzı trust-region, TDD 4 test) full-data'da k=200 ile denendi — AYNI
+  semptom (presolve/probing 278163 binary'nin sadece 3765'ini işleyebildi,
+  "moved=0⇒t=referans" çıkarımı hiç gerçek küçülmeye dönüşmedi). (6) Ucuz
+  bir ön-teşhis (`scripts/analyze_violation_footprint.py`, solve yok):
+  E1/E2 ihlallerini düzeltmeye şans tanımak için arr instance'larının
+  %85.7'sinin (2311/2697), dep instance'larının %82.8'inin (2225/2688)
+  serbest bırakılması gerekiyor — **M5c'nin candidate/market-seviyesi
+  bacak-paylaşımı bulgusunun flight-instance seviyesinde BAĞIMSIZ ikinci
+  doğrulaması**: ihlaller ağın küçük bir köşesinde değil, neredeyse HER
+  YERDE — herhangi bir mütevazı k (200/400/800) baştan umutsuz. 141 unit +
+  106 solve yeşil. Kullanıcıya soruldu: nasıl devam edilsin (daha büyük k,
+  farklı çözücü, ya da bu haliyle kapat).
 
 ## Kilit Kararlar
 
