@@ -47,12 +47,19 @@ def main():
                               "warm-started incumbent (not proving optimality), stopping after N "
                               "improving solutions (mip_max_improving_sols) lets HiGHS terminate itself "
                               "cleanly instead of relying on the external watchdog's SIGKILL.")
+    parser.add_argument("--adjustable-window-min", type=int, default=None,
+                         help="M5e Bölüm 3d (VARSAYIM-3 override, ±180 our own choice, brief's Standard "
+                              "tier states no limit): overrides config's adjustable_window_min for this "
+                              "run only (candidate generation AND the validator's own window check). "
+                              "Omit to use src/config/standard.yaml's value unchanged.")
     args = parser.parse_args()
 
     t0 = time.time()
     config = yaml.safe_load(Path("src/config/standard.yaml").read_text())
     L, U = config["L"], config["U"]
     alpha, gamma, bucket_size_min = config["alpha"], config["gamma"], config["bucket_size_min"]
+    if args.adjustable_window_min is not None:
+        config["adjustable_window_min"] = args.adjustable_window_min
 
     od_table = load_od_table(FULL_OD)
     tk = od_table[od_table.cr1 == "TK"]

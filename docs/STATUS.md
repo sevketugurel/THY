@@ -26,9 +26,31 @@ kaynaklı bir blok-süresi hatası OLMADIĞINI güçlü şekilde gösteriyor —
 doğru (Elapsed-türevli) K_od/R_o ile bile aynı örüntü aynen tekrarlanıyor.
 
 Tag `m5e-first-incumbent` HENÜZ ÜRETİLEMEDİ (Σslack sıfıra inmedi).
-Sıradaki adım (plan §3d): ucuz pencere deneyi (adjustable_window_min=360
-önce, 720 SONRA — VARSAYIM-3'ün kendi geçmişi 720'nin Big-M>1440
-üretebildiğini gösteriyor) — kullanıcıya danışılarak devam edilecek.
+
+## M5e Bölüm 3d — pencere deneyi (adjustable_window_min=360), SONUÇSUZ (standart bütçeyle)
+
+`--adjustable-window-min` CLI override'ı `warm_start_elastic.py` ve
+`run_lns.py`'ye eklendi (`generate_candidates`'in zaten kapsamlı TDD'li
+window-mantığına ince bir argparse katmanı — yeni bağımsız test
+gerekmedi). Big-M>1440 riski (VARSAYIM-3'ün 720 geçmişi) `src/model/big_m.py::MAX_ALLOWED_BIG_M`
+runtime assert'iyle korunuyor — 360'ta bu assert HİÇ tetiklenmedi.
+
+**Bulgu**: window=360'ta aday sayısı 18147→**26258 (+44.7%)**. `warm_start_elastic.py`'nin
+Adım A'sı (A+G+F referans) kendi İÇ 600s+120s bekçisiyle (script'in
+`--time-limit-sec`'i yalnızca Adım B'yi kapsıyor, Adım A hardcoded) **720.2s'de
+`watchdog_killed`** — window=180'de AYNI adım güvenilir şekilde ~235s'de
+`optimal` veriyordu. Adım B'ye hiç ulaşılamadı (script "ABORT -- no usable
+A+G+F point" ile erken çıkıyor). **Sonuç**: pencere genişletmenin "ucuz"
+olacağı varsayımı YANLIŞ ÇIKTI — aday sayısındaki %44.7'lik artış, en kolay
+alt-problemi (A+G+F ALONE, window=180'de M5d'nin en güvenilir adımı) bile
+standart bütçenin dışına itiyor. Big-M güvenlik sınırı sorun DEĞİLDİ; asıl
+darboğaz aday-sayısı patlaması.
+
+Bu noktada kullanıcıya durumla birlikte danışılıyor: (a) yalnızca Adım A
+için ayrı/daha büyük bir bütçe denensin mi, (b) 360'ı burada bırakıp 720'yi
+mi (daha riskli) denemeli, yoksa (c) pencere deneyi burada kapatılıp mevcut
+window=180 sonucu (Adım a+b+e, yukarıda) kampanyanın son noktası mı kabul
+edilmeli.
 
 ## DATA v2 EPOCH (M5e, 2026-07-11) — yeniden ölçüm, v1 ↔ v2 yan yana
 

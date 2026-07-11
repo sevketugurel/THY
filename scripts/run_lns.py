@@ -200,11 +200,18 @@ def main(argv=None):
                               "keep running past the budget, same as every prior full-data attempt) -- this "
                               "forces a clean stop as soon as N improving solutions are found, per "
                               "docs/decisions.md 2026-07-10's mip_max_improving_sols=1 recovery trick")
+    parser.add_argument("--adjustable-window-min", type=int, default=None,
+                         help="M5e Bölüm 3d (VARSAYIM-3 override, ±180 our own choice, brief's Standard "
+                              "tier states no limit): overrides config's adjustable_window_min for this "
+                              "run only (candidate generation AND the validator's own window check). "
+                              "Omit to use src/config/standard.yaml's value unchanged.")
     args = parser.parse_args(argv)
     random.seed(args.seed)
 
     script_t0 = time.time()
     config = yaml.safe_load(Path("src/config/standard.yaml").read_text())
+    if args.adjustable_window_min is not None:
+        config["adjustable_window_min"] = args.adjustable_window_min
     L, U, alpha, gamma = config["L"], config["U"], config["alpha"], config["gamma"]
 
     od_table = load_od_table(FULL_OD)

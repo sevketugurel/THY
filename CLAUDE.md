@@ -235,6 +235,23 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   ihlal tek-yönlü sıfır-aday durumu), E2 fazlalık dk medyan=37.5/p90=125/
   max=425. `m5e-first-incumbent` tag'i YİNE üretilemedi. Sıradaki adım
   (plan §3d, kullanıcıya danışılacak): pencere deneyi (adjustable_window_min=360).
+- **Veri kaynağı teyidi (2026-07-11)**: repo kökündeki untracked
+  `TEKNOFEST_tarife_input_files 2/` klasörü karışıklık riski nedeniyle
+  bağımsız doğrulandı — `data_raw/`'daki O&D dosyası gerçekten v2 (57317
+  satır, Elapsed kolonları, wrap-fix oracle tam eşleşti), diğer 3 dosya
+  SHA256 birebir aynı. `src/data/provenance.py::file_provenance` (TDD)
+  eklendi, 6 aktif kampanya script'i artık `data_provenance` (path+sha256)
+  logluyor. Klasör `data_raw/_organizer_source_package/`'a taşındı
+  (silinmedi), `.gitignore`'a gelecek-indirme deseni eklendi.
+- **M5e Bölüm 3d — pencere deneyi (adjustable_window_min=360), SONUÇSUZ**.
+  `--adjustable-window-min` CLI override'ı eklendi (Big-M>1440 guard'ı hiç
+  tetiklenmedi). Bulgu: aday sayısı 18147→26258 (+44.7%) — Adım A (A+G+F
+  referans, `w=180`'de en güvenilir adım, ~235s) bu kez kendi iç 600s+120s
+  bekçisiyle `watchdog_killed` verdi, Adım B'ye hiç ulaşılamadı. "Ucuz
+  pencere deneyi" varsayımı yanlış çıktı — darboğaz Big-M değil,
+  kombinatoryal patlama. Kullanıcıya danışılıyor: Adım A için ayrı bütçe,
+  `w=720` denemesi, ya da pencere deneyini kapatıp `w=180` sonucunu son
+  nokta kabul etmek.
 
 ## Kilit Kararlar
 
