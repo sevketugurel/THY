@@ -1,8 +1,17 @@
 # Standard senaryo parametreleri (plan §6).
 solver: highs            # highs | gurobi (soyutlama üzerinden, gurobi test edilmeyecek)
-time_limit_sec: 1800
+time_limit_sec: 1800     # Kapı-5 üretim merdiveni adım 1 (tam model) bütçesi
 mip_gap: 0.01
 seed: 42
+
+# Kapı-5 üretim merdiveni (docs/CLOSING_PLAN.md, M5f, main.py --full-data):
+# adım 1 (yukarıdaki time_limit_sec) başarısız olursa TEK bir elastik
+# (A/B/E1/E2/F/G, slack-relaxed) solve denenir -- Σslack<=eps ise strict-
+# feasible bir nokta olarak kabul edilir, değilse main.py şema-uyumlu bir
+# teşhis çıktısı yazar (ihlalli tarife ASLA yazılmaz).
+elastic_time_limit_sec: 600
+watchdog_margin_sec: 60
+elastic_watchdog_margin_sec: 120
 
 adjustable_set: all      # all | none (M1'de yalnızca bu ikisi destekleniyor)
 # VARSAYIM (720->180, docs/decisions.md 2026-07-09): per-candidate Big-M

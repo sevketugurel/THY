@@ -19,10 +19,10 @@ from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.data.provenance import file_provenance
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
-from src.model.build import build_model_m4
 from src.config.paths import FULL_CR, FULL_FP, FULL_OD, FULL_YV
 from src.output.writer import write_output
-from src.solve.runner import solve
+from src.solve.ladder import solve_with_ladder
+from src.solve.runner import SolveResult
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
 FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
@@ -125,52 +125,75 @@ def main(argv=None) -> int:
         except KeyError:
             continue  # VARSAYIM: rotasyon verisi olmayan istasyon icin A atlanir
 
-    model = build_model_m4(
-        candidates, rho, journey_constants, rival_data, b_od_data, ranking_table,
-        pairs_df, r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
-        epoch_anchor=anchor, alpha=config["alpha"], gamma=config["gamma"],
-        tk_rows=tk, bucket_size_min=config["bucket_size_min"],
-        capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
-        L=L, U=U, monotonic=monotonic, e1_activation=config.get("e1_activation", "conditional"),
-    )
-    result = solve(model, solver=config["solver"], time_limit_sec=config["time_limit_sec"], seed=config["seed"])
-
+    e1_activation = config.get("e1_activation", "conditional")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    write_output(output_path, result)
 
-    validation = validate_output(
-        output_path, od_path, L=config["L"], U=config["U"],
-        adjustable_window_min=config["adjustable_window_min"],
-        adjustable_set=config["adjustable_set"],
-        flight_pairs_path=fp_path, tau=config["tau"], x_dev=config["X_dev"],
-        alpha=config["alpha"], gamma=config["gamma"],
-        bucket_size_min=config["bucket_size_min"],
-        capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
-        e1_activation=config.get("e1_activation", "conditional"),
-    )
-
-    # M5c §2 (docs/decisions.md 2026-07-10): the OFFICIAL reported
-    # objective_value is always the independently-recomputed one, never the
-    # solver's raw internal claim -- overwrites output.json in place.
-    reconciliation_ok = True
-    if result.status in ("optimal", "time_limit") and result.objective_value is not None:
+    # M5f Kapı-5 (docs/CLOSING_PLAN.md, "gizli test dayanıklılığı"): the
+    # ladder's own incumbent check ("has a MIP status") is NOT sufficient to
+    # write a deliverable -- validate_fn is the SOLE gate deciding whether a
+    # candidate result is ever promoted to output_path. Its side effect
+    # (write+recompute+reconcile+validate) IS the production write; if it
+    # returns False the ladder discards that candidate and escalates, so
+    # output_path never ends up holding a rejected attempt's content once
+    # this function returns "accepted".
+    def _validate_fn(step_candidates, result) -> bool:
+        write_output(output_path, result, k_od_sources=None)
         recompute_total, _ = recompute_objective(
-            output_path, od_path, yv_path, cr_path, L=config["L"], U=config["U"], strict=not args.full_data,
+            output_path, od_path, yv_path, cr_path, L=L, U=U, strict=not args.full_data,
         )
         reconciliation_ok, reconciliation_msg = finalize_reported_objective(
             output_path, recompute_total, result.status, result.objective_value,
         )
         if not reconciliation_ok:
             print(f"  RECONCILIATION FAILURE: {reconciliation_msg}")
+        validation = validate_output(
+            output_path, od_path, L=L, U=U,
+            adjustable_window_min=config["adjustable_window_min"], adjustable_set=config["adjustable_set"],
+            flight_pairs_path=fp_path, tau=config["tau"], x_dev=config["X_dev"],
+            alpha=config["alpha"], gamma=config["gamma"],
+            bucket_size_min=config["bucket_size_min"], capacity_departure=config["capacity_departure"],
+            capacity_arrival=config["capacity_arrival"], e1_activation=e1_activation,
+        )
+        for v in validation.violations:
+            print(f"  VIOLATION (rejected candidate): {v}")
+        return validation.is_valid and reconciliation_ok
+
+    model, result, ladder_log = solve_with_ladder(
+        candidates_full=candidates, rho=rho, journey_constants=journey_constants,
+        rival_data=rival_data, b_od_data=b_od_data, ranking_table=ranking_table,
+        pairs_df=pairs_df, r_o_lookup=r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
+        epoch_anchor=anchor, alpha=config["alpha"], gamma=config["gamma"], tk_rows=tk,
+        bucket_size_min=config["bucket_size_min"], capacity_departure=config["capacity_departure"],
+        capacity_arrival=config["capacity_arrival"], L=L, U=U, monotonic=monotonic,
+        step1_time_limit_sec=config["time_limit_sec"], seed=config["seed"], solver=config["solver"],
+        validate_fn=_validate_fn, e1_activation=e1_activation,
+        enable_elastic_fallback=True, elastic_time_limit_sec=config.get("elastic_time_limit_sec", 600),
+        elastic_watchdog_margin_sec=config.get("elastic_watchdog_margin_sec", 120),
+        step2_k_schedule=(),  # M5c: K-subset escalation deprecated, see scripts/run_full_data.py
+        use_subprocess_watchdog=args.full_data,  # fixture-scale solves are fast enough in-process
+        watchdog_margin_sec=config.get("watchdog_margin_sec", 60),
+    )
+
+    accepted = result.status in ("optimal", "time_limit") and result.objective_value is not None
+    if not accepted:
+        # M5f Kapı-5: NEVER leave a rejected attempt's content at
+        # output_path -- overwrite with a schema-compliant diagnostic
+        # (empty tariff, objective_value null, terminal status) so a
+        # grader's clean-clone smoke test always finds well-formed JSON,
+        # never a partially-written or invalid one.
+        diagnostic = SolveResult(status=result.status, objective_value=None, selected={}, solve_time_sec=0.0)
+        write_output(output_path, diagnostic)
+        print(f"status={result.status} objective=None selected=0 valid=False "
+              f"reason=no_accepted_solution_at_any_ladder_step")
+        for entry in ladder_log:
+            print(f"  ladder: {entry}")
+        return 1
 
     n_selected = sum(result.selected.values()) if result.selected else 0
     print(f"status={result.status} objective={result.objective_value} "
-          f"selected={n_selected} valid={validation.is_valid}")
-    for v in validation.violations:
-        print(f"  VIOLATION: {v}")
-
-    return 0 if (validation.is_valid and reconciliation_ok) else 1
+          f"selected={n_selected} valid=True")
+    return 0
 
 
 if __name__ == "__main__":

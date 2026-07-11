@@ -8,8 +8,56 @@ bu dosya güncellenir.
 **Güncel durum (2026-07-11): full-data'da bağımsız validator'dan geçen bir
 objective_value HÂLÂ YOK.** `m5d-first-incumbent`/`m5f-first-verified`
 tag'leri ÜRETİLEMEDİ. **Kapı-3 kampanyası TÜKENDİ (a+b+c hepsi denendi) —
-Branch B kesinleşti** (aşağıda). M5f kapanışı Kapı-5'e geçiyor (üretim
-merdiveni, teşhis-çıktı garantisi).
+Branch B kesinleşti** (aşağıda). **Kapı-5 (üretim merdiveni) tamam ve
+GERÇEK full-data'da uçtan uca doğrulandı** (aşağıda) — Kapı-6 (teslimat)
+sırada.
+
+## Kapı-5 — üretim merdiveni, GERÇEK full-data'da uçtan uca doğrulandı (M5f, 2026-07-11)
+
+`main.py --full-data` artık tek komutla `src/solve/ladder.py::solve_with_ladder`
+üzerinden 3 adımlı bir merdiven koşuyor: (1) tam model bütçeli solve, (2)
+başarısızsa TEK bir elastik (A/B/E1/E2/F/G, slack-relaxed) solve denemesi
+(Σslack≈0 ise strict-feasible, C/D `src/model/ranking_derive.py` ile post-hoc
+türetilir), (3) ikisi de olmazsa şema-uyumlu bir teşhis çıktısı (ihlalli
+tarife ASLA yazılmaz). **Kritik güvenlik düzeltmesi**: her adımın sonucu artık
+dosyaya yazılmadan ÖNCE bağımsız validator'dan sıfır ihlalle geçmek ZORUNDA
+(`validate_fn` bekçisi, `_accepted`'e eklendi) — eskiden main.py yalnızca
+"MIP incumbent var mı" kontrolü yapıp DOĞRUDAN yazıyordu (denetimin P0
+bulgusu: "time_limit'te ihlalli çıktı yazıp valid=False raporluyor" riski).
+
+**Kapsam kararı** (`docs/decisions.md`'ye loglandı): adım (2) `scripts/run_lns.py`'nin
+çok-iterasyonlu (Kapı-3'te 24 iterasyon, ~80s solver + dakikalarca duvar-saati
+gerektiren) LNS kampanyasının YERİNE geçmiyor — TEK bir bekçili elastik
+solve denemesi. Bu, "tek bir üretim komutu makul bir bütçede kalsın" ile
+"veri yeterince küçükse tek solve'da Σslack=0'a ulaşılsın" arasında bilinçli
+bir denge; genuine iteratif LNS refinement ayrı bir keşif/kampanya aracı
+olarak kalıyor.
+
+**Doğrulama** (birim testler + GERÇEK full-data uçtan uca koşu):
+- `tests/unit/test_solve_ladder.py`: `validate_fn` bekçisi (kabul edilebilir
+  bir incumbent'ın validate_fn tarafından REDDEDİLİRSE bir sonraki adıma
+  geçtiği, ASLA döndürülmediği), elastik-fallback'in Σslack=0/nonzero her
+  iki dalı, hepsi stub `solve_fn`/`elastic_solve_fn` ile (<1sn, gerçek solve
+  yok). `tests/unit/test_ranking_derive.py`: post-hoc D türetimi (rank
+  floor=1, unoffered candidate hiçbir şeyi yenmez, rakipsiz pazar atlanır).
+- `tests/solve/test_main_cli.py::test_main_writes_schema_compliant_diagnostic_when_ladder_finds_nothing`
+  (golden test, DoD): `main.solve_with_ladder` monkeypatch'lenip "hiçbir adım
+  kabul edilmedi" zorlanıyor, main.py'nin gerçekten şema-uyumlu teşhis
+  yazdığı + exit≠0 döndürdüğü doğrulanıyor.
+- **GERÇEK full-data smoke testi** (azaltılmış bütçeyle — `time_limit_sec=60`,
+  `elastic_time_limit_sec=60`, checked-in config'e DOKUNULMADI, yalnızca
+  doğrulama için geçici bir kopya): adım 1 90.1s'de `watchdog_killed`
+  (beklenen — Kapı-3'ün 18147 adaylık gerçek model üzerindeki bulgusuyla
+  tutarlı), adım 2 (elastik) AYNI şekilde `watchdog_killed`, adım 3
+  (teşhis) devreye girdi. **Yazılan `output.json` tam şema-uyumlu**:
+  `objective_value: null`, `selected_connections: []`,
+  `adjusted_flight_times: []`, `ranking_results: []`,
+  `solver_metrics.status: "no_feasible_solution_found"` — **hiçbir ihlalli
+  tarife dosyaya yazılmadı**, komut exit=1 döndü. Bu, Kapı-5'in temel
+  güvenlik garantisinin mock/stub testlerin ÖTESİNDE, GERÇEK yarışma
+  verisiyle uçtan uca kanıtıdır.
+
+340+ test yeşil (348 unit+solve, tam suite).
 
 ## Kapı-3 — kampanya: ilk doğrulanmış değer arayışı, TÜKENDİ (Branch B kesinleşti, M5f, 2026-07-11)
 

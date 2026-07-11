@@ -28,3 +28,31 @@ pytest              # tüm testler
 pytest -m unit      # solver'sız, <1sn
 pytest -m solve     # küçük HiGHS solve, <60sn
 ```
+
+## Üretim merdiveni ve garanti (`--full-data`)
+
+`main.py --full-data` tek komutla bir merdiven koşar (`src/solve/ladder.py::solve_with_ladder`):
+1. tam model (A–G), `config.time_limit_sec` bütçeli solve;
+2. başarısızsa TEK bir elastik (A/B/E1/E2/F/G, slack-relaxed) solve denemesi,
+   `config.elastic_time_limit_sec` bütçeli — Σslack≈0 ise strict-feasible nokta;
+3. ikisi de olmazsa **hiçbir ihlalli tarife dosyaya YAZILMAZ** — şema-uyumlu
+   bir teşhis çıktısı (`objective_value: null`, `solver_metrics.status:
+   "no_feasible_solution_found"`, boş tarife) yazılır ve komut sıfır-olmayan
+   bir çıkış koduyla döner.
+
+Her adımın sonucu, dosyaya yazılmadan ÖNCE bağımsız validator'dan
+(`src/validate/independent_validator.py`) sıfır ihlalle geçmek ZORUNDADIR —
+bir adımın MIP çözücüsünden "optimal"/"feasible" durumu almış olması TEK
+BAŞINA yeterli değildir. Not: adım 2, `scripts/run_lns.py`'nin çok-iterasyonlu
+(dakikalarca süren) LNS kampanyasının yerine geçmez — o, ayrı ve daha uzun
+soluklu bir keşif/teşhis aracı olarak kalır (bkz. `docs/STATUS.md` Kapı-3).
+
+## Determinizm
+
+Aynı girdi + aynı seed için `objective_value` ve tüm liste alanları
+byte-özdeştir (`tests/solve/test_main_cli.py::test_main_cli_is_deterministic_excluding_wall_clock`,
+`tests/unit/test_output_writer.py`) — yalnızca `solver_metrics.solve_time_sec`
+(duvar-saati) her koşuda farklı olabilir. Full-data'da zaman-limitli paralel
+MIP'te `objective_value`'nin kendisi deterministik kalır (aynı gap
+toleransında aynı veya daha iyi bulunur) ama hangi ALTERNATİF optimal
+çözümün seçildiği garanti edilmez (bkz. `docs/output_format.md`).

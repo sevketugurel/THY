@@ -24,7 +24,7 @@ gereksinimini eksiksiz karşıladığını gösteren tek-tek eşleme tablosudur.
 | Alan | Amaç |
 |---|---|
 | `k_od_sources[]` — `{o, d, source}` | M5: her pazarın $K_{od}$'unun doğrudan gözlemden mi (`"direct"`) yoksa LS-tahmininden mi (`"estimated"`) geldiğini raporlar (VARSAYIM-8) — bir rapor okuyucusunun hangi sayıların daha ince veriye dayandığını görmesini sağlar. |
-| `solver_metrics` — `{status, solve_time_sec}` | Çözüm durumu (optimal/time_limit) + süre — §6 kriter 3 "Hesaplama Performansı" için kanıt. |
+| `solver_metrics` — `{status, solve_time_sec}` | Çözüm durumu (optimal/time_limit) + süre — §6 kriter 3 "Hesaplama Performansı" için kanıt. Kapı-5 (M5f): `status` ayrıca `"no_feasible_solution_found"` da olabilir — üretim merdiveninin (`main.py --full-data`) HİÇBİR adımı bağımsız validator'dan geçen bir nokta bulamadığında yazılan teşhis çıktısı; bu durumda `objective_value: null` ve `selected_connections`/`adjusted_flight_times`/`ranking_results` HEPSİ boş liste — hiçbir ihlalli tarife dosyaya yazılmaz (bkz. `docs/STATUS.md` Kapı-5). |
 
 ## Determinizm
 
