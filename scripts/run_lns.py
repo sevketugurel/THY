@@ -336,6 +336,7 @@ def main(argv=None):
 
         improved = False
         comp_id = None
+        is_revisit = False
         if args.selection == "component":
             # comp_id is independent of chunk_index -- probe once with 0,
             # then re-call with the real stored chunk index for THAT
@@ -477,6 +478,16 @@ def main(argv=None):
                           f"even after widening+randomizing -- stopping per protocol")
             break
 
+        # Adım 13 kabul kriteri (b): component seçiminde "tüm bileşenler
+        # denendi" sinyali is_revisit=True'dur (non_stubborn havuzu
+        # tükendi) -- bu moddayken plateau_iters kadar iyileşme
+        # görülmezse (her bileşene en az bir revizit şansı tanınmış
+        # demektir), inatçı bileşen dökümüyle DUR.
+        if args.selection == "component" and is_revisit and (it - last_improvement_iter) >= args.plateau_iters:
+            _log_progress(f"iter={it} PLATEAU: tüm bileşenler denendi, {it - last_improvement_iter} "
+                          f"iterasyondur iyileşme yok -- stopping per protocol")
+            break
+
     _refresh_status_md(history, datetime.now(timezone.utc).isoformat())
 
     # M5d LNS redesign (adım 10 fix): reconstruct a COMPLETE result for
@@ -552,6 +563,27 @@ def main(argv=None):
             ]
             _log_progress(f"partial best-so-far point saved to {partial_path} "
                           f"(E1 violated={n_e1_final}, E2 violated={n_e2_final})")
+
+            # Adım 13 kabul kriteri (b): "tüm bileşenler 2'şer denendi, slack
+            # kaldı" durumunda inatçı bileşen dökümü (id/boyut/kalan
+            # slack/denenen bütçe) -- attempts_by_component her görülen
+            # bileşeni tutar (yalnızca stubborn kümesini değil), o yüzden
+            # burada TÜM denenen bileşenler raporlanır, en inatçı en üstte.
+            if args.selection == "component" and attempts_by_component:
+                component_breakdown = []
+                for comp, n_attempts in attempts_by_component.items():
+                    remaining = sum(final_slack.get(p, {}).get("total", 0.0) for p in comp)
+                    component_breakdown.append({
+                        "component_id": f"comp_{abs(hash(comp)) % 100000}",
+                        "size_pairs": len(comp),
+                        "attempts": n_attempts,
+                        "is_stubborn": comp in stubborn,
+                        "remaining_slack": remaining,
+                    })
+                component_breakdown.sort(key=lambda d: -d["remaining_slack"])
+                summary["stubborn_component_breakdown"] = component_breakdown
+                _log_progress(f"stubborn component breakdown: {len(component_breakdown)} components tried, "
+                              f"{sum(1 for c in component_breakdown if c['is_stubborn'])} marked stubborn")
 
     log_path = Path("runs") / f"lns_summary_{stamp}.log.json"
     log_path.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str))
