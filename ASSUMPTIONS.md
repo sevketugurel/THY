@@ -699,6 +699,26 @@ gösteriyordu) — M5d bu turda da doğrulanmış bir full-data objective_value
 özgü sınırı" hipotezine ALTINCI VE YEDİNCİ bağımsız kanıtı ekleyerek
 kapanıyor.
 
+**GÜNCELLEME 5 (2026-07-11, M5f Kapı-3 — KOŞULLU E1 ALTINDA bile AYNI
+semptom, SEKİZİNCİ bağımsız kanıt)**: KARAR-0'ın (VARSAYIM-16) koşullu E1
+aktivasyonu, tek-yön-sıfır E1 artefaktını temizlese de (Kapı-2: baseline
+E1 690→296) full-data'nın kök zorluğunu ÇÖZMEDİ. Kapı-3 kampanyası
+(`docs/STATUS.md` Kapı-3 bölümü): elastik+warm-start hızlı bir incumbent
+verdi (elastik-obj=347660.50, KARAR-0-öncesi eşdeğerden — 369921.70 —
+daha iyi), LNS component/fold 4 iterasyonda %9.5 iyileşip (62418.40→
+56540.60) sonra TAM PLATO — kalan slack'in **%99.78'i E2** (E1'in payı
+123.60dk'ya düşmüş, KARAR-0'ın beklenen etkisi doğrulandı). Yeni bir
+deney — **çoklu-bileşen LNS** (`scripts/run_lns_multi_component.py`,
+en kötü 3 bağlantılı bileşeni AYNI ANDA serbest bırakma, "yerel düzeltme
+alanı boş" hipotezine karşı tek bilinen panzehir) — **6.8s'de KESİN
+`infeasible`** döndü (1809 serbest örnekle bile). Sekizinci bağımsız
+model/amaç/aktivasyon-modu/teknik kombinasyonu AYNI temel semptomu
+gösteriyor: full-data'daki zorluk formülasyon-YORUMU (artık koşullu E1
+altında bile) veya HiGHS'in kesme-düzlemi davranışının ötesinde, ağın
+BÜYÜK BİR KESİMİNİ eşzamanlı gerektiren gerçek bir yapısal özellik gibi
+görünüyor. Kapı-3 plan'ın kendi durma kuralıyla (adım c platoyu kıramazsa
+DUR) kapandı — Branch B kesinleşti, kalan Σslack dökümü rapora giriyor.
+
 ## VARSAYIM-13: E2'nin Jbest değişkeni Integers değil Reals olmalı (M5d, gerçek bug — 2026-07-10)
 
 **Bulgu**: `add_e2_constraints`/`add_elastic_e2_constraints`'in `Jbest` değişkeni

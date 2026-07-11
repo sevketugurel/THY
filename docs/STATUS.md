@@ -6,9 +6,40 @@ tek-bakışta özetidir. Ayrıntılı gerekçe/kanıt zinciri için `docs/decisi
 bu dosya güncellenir.
 
 **Güncel durum (2026-07-11): full-data'da bağımsız validator'dan geçen bir
-objective_value HÂLÂ YOK.** `m5d-first-incumbent` tag'i ÜRETİLEMEDİ. M5f
-kapanışı sürüyor (Kapı-0/1/2 tamam, `m5f-e1-conditional` tag'i — koşullu
-E1 artık varsayılan), Kapı-3 kampanyası sırada.
+objective_value HÂLÂ YOK.** `m5d-first-incumbent`/`m5f-first-verified`
+tag'leri ÜRETİLEMEDİ. **Kapı-3 kampanyası TÜKENDİ (a+b+c hepsi denendi) —
+Branch B kesinleşti** (aşağıda). M5f kapanışı Kapı-5'e geçiyor (üretim
+merdiveni, teşhis-çıktı garantisi).
+
+## Kapı-3 — kampanya: ilk doğrulanmış değer arayışı, TÜKENDİ (Branch B kesinleşti, M5f, 2026-07-11)
+
+Koşullu E1 (Kapı-1) altında üç adımlı kampanya (plan §Kapı-3, hepsi dış
+bekçili + `mip_max_improving_sols=1` temiz-dur), TOPLAM ~15 dakika solver
+duvar-saati (bütçenin ≤3.5 saatlik tavanının çok altında — ilk iki adım
+hızlı gerçek sonuç verdi, üçüncüsü 6.8s'de kesin infeasible döndü):
+
+| Adım | Script | Süre | Sonuç |
+|---|---|---|---|
+| a) Elastik+warm-start | `scripts/warm_start_elastic.py --time-limit-sec 900 --max-improving-sols 1` | 1. deneme: A+G+F 233.6s optimal + elastik 42.0s | **Gerçek incumbent**, elastik-obj=347660.50 (KARAR-0-öncesi eşdeğer M5e ölçümünden — 369921.70 — daha iyi), warm-start log-kanıtlı. 2. denemeye gerek kalmadı (ilk deneme kullanılabilir incumbent verdi). |
+| b) LNS component/fold | `scripts/run_lns.py --builder folded --selection component --max-wall-sec 2700 --plateau-iters 20` | 24 iterasyon, ~80s solver zamanı | Σslack 62418.40→**56540.60** (-9.5%, iter 1-4'te), sonra TAM PLATO — iter 6-24'ün çoğu **gerçek `status=infeasible`** (zaman-aşımı DEĞİL). 20 iterasyon boyunca hiç iyileşme yok → protokol gereği DUR. Kalan slack **%99.78 E2** (123.60/56540.60 E1, geri kalanı E2) — KARAR-0 E1'i büyük ölçüde temizledi, gerçek darboğaz E2/ağ-yapısı. |
+| c) Çoklu-bileşen LNS (TEK deneme) | `scripts/run_lns_multi_component.py --k 3` (yeni script, bu turda yazıldı) | 6.8s solve | En kötü 3 bileşen (195+184+186=565 çift, 1809 serbest örnek) AYNI ANDA serbest bırakıldı — **6.8s'de KESİN `infeasible`** (belirsiz zaman-aşımı değil, HiGHS'in kendi presolve/probing sertifikası). "Yerel düzeltme alanı boş" hipotezinin panzehiri k=3'te bile işlemedi. |
+
+**Karar (plan'ın kendi durma kuralı (iii))**: adım (c) platoyu KIRAMADI →
+**Branch B kesinleşti**. Bu bir belirsizlik değil, HIZLI ve KESİN bir
+negatif sonuç (6.8s'de infeasible, ne 600s'lik bütçenin ne de 45dk'lık
+duvarın tükendiği bir zaman-aşımı belirsizliği yok). Kapı-2'nin ağ-çapına
+yayılmış ihlal ayak izi bulgusuyla (%74.5-74.8 flight-instance) tutarlı:
+sorun birkaç izole bileşende değil, ağın büyük bir kesiminde eşzamanlı.
+
+**Kapı-4 (ödül tırmanışı) uygulanamaz** — plan'ın kendi kapsamı "YALNIZCA
+Kapı-3 doğrulanmış değer verdiyse" diyor; doğrulanmış bir feasible nokta
+yok, tırmanılacak bir taban yok. Atlanıyor.
+
+**Dürüstlük kaydı**: `scripts/run_lns_multi_component.py`'nin kendisi test
+kapsamına girmedi (plan'ın "TEK deneme hakkı" çerçevesindeki tek-seferlik
+bir deney scripti — üretim koduna girmiyor, mevcut `src/model/lns.py`
+fonksiyonlarını (test-kapsamlı) yeniden kullanıyor, kendi orkestrasyon
+mantığı bu kampanyaya özgü).
 
 ## Kapı-2 — full-data yeniden ölçüm, koşullu E1 + KARAR-0b (M5f, 2026-07-11)
 
@@ -318,22 +349,22 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-11T14:57:10.276142+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-11T19:44:08.405904+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 9 | infeasible | 62821.90 | 62821.90 | 618 | 235 | 2.7s |
-| 10 | infeasible | 62821.90 | 62821.90 | 624 | 239 | 2.7s |
-| 11 | infeasible | 62821.90 | 62821.90 | 624 | 239 | 2.7s |
-| 12 | infeasible | 62821.90 | 62821.90 | 667 | 240 | 2.8s |
-| 13 | infeasible | 62821.90 | 62821.90 | 667 | 240 | 2.7s |
-| 14 | infeasible | 62821.90 | 62821.90 | 656 | 243 | 2.8s |
-| 15 | infeasible | 62821.90 | 62821.90 | 656 | 243 | 2.7s |
-| 16 | infeasible | 62821.90 | 62821.90 | 652 | 247 | 2.7s |
-| 17 | infeasible | 62821.90 | 62821.90 | 652 | 247 | 2.7s |
-| 18 | time_limit | 62821.90 | 63223.80 | 337 | 120 | 3.1s |
-| 19 | infeasible | 62821.90 | 62821.90 | 637 | 235 | 2.7s |
-| 20 | infeasible | 62821.90 | 62821.90 | 618 | 235 | 2.7s |
-| 21 | infeasible | 62821.90 | 62821.90 | 624 | 239 | 2.6s |
-| 22 | infeasible | 62821.90 | 62821.90 | 667 | 240 | 2.7s |
-| 23 | infeasible | 62821.90 | 62821.90 | 656 | 243 | 2.7s |
+| 10 | infeasible | 56540.60 | 56540.60 | 598 | 184 | 2.7s |
+| 11 | infeasible | 56540.60 | 56540.60 | 576 | 186 | 2.6s |
+| 12 | infeasible | 56540.60 | 56540.60 | 576 | 186 | 2.6s |
+| 13 | infeasible | 56540.60 | 56540.60 | 611 | 186 | 2.7s |
+| 14 | infeasible | 56540.60 | 56540.60 | 611 | 186 | 2.7s |
+| 15 | infeasible | 56540.60 | 56540.60 | 579 | 187 | 2.6s |
+| 16 | infeasible | 56540.60 | 56540.60 | 579 | 187 | 2.6s |
+| 17 | infeasible | 56540.60 | 56540.60 | 600 | 195 | 2.7s |
+| 18 | infeasible | 56540.60 | 56540.60 | 600 | 195 | 2.7s |
+| 19 | time_limit | 56540.60 | 56540.60 | 246 | 70 | 2.9s |
+| 20 | infeasible | 56540.60 | 56540.60 | 557 | 182 | 2.6s |
+| 21 | infeasible | 56540.60 | 56540.60 | 598 | 184 | 2.6s |
+| 22 | infeasible | 56540.60 | 56540.60 | 576 | 186 | 2.6s |
+| 23 | infeasible | 56540.60 | 56540.60 | 611 | 186 | 2.7s |
+| 24 | infeasible | 56540.60 | 56540.60 | 579 | 187 | 2.6s |
