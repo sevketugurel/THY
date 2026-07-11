@@ -6,7 +6,62 @@ tek-bakışta özetidir. Ayrıntılı gerekçe/kanıt zinciri için `docs/decisi
 bu dosya güncellenir.
 
 **Güncel durum (2026-07-11): full-data'da bağımsız validator'dan geçen bir
-objective_value HÂLÂ YOK.** `m5d-first-incumbent` tag'i ÜRETİLEMEDİ.
+objective_value HÂLÂ YOK.** `m5d-first-incumbent` tag'i ÜRETİLEMEDİ. M5f
+kapanışı sürüyor (Kapı-0/1/2 tamam, `m5f-e1-conditional` tag'i — koşullu
+E1 artık varsayılan), Kapı-3 kampanyası sırada.
+
+## Kapı-2 — full-data yeniden ölçüm, koşullu E1 + KARAR-0b (M5f, 2026-07-11)
+
+KARAR-0/0b'nin (Kapı-1, tag `m5f-e1-conditional`) full-data'daki etkisini
+ölçmek için üç solve'suz/hafif-solve'lu araç koşuldu — model KODU bu
+turda DEĞİŞMEDİ, yalnızca ölçüldü.
+
+**1) `scripts/feasibility_certificates.py`** (saf pandas, solve yok,
+`runs/feasibility_certificates.json`):
+
+| Sertifika | Sonuç |
+|---|---|
+| E1b (no-satisfying-pair-in-box) | **conditional: 0, unconditional: 0** — hâlâ temiz, E1 formülasyonu HİÇBİR modda provably infeasible değil |
+| E2 (disjoint Jbest ranges) | 0 kalan genuine fail — `karar0b_exempted_count=63` (CLAUDE.md'nin M5c-döneminden bildiği "63 çift" sayısıyla TAM eşleşiyor), `karar0b_still_unexempted=[]` (modelin kendi muafiyeti sertifikanın bulduğu HER ŞEYİ yakalıyor — bug yok) |
+
+**2) `scripts/baseline_feasibility_witness.py`** (ham baseline, HİÇ solve
+yok, `runs/baseline_feasibility_witness_20260711T192830Z.json`, 59.1s):
+
+| Aile | unconditional (literal) | conditional (varsayılan) | Değişim |
+|---|---|---|---|
+| E1 | 690 | **296** | **-394 (-57.1%)** |
+| E2 | 1199 | 1199 | 0 (E1 modundan bağımsız) |
+| A | 106 | 106 | 0 |
+| F | 31 | 31 | 0 |
+| G | 53 | 53 | 0 |
+| **Toplam** | **2079** | **1685** | **-394 (-19.0%)** |
+
+**3) `scripts/analyze_violation_footprint.py`** (A+G+F referans noktası,
+tek gerçek solve bu turda, 231.6s, optimal —
+`WARNING: A rotation -- 349 pair(s) exempted (VARSAYIM-11)`):
+
+| Aile | unconditional | conditional |
+|---|---|---|
+| E1 | 880 | **287** (/3828 çift) |
+| E2 | — | 1203 genuine + 22 KARAR-0b-exempted (/1873 her-iki-yön-sunulmuş çift) |
+
+Serbest bırakılması gereken flight-instance oranı (E1+E2 ihlalli
+pazarlardan): arr=2013/2702 (**%74.5**), dep=2012/2690 (**%74.8**) —
+M5d'nin flight-instance-seviyesi bulgusuyla (%82.8-85.7) AYNI mertebede,
+ihlaller ağın küçük bir köşesinde DEĞİL, hâlâ neredeyse HER YERDE.
+
+**Karar kuralı değerlendirmesi (plan §Kapı-2)**: beklenti "690→~0-50" idi;
+gerçekleşen **690→296 (baseline) / 880→287 (A+G+F referans)** — ~57-67%
+düşüş, GERÇEK ve ANLAMLI ama beklenen ~%93-100'lük çöküşün ÇOK altında.
+Plan'ın kendi eşiği ("koşullu modda >100 E1 ihlali kalırsa YENİ bilgidir")
+tetiklendi — bu bir durma noktası DEĞİL, plan bunu önceden öngörmüş:
+Kapı-3'e AYNEN devam edilir, yalnızca plato beklentisi buna göre
+kalibre edilir (Σslack≈0'a E1 TEK BAŞINA ulaştırmayacak, E2'nin 1203
+genuine ihlali ve A/F/G'nin değişmeyen kütlesi hâlâ baskın kalıyor).
+Net okuma: KARAR-0 gerçek ve ölçülebilir bir iyileşme (tek-yön-sıfır
+artefaktının ~57-67%'si temizlendi) ama full-data'nın temel zorluğunu TEK
+BAŞINA çözmüyor — E2/A/F/G'nin kendi kütlesi ve ağ-çapına-yayılmış
+(%74.5-74.8) ihlal ayak izi hâlâ Kapı-3'ün gerçek işi.
 
 ## M5e Bölüm 3 — son kampanya (v2 veri), Adım a+b+e
 
