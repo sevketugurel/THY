@@ -53,6 +53,68 @@ def add_elastic_e1_constraints(model, candidates, alpha):
     return groups, pairs
 
 
+# --- M5d LNS fold-redesign (plan: a-evet-ama-iki-tingly-canyon.md, adim 5):
+# E1 fold. Bir pazar-yon icin serbest aday YOKSA (n_fwd/n_bwd tamamen
+# donuk-sunulmus sayimlarindan belirleniyor), o pair'in s_e1 satiri/Var'i
+# YOK -- sabit slack degeri model._e1_frozen_slack_total'a eklenir (rapor/
+# STATUS.md icin, argmin'i etkilemez). Karisik bir pair (en az bir yonde
+# gercek serbestlik varsa) hala gercek bir satir alir, donuk sayimlar sabit
+# terim olarak katlanir.
+def _split_market_e1(idxs, partition):
+    free_idxs = [i for i in idxs if partition.is_free_candidate[i]]
+    frozen_offered_count = sum(
+        1 for i in idxs if not partition.is_free_candidate[i] and partition.x_const[i] == 1
+    )
+    return free_idxs, frozen_offered_count
+
+
+def add_elastic_e1_constraints_folded(model, candidates, alpha, partition):
+    groups = _market_groups(candidates)
+    pairs, seen = [], set()
+    for (o, d, gun) in groups:
+        if (o, d, gun) in seen:
+            continue
+        if (d, o, gun) in groups:
+            pairs.append((o, d, gun))
+            seen.add((o, d, gun))
+            seen.add((d, o, gun))
+
+    split = {(o, d, gun): _split_market_e1(groups[(o, d, gun)], partition) for (o, d, gun) in groups}
+
+    real_pairs = []
+    frozen_slack_total = 0.0
+    for (o, d, gun) in pairs:
+        fwd_free, fwd_frozen = split[(o, d, gun)]
+        bwd_free, bwd_frozen = split[(d, o, gun)]
+        if not fwd_free and not bwd_free:
+            s = max(0.0, abs(fwd_frozen - bwd_frozen) - alpha * (fwd_frozen + bwd_frozen))
+            frozen_slack_total += s
+        else:
+            real_pairs.append((o, d, gun))
+
+    model.E1_PAIRS = pyo.Set(initialize=real_pairs, dimen=3, ordered=True)
+    model.s_e1 = pyo.Var(model.E1_PAIRS, domain=pyo.NonNegativeReals)
+
+    def fwd_rule(m, o, d, gun):
+        fwd_free, fwd_frozen = split[(o, d, gun)]
+        bwd_free, bwd_frozen = split[(d, o, gun)]
+        fwd = sum(m.x[i] for i in fwd_free) + fwd_frozen
+        bwd = sum(m.x[i] for i in bwd_free) + bwd_frozen
+        return fwd - bwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+    model.e1_fwd = pyo.Constraint(model.E1_PAIRS, rule=fwd_rule)
+
+    def bwd_rule(m, o, d, gun):
+        fwd_free, fwd_frozen = split[(o, d, gun)]
+        bwd_free, bwd_frozen = split[(d, o, gun)]
+        fwd = sum(m.x[i] for i in fwd_free) + fwd_frozen
+        bwd = sum(m.x[i] for i in bwd_free) + bwd_frozen
+        return bwd - fwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+    model.e1_bwd = pyo.Constraint(model.E1_PAIRS, rule=bwd_rule)
+
+    model._e1_frozen_slack_total = getattr(model, "_e1_frozen_slack_total", 0.0) + frozen_slack_total
+    return groups, real_pairs
+
+
 def add_elastic_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
     groups = _market_groups(candidates)
     candidate_market = {i: (c.o, c.d, c.gun) for i, c in enumerate(candidates)}
