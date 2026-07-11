@@ -96,7 +96,7 @@ Kullanıcı platonun İKİ bağımsız nedenini belirledi (worst-first hedefleme
 | Yaklaşım | İterasyon | Süre | Σslack sonucu | Azalma |
 |---|---|---|---|---|
 | flat/fix (worst-first, eski builder) | 51-61 | ~85-100dk | 49086.73 / 50204.06 | %27-29 |
-| **component/fix** (yeni hedefleme, ESKİ builder) | 110+ | ~40dk | **68865.62 (DEĞİŞMEDİ)** | **%0** |
+| **component/fix** (yeni hedefleme, ESKİ builder) | 120 | 40dk (duvar-bütçesi doldu) | **68865.62 (DEĞİŞMEDİ)** | **%0** |
 | **component/fold** (yeni hedefleme, YENİ builder) | 3 | **~20s solve** | 62487.27 | **%9.28** |
 
 **Sonuç açık**: component/fix'in SIFIR ilerlemesi, hedeflemenin (component
@@ -135,22 +135,22 @@ dolarsa DUR.
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-11T10:24:31.732873+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-11T10:27:47.240608+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 96 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.9s |
-| 97 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 20.0s |
-| 98 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 19.9s |
-| 99 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.9s |
-| 100 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 20.0s |
-| 101 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 20.4s |
-| 102 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 20.3s |
-| 103 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 20.1s |
-| 104 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 20.8s |
-| 105 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 20.0s |
 | 106 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.7s |
 | 107 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 20.0s |
 | 108 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 19.9s |
 | 109 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 19.7s |
 | 110 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.8s |
+| 111 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 19.9s |
+| 112 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 19.8s |
+| 113 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.9s |
+| 114 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 19.9s |
+| 115 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 19.4s |
+| 116 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 19.2s |
+| 117 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.2s |
+| 118 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 19.1s |
+| 119 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 19.1s |
+| 120 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.0s |
