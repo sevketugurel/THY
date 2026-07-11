@@ -63,7 +63,44 @@ Sonuç: **İLK GERÇEK slack azalması elde edildi** (ayrıntı: `docs/decisions
   — 23,410 puanlık kanıtlı azalma.** Kontrol (aynı ölçek ama filtresiz):
   220s'de hâlâ tamamlanmadı — filtre zorunlu, tek başına epsilon=0 yetmiyor.
 
-## LNS İlerleme (M5d)
+## LNS tam-bütçeli koşular (2 bağımsız run, ikisi de plato ile durdu)
 
-Gerçek (tam-bütçeli) LNS koşusu bu bulgularla başlatıldı — ilerleme
-`runs/lns_progress.log`'da (gitignored) ve bu bölümde periyodik güncellenir.
+| Koşu | İterasyon | Süre | Sigma-slack başlangıç→son | Azalma | Çıktı |
+|---|---|---|---|---|---|
+| 1 (persistence fix ÖNCESİ) | 51 | ~85dk | 68865.62→49086.73 | %28.7 | kaybedildi (bug) |
+| 2 (persistence fix SONRASI) | 61 | ~100dk | 68865.62→50204.06 | %27.1 | `runs/lns_best_partial_20260711T010508Z.json` |
+
+**Kalan slack dökümü (koşu 2, final nokta)**: toplam 50204.06 — %9.4
+(4707.34, 34 pair) `compute_gamma_infeasible_pairs`'ın kalıcı-hariç
+tuttuğu, VERİ-KAYNAKLI (K_od asimetrisi, hiçbir zamanlama seçimiyle
+düzeltilemez) 76 pair'den; **%90.6 (45496.72, 1490 pair) GERÇEKTEN
+düzeltilebilir ama LNS'in henüz ULAŞAMADIĞI pair'lerden** — veri/yorum
+sorunu değil, mevcut arama stratejisi/bütçe sınırı. İki bağımsız koşunun
+neredeyse aynı yüzdede (%27-29) platoya girmesi: mekanizma kanıtlı
+çalışıyor, ama mevcut m-tuning/randomize + 240s/iterasyon bütçesiyle bu
+noktanın ötesine geçemiyor.
+
+**Kullanıcıya soruldu, otonom devam edilmedi**: farklı hedefleme
+stratejisi (örn. en-yüksek-ROI/en-kolay-düzeltilebilir pair'leri önceliklendir,
+worst-slack yerine), daha uzun iterasyon bütçesi, ya da paralel
+Gurobi/SCIP hattı.
+
+### Ham iterasyon logu (koşu 2, son 15)
+
+| iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
+|---|---|---|---|---|---|---|
+| 47 | time_limit | 50204.06 | 50204.06 | 1287 | 320 | 94.4s |
+| 48 | time_limit | 50204.06 | 50204.06 | 1304 | 320 | 94.2s |
+| 49 | time_limit | 50204.06 | 50204.06 | 1348 | 320 | 93.8s |
+| 50 | time_limit | 50204.06 | 50204.06 | 1358 | 320 | 95.5s |
+| 51 | time_limit | 50204.06 | 50204.06 | 1320 | 320 | 94.3s |
+| 52 | time_limit | 50204.06 | 50204.06 | 1206 | 320 | 92.7s |
+| 53 | time_limit | 50204.06 | 50204.06 | 1308 | 320 | 93.1s |
+| 54 | time_limit | 50204.06 | 50204.06 | 1385 | 320 | 94.6s |
+| 55 | time_limit | 50204.06 | 50204.06 | 1225 | 320 | 92.9s |
+| 56 | time_limit | 50204.06 | 50204.06 | 1304 | 320 | 95.8s |
+| 57 | time_limit | 50204.06 | 50204.06 | 1312 | 320 | 97.4s |
+| 58 | time_limit | 50204.06 | 50204.06 | 1396 | 320 | 95.3s |
+| 59 | time_limit | 50204.06 | 50204.06 | 1347 | 320 | 92.4s |
+| 60 | time_limit | 50204.06 | 50204.06 | 1369 | 320 | 94.2s |
+| 61 | time_limit | 50204.06 | 50204.06 | 1440 | 320 | 97.7s |
