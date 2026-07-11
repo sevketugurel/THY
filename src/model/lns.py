@@ -147,3 +147,130 @@ def fix_reference_except_free(model, reference_arr: dict, reference_dep: dict,
     for r in model.DEP_INSTANCES:
         if r not in free_dep:
             model.t_dep[r].fix(reference_dep[r])
+
+
+# --- M5d LNS redesign, adim 2 (plan: a-evet-ama-iki-tingly-canyon.md):
+# baglantili-bilesen hedefleme. Worst-slack duz listesi, bacak-paylasimi
+# uzerinden bagli bir ihlal-komsulugunu parcalayarak seciyordu (bir
+# pair'in bir tarafi serbest, digeri donuk kalinca komsu pair hic
+# duzelmiyor -- K-subset'in leg-sharing bulgusuyla ayni yapisal gercek,
+# VARSAYIM-12). Burada bagli-bilesenin TAMAMI serbest birakilir, hicbir
+# zaman parcalanmaz (dev bilesenler haric, ki onlar da rastgele-BFS ile
+# tam-alt-kumelere bolunur, tek pair kaybolmaz/tekrarlanmaz).
+import random
+
+
+def build_pair_adjacency(candidates, violated_fixable_pairs: list) -> dict:
+    """{(o,d,gun) pair: set(other pairs sharing >=1 flight-time instance)}.
+    Two pairs are adjacent iff any candidate belonging to either of their
+    two directions shares an r1_id/r2_id with a candidate belonging to
+    either direction of the other pair -- an O(n) instance->pairs inverted
+    index, not an O(n^2) all-pairs comparison."""
+    groups = defaultdict(list)
+    for i, c in enumerate(candidates):
+        groups[(c.o, c.d, c.gun)].append(i)
+
+    instance_to_pairs = defaultdict(set)
+    for (o, d, gun) in violated_fixable_pairs:
+        for i in groups.get((o, d, gun), []) + groups.get((d, o, gun), []):
+            c = candidates[i]
+            instance_to_pairs[c.r1_id].add((o, d, gun))
+            instance_to_pairs[c.r2_id].add((o, d, gun))
+
+    adjacency = {p: set() for p in violated_fixable_pairs}
+    for pairs_sharing in instance_to_pairs.values():
+        if len(pairs_sharing) > 1:
+            for p in pairs_sharing:
+                adjacency[p] |= (pairs_sharing - {p})
+    return adjacency
+
+
+def connected_components(adjacency: dict) -> list:
+    """Plain BFS over `adjacency`'s keys. Returns components sorted
+    smallest-first (user's "easy first" directive), ties broken by the
+    component's own smallest pair (determinism)."""
+    visited = set()
+    components = []
+    for start in adjacency:
+        if start in visited:
+            continue
+        comp = []
+        queue = [start]
+        visited.add(start)
+        while queue:
+            node = queue.pop()
+            comp.append(node)
+            for neighbor in adjacency.get(node, ()):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
+        components.append(comp)
+    components.sort(key=lambda c: (len(c), min(c)))
+    return components
+
+
+def split_oversized_component(candidates, component: list, max_instances: int, seed: int) -> list:
+    """If the component's total free-instance footprint exceeds
+    max_instances, partitions it into sub-chunks via random-seed BFS (NOT
+    spectral clustering -- plain Python, no new dependency) so every
+    sub-chunk stays under budget where possible. A single pair whose OWN
+    footprint alone exceeds max_instances is returned as its own
+    over-budget singleton chunk (documented edge case, not an infinite
+    loop). Union of all returned chunks' pairs == the original component's
+    pairs exactly (no pair lost or duplicated)."""
+    free_arr, free_dep = free_instances_for_pairs(candidates, component)
+    if len(free_arr) + len(free_dep) <= max_instances:
+        return [component]
+
+    sub_adj = build_pair_adjacency(candidates, component)
+    rng = random.Random(seed)
+    remaining = set(component)
+    chunks = []
+    while remaining:
+        seed_pair = rng.choice(sorted(remaining))
+        chunk = [seed_pair]
+        remaining.discard(seed_pair)
+        frontier = [n for n in sub_adj.get(seed_pair, ()) if n in remaining]
+        while frontier:
+            candidate_pair = frontier.pop()
+            if candidate_pair not in remaining:
+                continue
+            trial_arr, trial_dep = free_instances_for_pairs(candidates, chunk + [candidate_pair])
+            if len(trial_arr) + len(trial_dep) > max_instances:
+                continue  # doesn't fit THIS chunk -- stays in remaining for a later one
+            chunk.append(candidate_pair)
+            remaining.discard(candidate_pair)
+            frontier.extend(n for n in sub_adj.get(candidate_pair, ()) if n in remaining)
+        chunks.append(chunk)
+    return chunks
+
+
+def select_pairs_by_component(pair_slack: dict, candidates, gamma_infeasible: set, stubborn: set,
+                               max_instances: int = 800, seed: int = 42, chunk_index: int = 0) -> tuple:
+    """Stateless entry point scripts/run_lns.py calls each iteration.
+    `stubborn` (a set of frozenset(component_pairs)) and `chunk_index`
+    (round-robin position within an oversized component's sub-chunks) are
+    DRIVER state owned by the caller -- this function only reads them,
+    mirroring how select_worst_pairs/_tune_m are pure functions with
+    m_base/randomize_mode owned by the loop.
+
+    Returns (pairs, free_arr, free_dep, component_id, component_size,
+    is_stubborn_revisit)."""
+    violated_fixable = [p for p, s in pair_slack.items() if s["total"] > 0 and p not in gamma_infeasible]
+    if not violated_fixable:
+        return [], set(), set(), None, 0, False
+
+    adjacency = build_pair_adjacency(candidates, violated_fixable)
+    components = connected_components(adjacency)
+
+    non_stubborn = [c for c in components if frozenset(c) not in stubborn]
+    is_stubborn_revisit = not non_stubborn
+    pool = non_stubborn if non_stubborn else components
+
+    chosen_component = pool[0]
+    component_id = frozenset(chosen_component)
+    chunks = split_oversized_component(candidates, chosen_component, max_instances, seed)
+    chosen_pairs = chunks[chunk_index % len(chunks)]
+
+    free_arr, free_dep = free_instances_for_pairs(candidates, chosen_pairs)
+    return chosen_pairs, free_arr, free_dep, component_id, len(chosen_component), is_stubborn_revisit
