@@ -19,6 +19,7 @@ from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
 from src.model.build import build_model_m4
+from src.config.paths import FULL_CR, FULL_FP, FULL_OD, FULL_YV
 from src.output.writer import write_output
 from src.solve.runner import solve
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
@@ -27,10 +28,6 @@ FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
 FIXTURE_YV = "tests/fixtures/synthetic_yolcu_verisi.xlsx"
 FIXTURE_CR = "tests/fixtures/synthetic_change_ranking_input.xlsx"
 FIXTURE_FP = "tests/fixtures/synthetic_flight_pairs.xlsx"
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_CR = "data_raw/change_ranking_input.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
 
 
 def main(argv=None) -> int:

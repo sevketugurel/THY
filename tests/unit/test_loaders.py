@@ -98,6 +98,101 @@ def test_load_od_table_rejects_gun_out_of_range(tmp_path):
         load_od_table(path)
 
 
+def test_load_od_table_without_elapsed_columns_is_byte_identical_to_today():
+    # Named regression pin (v1 loader path unchanged by the v2 detection
+    # branch) -- duplicates test_load_od_table_returns_expected_row_count_and_columns'
+    # assertion deliberately, as an explicit "v1 path preserved" contract.
+    df = load_od_table(FIXDIR / "synthetic_od_table.xlsx")
+    assert list(df.columns) == [
+        "cr1", "carrier_name", "dep1", "arr1", "flno1", "arr_time",
+        "cr2", "dep2", "arr2", "flno2", "dep_time",
+        "gate_to_gate_min", "od", "gun",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# O&D table v2 (ElapsedTime1/ElapsedTime2/ML2 columns, wrap-fix)
+# ---------------------------------------------------------------------------
+_V2_HEADER = [
+    "Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "ElapsedTime1", "Arr Time",
+    "Cr2", "Dep2", "Arr2", "FlNo2", "ML2", "ElapsedTime2", "Dep Time",
+    "Gate-to-Gate Uçuş Süresi", "O&D", "Gün",
+]
+
+
+def _write_od_table_v2(tmp_path: Path, rows: list, name="v2_od.xlsx") -> Path:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Bağlantı Tablosu"
+    ws.append(_V2_HEADER)
+    for r in rows:
+        ws.append(r)
+    path = tmp_path / name
+    wb.save(path)
+    return path
+
+
+def test_load_od_table_v2_detects_elapsed_columns_and_extends_schema(tmp_path):
+    base = dt.datetime(2026, 1, 5, 10, 0)
+    row = [
+        "TK", "Turkish Airlines", "ZZA", "IST", 1, "30.12.1899 02:00:00", base,
+        "TK", "IST", "ZZB", 2, "M", "30.12.1899 02:30:00", base + dt.timedelta(minutes=90),
+        dt.time(6, 0), "ZZA-ZZB", 1,
+    ]
+    path = _write_od_table_v2(tmp_path, [row])
+    df = load_od_table(path)
+    assert "elapsed1_min" in df.columns
+    assert "elapsed2_min" in df.columns
+    assert "ml2" in df.columns
+    # old 14 columns must still all be present
+    for col in [
+        "cr1", "carrier_name", "dep1", "arr1", "flno1", "arr_time",
+        "cr2", "dep2", "arr2", "flno2", "dep_time",
+        "gate_to_gate_min", "od", "gun",
+    ]:
+        assert col in df.columns
+
+
+def test_load_od_table_v2_wrap_corrects_a_synthetic_over_24h_row(tmp_path):
+    # TK EZE->IST->PEK, real row from the v2 O&D file (docs/decisions.md
+    # 2026-07-11 M5e entry): elapsed1=1020, gap=155, elapsed2=545 -> true
+    # total 1720min (28h40m). Displayed (wrapped) Gate-to-Gate is 280min
+    # (datetime.time(4,40)) -- must NOT be what gets used.
+    arr_time = dt.datetime(2026, 1, 5, 10, 0)
+    dep_time = arr_time + dt.timedelta(minutes=155)
+    row = [
+        "TK", "Turkish Airlines", "EZE", "IST", 1, "30.12.1899 17:00:00", arr_time,
+        "TK", "IST", "PEK", 2, "M", "30.12.1899 09:05:00", dep_time,
+        dt.time(4, 40), "EZE-PEK", 1,
+    ]
+    path = _write_od_table_v2(tmp_path, [row])
+    df = load_od_table(path)
+    assert df.iloc[0].gate_to_gate_min == 1720
+
+
+def test_load_od_table_v2_matches_v1_exactly_for_short_journeys(tmp_path):
+    # A <24h journey must yield the identical gate_to_gate_min whether
+    # loaded via the v1 (displayed-field) or v2 (Elapsed-composed) path.
+    base = dt.datetime(2026, 1, 5, 10, 0)
+    v1_row = [
+        "TK", "Turkish Airlines", "ZZA", "IST", 1, base,
+        "TK", "IST", "ZZB", 2, base + dt.timedelta(minutes=90),
+        dt.time(6, 0), "ZZA-ZZB", 1,
+    ]
+    v1_path = _write_od_table(tmp_path, [v1_row])
+    v1_df = load_od_table(v1_path)
+
+    v2_row = [
+        "TK", "Turkish Airlines", "ZZA", "IST", 1, "30.12.1899 02:00:00", base,
+        "TK", "IST", "ZZB", 2, "M", "30.12.1899 02:30:00", base + dt.timedelta(minutes=90),
+        dt.time(6, 0), "ZZA-ZZB", 1,
+    ]
+    v2_path = _write_od_table_v2(tmp_path, [v2_row])
+    v2_df = load_od_table(v2_path)
+
+    assert v1_df.iloc[0].gate_to_gate_min == v2_df.iloc[0].gate_to_gate_min == 360
+
+
 # ---------------------------------------------------------------------------
 # Yolcu Verisi (rho)
 # ---------------------------------------------------------------------------

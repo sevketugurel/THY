@@ -42,11 +42,16 @@ modülü. **Not**: full-data koşusunda E1 ilk şüpheli — bkz. bu turun kapan
 ayarlayamadığı uçuşlar kendi mevcut tarifelerinde sabit mi kabul edilmeli, yoksa
 başka bir resmi kapasite-tahsis verisi mi var? → `src/model/constraints_capacity.py::compute_out_of_scope_baselines`.
 
-**8. (VARSAYIM-8) Resmi K_od verisi** — full data'da 775 pazarın 575'i için
-gate-to-gate süresi hiçbir mevcut tarifede [L,U]'ya denk gelmiyor. Resmi bir K_od
-(gate-to-gate sabit) verisi var mı, yoksa istasyon-bazlı LS tahmini (bizim
-yaklaşımımız) kabul edilebilir mi? → `src/data/block_times.py::get_journey_constant_estimate`.
-Çıktıda artık `k_od_sources[]` ile hangi pazarların "estimated" olduğu görünür
+**8. (VARSAYIM-8) Resmi K_od verisi — VERİ İLE ÇÖZÜLDÜ (M5e, 2026-07-11)**:
+organizatörün 2026-07-09 veri v2 paketi `ElapsedTime1`/`ElapsedTime2`
+(bacak-bazlı gerçek blok süreleri) sağladı — `BlockTimeProvider` artık
+bunları tercih ediyor (VARSAYIM-15), LS tahmini yalnızca bu kolonlar
+YOKSA devreye giriyor. Ölçüldü (`docs/block_time_cross_validation.md`):
+805 TK-gözlemli pazarın 25'i tablo-seviyesinde LS tahminine muhtaçtı, LS
+hatası medyan=1.28dk/p90=6.72dk/max=124.11dk (23/25 karşılaştırılabilir
+örnek) — LS yaklaşımı çoğunlukla iyi çalışmış. Artık sorulacak bir şey
+kalmadı, bu madde kapalı. → `src/data/block_times.py::BlockTimeProvider`.
+Çıktıda `k_od_sources[]` ile hangi pazarların "estimated" olduğu görünür
 (bkz. `docs/output_format.md`).
 
 **9. (VARSAYIM-9) G'nin TK2841 anomalisi** — TK2841 (TZX→IST) 4 günde 03:25'te,
@@ -113,10 +118,10 @@ pencereleri" geçiyor, brief'te detay yok, elimizdeki 4 veri dosyasında da böy
 bir alan yok. MVP kapsamında no-op (veri yok → uygulanamaz). Resmi bir
 slot-penceresi dosyası var mı?
 
-**14. Resmi blok-süresi (T_IB/T_OB) master dosyası var mı?** — block_times
-sağlayıcısı değiştirilebilir tasarlandı (`src/data/block_times.py`); organizatörde
-ayrı bir resmi T_IB_o/T_OB_o dosyası varsa bizim bipartite-LS türetmemizin
-yerini alabilir.
+**14. Resmi blok-süresi (T_IB/T_OB) master dosyası var mı? — VERİ İLE ÇÖZÜLDÜ
+(M5e, 2026-07-11)**: organizatörün 2026-07-09 paketindeki `ElapsedTime1`/
+`ElapsedTime2` kolonları tam olarak bu ihtiyacı karşılıyor (bacak-bazlı
+gerçek blok süreleri) — ayrı bir master dosyaya gerek kalmadı, bkz. madde 8.
 
 **15. Gün kümesi H'nin kapsamı** — Flight Pairs ve O&D tablosu `Gün∈{1..7}`
 kullanıyor; bunun haftalık döngü indeksi (her hafta tekrarlanan) olduğu

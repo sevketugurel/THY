@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.data.elapsed_parser import parse_elapsed_minutes, wrap_corrected_journey_minutes
+
 
 class SchemaError(ValueError):
     """Raised when an input file violates an expected schema invariant."""
@@ -24,12 +26,19 @@ def _minutes(value) -> int:
 
 def load_od_table(path: Path) -> pd.DataFrame:
     df = pd.read_excel(path, sheet_name=0)
-    df = df.rename(columns={
+    has_elapsed = "ElapsedTime1" in df.columns
+
+    rename_map = {
         "Cr1": "cr1", "Carrier Name": "carrier_name", "Dep1": "dep1", "Arr1": "arr1",
         "FlNo1": "flno1", "Arr Time": "arr_time", "Cr2": "cr2", "Dep2": "dep2",
         "Arr2": "arr2", "FlNo2": "flno2", "Dep Time": "dep_time",
         "Gate-to-Gate Uçuş Süresi": "gate_to_gate_min", "O&D": "od", "Gün": "gun",
-    })
+    }
+    if has_elapsed:
+        rename_map.update({
+            "ElapsedTime1": "elapsed1_raw", "ElapsedTime2": "elapsed2_raw", "ML2": "ml2",
+        })
+    df = df.rename(columns=rename_map)
 
     mismatch = df[df.cr1 != df.cr2]
     if len(mismatch):
@@ -45,11 +54,33 @@ def load_od_table(path: Path) -> pd.DataFrame:
 
     df["flno1"] = df["flno1"].astype(int)
     df["flno2"] = df["flno2"].astype(int)
-    df["gate_to_gate_min"] = df["gate_to_gate_min"].apply(_minutes)
 
-    return df[["cr1", "carrier_name", "dep1", "arr1", "flno1", "arr_time",
+    columns = ["cr1", "carrier_name", "dep1", "arr1", "flno1", "arr_time",
                "cr2", "dep2", "arr2", "flno2", "dep_time",
-               "gate_to_gate_min", "od", "gun"]]
+               "gate_to_gate_min", "od", "gun"]
+
+    if has_elapsed:
+        # Wrap-fix (VARSAYIM-14, docs/decisions.md 2026-07-11 M5e entry): the
+        # displayed Gate-to-Gate field is a single Excel time-of-day cell that
+        # silently wraps mod 1440 once the true multi-leg journey reaches 24h.
+        # gap_min is already wrap-safe (dep_time/arr_time are full pd.Timestamps
+        # with dates), so recomposing from elapsed1+gap+elapsed2 is exact --
+        # applied unconditionally since the two formulas agree for every
+        # non-wrapped row too (proven against the real file, 0 exceptions).
+        gap_min = (df["dep_time"] - df["arr_time"]).dt.total_seconds() / 60
+        elapsed1_min = df["elapsed1_raw"].apply(parse_elapsed_minutes)
+        elapsed2_min = df["elapsed2_raw"].apply(parse_elapsed_minutes)
+        df["gate_to_gate_min"] = [
+            wrap_corrected_journey_minutes(e1, gap, e2)
+            for e1, gap, e2 in zip(elapsed1_min, gap_min, elapsed2_min)
+        ]
+        df["elapsed1_min"] = elapsed1_min
+        df["elapsed2_min"] = elapsed2_min
+        columns = columns + ["elapsed1_min", "elapsed2_min", "ml2"]
+    else:
+        df["gate_to_gate_min"] = df["gate_to_gate_min"].apply(_minutes)
+
+    return df[columns]
 
 
 def load_yolcu_verisi(path: Path, strict: bool = True) -> pd.DataFrame:

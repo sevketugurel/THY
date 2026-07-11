@@ -289,3 +289,67 @@ tetiklenmemişti. Düzeltme: `runner.py` artık N>0 olan pazarlar için
 objective=**668.75** (M2/M3'le AYNI — E1/E2/F bu fixture için mevcut
 optimumu BOZMADI, solver'ın zaten seçtiği tarife hepsini de sağlıyormuş),
 selected=18, valid=True.
+
+## M5e eki — `synthetic_od_table_elapsed.xlsx` (VARSAYIM-14/15, wrap-fix + Elapsed-öncelikli K_od/R_o)
+
+Organizatörün 2026-07-09 veri v2 paketiyle eklenen `ElapsedTime1`/`ML2`/
+`ElapsedTime2` kolonlarını (gerçek dosyanın KENDİ string formatında,
+`"30.12.1899 HH:MM:SS"`) egzersiz eden **AYRI** bir dosya —
+`synthetic_od_table.xlsx`'e DOKUNULMADI (LS-fallback yolu byte-byte
+korunur). `build_od_table_elapsed()` ile deterministik üretilir (hücre
+İÇERİĞİ her koşuda birebir aynı — bkz. aşağıdaki not; yalnızca openpyxl'in
+gömülü `dcterms:created`/`modified` zip metadata zaman damgası koşular
+arası değişir, bu `synthetic_od_table.xlsx` için de ÖNCEDEN böyleydi, bu
+turda dokunulmadı/tespit edildi).
+
+### Market ZZA→ZZB — [L,U] dışı satırın medyana DAHİL edilmesi (VARSAYIM-15 kanıtı)
+
+L=60, U=300 (Standard senaryo). 3 TK satırı:
+
+| Satır | FlNo1/2 | elapsed1 | gap | elapsed2 | k=elapsed1+elapsed2 | gap geçerli mi ([L,U]) |
+|---|---|---|---|---|---|---|
+| A | 9501/9502 | 90 | 100 | 130 | **220** | ✓ |
+| B | 9503/9504 | 100 | 150 | 130 | **230** | ✓ |
+| C | 9505/9506 | 50 | 40 | 150 | **200** | ✗ (40<L=60) |
+
+**Legacy LS yolu** (gap filtresi uygulasaydı): yalnızca A,B dahil →
+medyan(220,230) = **225**.
+**v2 Elapsed yolu** (VARSAYIM-15, gap filtresi YOK): A,B,C hepsi dahil →
+medyan(220,230,200) = **220**.
+`get_journey_constant("ZZA","ZZB")` **220** döndürmeli — 225 DEĞİL. Bu,
+Satır C'nin gerçekten medyana katıldığının doğrudan kanıtı
+(`test_synthetic_od_table_elapsed_fixture_matches_hand_calc`).
+
+### Market EZE→PEK — wrap-fix oracle'ı (gerçek veriden, VARSAYIM-14 kanıtı)
+
+Satır D (FlNo1=9601, FlNo2=9602): elapsed1=**1020**dk, gap=**155**dk
+(geçerli, [60,300] içinde), elapsed2=**545**dk. Bunlar
+`docs/decisions.md` 2026-07-11 M5e girdisindeki GERÇEK TK EZE→IST→PEK
+satırının sayılarıdır (organizatörün v2 dosyasından, hand-verified).
+
+```
+gerçek toplam = 1020 + 155 + 545 = 1720dk (28h40m)
+görüntülenen (wrap'li) alan = 1720 mod 1440 = 280dk = datetime.time(4,40)
+```
+
+Fixture, görüntülenen `Gate-to-Gate Uçuş Süresi` hücresine **kasıtlı
+olarak wrap'li 280dk değerini** yazıyor (gerçek dosyanın davranışını
+birebir taklit ederek) — ama `load_od_table`'ın v2 yolu bu hücreyi hiç
+OKUMUYOR, `elapsed1_min+gap_min+elapsed2_min`'den yeniden hesaplıyor.
+`get_journey_constant("EZE","PEK")` k=elapsed1+elapsed2=**1565** döndürür
+(gap içermez — K_od tanımı gereği); `gate_to_gate_min` sütununun kendisi
+(loader seviyesinde) **1720** olmalı, 280 DEĞİL
+(`tests/unit/test_loaders.py`'nin eşdeğer raw-satır testine paralel,
+burada gerçek xlsx round-trip'iyle).
+
+### Determinizm notu
+
+`python tests/fixtures/build_fixture.py`'yi iki kez çalıştırıp
+`load_od_table(...)` ile okunan HÜCRE İÇERİĞİ karşılaştırıldığında
+(pandas `hash_pandas_object`), her iki koşu da **birebir aynı hash**
+üretir — veri determinizmi tam. Ham dosya baytları (`shasum`) farklıdır
+çünkü openpyxl her `wb.save()`'de `docProps/core.xml`'e o anki
+UTC zaman damgasını gömüyor (bu `synthetic_od_table.xlsx` dahil TÜM
+fixture dosyaları için önceden de böyleydi — bu turda tespit edildi,
+davranış hiçbir testi etkilemiyor çünkü testlerin hepsi `load_od_table`
+üzerinden DEĞERLERİ karşılaştırıyor, ham baytları değil).

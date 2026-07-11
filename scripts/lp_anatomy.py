@@ -41,10 +41,7 @@ from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_rank
 from src.model.build import build_model_m4
 from src.solve.runner import solve
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_CR = "data_raw/change_ranking_input.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
+from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
 
 _BINARY_FAMILIES = ["x", "y", "beat", "beaten", "rank_onehot", "a_dir", "w", "z_dep", "z_arr"]
 

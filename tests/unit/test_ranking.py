@@ -19,8 +19,10 @@ kural değil, r formülünün "optimizasyon öncesi" fotoğrafı.
 
 marker: unit (solver-free, pure logic).
 """
+import datetime as dt
 from pathlib import Path
 
+import openpyxl
 import pandas as pd
 import pytest
 
@@ -99,3 +101,32 @@ def test_compute_baseline_best_journey_returns_none_for_empty_market():
     od_table = load_od_table(FIXDIR / "synthetic_od_table.xlsx")
     baseline = compute_baseline_best_journey(od_table, o="ZZA", d="ZZB", gun=99, L=60, U=300)
     assert baseline is None
+
+
+def test_compute_baseline_best_journey_uses_wrap_corrected_duration(tmp_path):
+    # Propagation regression (M5e, zero production changes in this file):
+    # bug also affects TK baseline rows, not just rivals (docs/decisions.md
+    # 2026-07-11). Real EZE->IST->PEK numbers, gap=155 is within [L,U]=[60,300].
+    header = [
+        "Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "ElapsedTime1", "Arr Time",
+        "Cr2", "Dep2", "Arr2", "FlNo2", "ML2", "ElapsedTime2", "Dep Time",
+        "Gate-to-Gate Uçuş Süresi", "O&D", "Gün",
+    ]
+    arr_time = dt.datetime(2026, 1, 5, 10, 0)
+    dep_time = arr_time + dt.timedelta(minutes=155)
+    row = [
+        "TK", "Turkish Airlines", "EZE", "IST", 1, "30.12.1899 17:00:00", arr_time,
+        "TK", "IST", "PEK", 2, "M", "30.12.1899 09:05:00", dep_time,
+        dt.time(4, 40), "EZE-PEK", 1,
+    ]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Bağlantı Tablosu"
+    ws.append(header)
+    ws.append(row)
+    path = tmp_path / "v2_baseline.xlsx"
+    wb.save(path)
+
+    od_table = load_od_table(path)
+    baseline = compute_baseline_best_journey(od_table, o="EZE", d="PEK", gun=1, L=60, U=300)
+    assert baseline == 1720

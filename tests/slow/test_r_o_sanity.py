@@ -12,12 +12,13 @@ from pathlib import Path
 
 import pytest
 
+from src.config.paths import FULL_OD as FULL_OD_REL
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_od_table
 
 pytestmark = pytest.mark.slow
 
-FULL_OD = Path(__file__).parent.parent.parent / "data_raw" / "O&D Rakip Bağlantı Tablosu (1).xlsx"
+FULL_OD = Path(__file__).parent.parent.parent / FULL_OD_REL
 
 
 @pytest.fixture(scope="module")

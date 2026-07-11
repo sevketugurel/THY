@@ -14,8 +14,10 @@ olmalı -- aksi halde yolcu hala rakibin daha hızlı seçeneğini tercih eder,
 
 marker: unit (solver-free, pure logic).
 """
+import datetime as dt
 from pathlib import Path
 
+import openpyxl
 import pytest
 
 from src.data.competitors import derive_rival_best_times
@@ -51,3 +53,34 @@ def test_excludes_tk_from_rival_set(od_table):
 def test_empty_market_returns_empty_dict(od_table):
     rivals = derive_rival_best_times(od_table, o="ZZA", d="ZZB", gun=99)
     assert rivals == {}
+
+
+def test_derive_rival_best_times_uses_wrap_corrected_duration(tmp_path):
+    # Propagation regression (M5e, zero production changes in this file):
+    # load_od_table's wrap-fix (VARSAYIM-14) flows through gate_to_gate_min
+    # with no code change here. A rival row with a real >=24h journey (real
+    # EZE->IST->PEK numbers, docs/decisions.md 2026-07-11) must be reported
+    # at its true (unwrapped) 1720min, not the displayed 280min.
+    header = [
+        "Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "ElapsedTime1", "Arr Time",
+        "Cr2", "Dep2", "Arr2", "FlNo2", "ML2", "ElapsedTime2", "Dep Time",
+        "Gate-to-Gate Uçuş Süresi", "O&D", "Gün",
+    ]
+    arr_time = dt.datetime(2026, 1, 5, 10, 0)
+    dep_time = arr_time + dt.timedelta(minutes=155)
+    row = [
+        "R1", "Rival Air", "EZE", "IST", 1, "30.12.1899 17:00:00", arr_time,
+        "R1", "IST", "PEK", 2, "M", "30.12.1899 09:05:00", dep_time,
+        dt.time(4, 40), "EZE-PEK", 1,
+    ]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Bağlantı Tablosu"
+    ws.append(header)
+    ws.append(row)
+    path = tmp_path / "v2_rival.xlsx"
+    wb.save(path)
+
+    od_table = load_od_table(path)
+    rivals = derive_rival_best_times(od_table, o="EZE", d="PEK", gun=1)
+    assert rivals == {"R1": 1720}

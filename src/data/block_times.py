@@ -14,7 +14,26 @@ other's estimation method (see plan §4 "Blok süresi sağlayıcısı"):
   T_OB_x -> T_OB_x - c leaves every row residual unchanged); R_o is invariant to
   that shift by construction, so the ridge term used to pin the ambiguity (T_IB_x
   approx= T_OB_x) only affects individual-value reporting, never R_o itself.
+
+v2 (VARSAYIM-15, M5e): when the input DataFrame carries elapsed1_min/elapsed2_min
+(per-leg block times from the organizer's ElapsedTime1/ElapsedTime2 columns, added
+2026-07-09), K_od and R_o become DIRECT observations instead of a gap-dependent
+equation / recovered LS unknowns -- implied_k = gate_to_gate_min - gap_min reduces
+algebraically to exactly elapsed1_min + elapsed2_min (gate_to_gate_min is now
+COMPOSED as elapsed1_min + gap_min + elapsed2_min by loaders.load_od_table's
+wrap-fix), so K_od no longer depends on gap at all. The [L,U] gap filter -- a
+data-quality guard against invalid/placeholder displayed durations -- is dropped
+for this path: Elapsed1/Elapsed2 are populated and internally consistent
+regardless of gap validity (verified against the real v2 file, 0/57,317
+exceptions; docs/decisions.md 2026-07-11). Similarly, Elapsed1 on a dep1==o row
+IS a direct observation of T_IB_o, Elapsed2 on an arr2==o row IS a direct
+observation of T_OB_o -- per-station medians replace the bipartite LS solve
+entirely, no shift-ambiguity/ridge term needed (these are observations, not
+recovered unknowns). Interface (all 4 public methods/properties) is unchanged;
+only __init__ picks a different internal path based on column presence.
 """
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -23,9 +42,16 @@ class BlockTimeProvider:
     def __init__(self, tk_rows: pd.DataFrame, L: int, U: int, ridge: float = 1e-6):
         self._L = L
         self._U = U
+        self._has_elapsed = {"elapsed1_min", "elapsed2_min"}.issubset(tk_rows.columns)
 
+        if self._has_elapsed:
+            self._init_from_elapsed(tk_rows)
+        else:
+            self._init_from_ls(tk_rows, ridge)
+
+    def _init_from_ls(self, tk_rows: pd.DataFrame, ridge: float):
         gap_min = (tk_rows["dep_time"] - tk_rows["arr_time"]).dt.total_seconds() / 60
-        valid = tk_rows[(gap_min >= L) & (gap_min <= U)].copy()
+        valid = tk_rows[(gap_min >= self._L) & (gap_min <= self._U)].copy()
         valid["gap_min"] = gap_min[valid.index]
         valid["implied_k"] = valid["gate_to_gate_min"] - valid["gap_min"]
 
@@ -36,6 +62,42 @@ class BlockTimeProvider:
         self._rotation_constants, self._t_ib, self._t_ob, self._residuals, self._single_role = (
             self._solve_rotation_ls(valid, ridge)
         )
+
+    def _init_from_elapsed(self, tk_rows: pd.DataFrame):
+        rows = tk_rows.copy()
+        rows["implied_k"] = rows["elapsed1_min"] + rows["elapsed2_min"]
+
+        self._journey_constants = rows.groupby(["dep1", "arr2"])["implied_k"].median().to_dict()
+
+        t_ib = rows.groupby("dep1")["elapsed1_min"].median()
+        t_ob = rows.groupby("arr2")["elapsed2_min"].median()
+        self._t_ib = t_ib.to_dict()
+        self._t_ob = t_ob.to_dict()
+
+        stations = sorted(set(t_ib.index) | set(t_ob.index))
+        self._rotation_constants = {
+            s: self._t_ib.get(s, 0.0) + self._t_ob.get(s, 0.0) for s in stations
+        }
+        self._single_role = {
+            s for s in stations if not (s in t_ib.index and s in t_ob.index)
+        }
+        # Same per-row formula as the LS path's row_residuals (T_IB[dep1] +
+        # T_OB[arr2] - implied_k, the row's own "equation" residual) -- here
+        # T_IB/T_OB are direct medians rather than an LS solution, but every
+        # row's dep1/arr2 is guaranteed present in t_ib/t_ob (both indices
+        # are built from these same rows), so no NaN case arises.
+        self._residuals = pd.Series(
+            [self._t_ib[row.dep1] + self._t_ob[row.arr2] - row.implied_k for row in rows.itertuples()],
+            index=rows.index, name="rotation_ls_residual_min",
+        )
+
+        spreads = rows.groupby(["dep1", "arr2"])["implied_k"].agg(lambda s: s.max() - s.min())
+        if len(spreads):
+            logging.info(
+                "BlockTimeProvider (elapsed path): K_od spread across %d markets -- "
+                "median=%.1f p90=%.1f max=%.1f",
+                len(spreads), spreads.median(), spreads.quantile(0.9), spreads.max(),
+            )
 
     def get_journey_constant(self, o: str, d: str) -> float:
         return self._journey_constants[(o, d)]

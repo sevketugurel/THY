@@ -292,6 +292,26 @@ ayarlanabilir senaryoda ulaşılabilir). Bu pazarlar için resmi bir K_od
 (gate-to-gate uçuş süresi sabiti) verisi var mı, yoksa ağ-genelinde
 istasyon-bazlı bir tahmin (bizim LS yaklaşımımız gibi) kabul edilebilir mi?"
 
+**GÜNCELLEME (M5e, 2026-07-11) — veri v2 ile büyük ölçüde ÇÖZÜLDÜ**:
+organizatörün 2026-07-09 paketi `ElapsedTime1`/`ElapsedTime2` (bacak-bazlı
+gerçek blok süreleri) ekledi — `BlockTimeProvider` artık bunları tercih
+ediyor (VARSAYIM-15, aşağıda), LS tahmini yalnızca Elapsed kolonları
+YOKSA (ör. fixture'ın kolonsuz varyantı) devreye giriyor.
+`scripts/validate_block_times_v2.py` ile ölçüldü
+(`docs/block_time_cross_validation.md`): 805 TK-gözlemli pazarın 25'i
+tablo-seviyesinde geçerli-gap satırdan yoksundu (LS tahminine muhtaçtı);
+bu 25'in TAMAMI artık v2 ile doğrudan değer alıyor. LS tahmininin gerçek
+değerden sapması: **medyan=1.28dk, p90=6.72dk, max=124.11dk** (23/25
+karşılaştırılabilir örnek) — LS yaklaşımı çoğunlukla iyi çalışmış, tek bir
+büyük sapma (124dk) dışında. Bu, organizatör sorusunu byüyük ölçüde
+gereksiz kılıyor (kendi verimiz artık mevcut) — `docs/organizer_questions.md`
+madde 8 "veri ile çözüldü" olarak işaretlendi. **Not**: bu 25/805, VARSAYIM-8'in
+orijinal 575/1329 rakamıyla AYNI kohort DEĞİL — 575 candidate-generation
+SONRASI (adjustable window ile sentezlenen, hiç ham satırı olmayan
+pazarlar dahil) ölçülmüştü; 805-pazarlık bu ölçüm yalnızca ham tabloda
+GERÇEKTEN var olan (dep1,arr2) çiftlerini kapsıyor. Candidate-seviyesi
+575/1329'un v2 ile yeniden ölçümü Bölüm 2'nin (yeniden ölçüm) işi.
+
 ## VARSAYIM-9: G küme-bazlı uygulanıyor — baseline verinin kendisi KOŞULSUZ G'yi ihlal ediyor (kanıtlı)
 
 **Bulgu**: M5'in full-data solve merdiveni, F devre dışı bırakılsa bile,
@@ -731,3 +751,68 @@ yeşil. Sıradaki adım: full-data'da warm-start denemesini bu düzeltmeyle
 TEKRARLA — bu ÖNCEKİ hiçbir solve denemesinde düzeltilmemişti, yani şimdiye
 kadarki TÜM full-data sonuçları (M5/M5c/M5d) bu formülasyon hatasının
 GÖLGESİNDE elde edildi.
+
+## VARSAYIM-14: Gate-to-Gate wrap-fix — süre bileşenlerden (Elapsed1+gap+Elapsed2) hesaplanır, görüntülenen alandan DEĞİL (M5e, 2026-07-11)
+
+**Bulgu**: organizatör 2026-07-09'da resmi olarak uyardı — "Gate-to-Gate"
+alanı Excel time-of-day hücresi olarak saklanıyor, 24 saati aşan
+yolculuklarda görüntülenen değer 1440'a göre WRAP ediyor (sıfırlanıyor).
+Gerçek v2 dosyasında doğrudan doğrulandı: `elapsed1_min + gap_min +
+elapsed2_min` (gap = Dep Time − Arr Time, tam takvim-tarihli
+`pd.Timestamp`, wrap'e MARUZ DEĞİL) ile görüntülenen alan arasındaki fark,
+**57.317 satırın TAMAMINDA** tam 1440'ın katı (0 istisna). **495 satır (60
+farklı O&D pazarı) gerçek ≥24h yolculuk**, maksimum 35.0 saat. Bu bug daha
+önce hem rakip satırlarını (`competitors.py::derive_rival_best_times`) hem
+61 TK baseline satırını (`ranking.py::compute_baseline_best_journey`)
+sessizce etkiliyordu.
+
+**Karar**: `src/data/elapsed_parser.py::wrap_corrected_journey_minutes`
++ `src/data/loaders.py::load_od_table` — v2 şema (ElapsedTime1/2 kolonları
+mevcut) tespit edildiğinde `gate_to_gate_min`, görüntülenen hücreden
+DEĞİL, `elapsed1_min+gap_min+elapsed2_min`'den hesaplanır (TÜM satırlara
+koşulsuz uygulanır — wrap'siz 56.822 satırda iki formül zaten birebir aynı
+sonucu veriyor). Tek düzeltme noktası: `competitors.py`/`ranking.py`
+`gate_to_gate_min` kolon adını paylaştığı için SIFIR kod değişikliğiyle
+düzeltmeyi miras alıyor (regresyon testleriyle kanıtlandı,
+`tests/unit/test_competitors.py`/`test_ranking.py`).
+
+**Etki alanı**: yalnızca v2 şemalı dosyalarda aktif (Elapsed kolonları
+YOKSA — ör. fixture'ın kolonsuz varyantı, mevcut LS-yolu davranışı
+DEĞİŞMEDEN korunur). `docs/decisions.md` 2026-07-11 M5e girdisi.
+
+## VARSAYIM-15: Elapsed1/Elapsed2 mevcutken K_od/R_o doğrudan bacak-gözlemi, `[L,U]` filtresi K_od için kaldırılır (M5e, 2026-07-11)
+
+**Bulgu**: VARSAYIM-14'ün kimliği gereği (`gate_to_gate_min =
+elapsed1_min+gap_min+elapsed2_min`), `implied_k = gate_to_gate_min -
+gap_min` cebirsel olarak TAM `elapsed1_min+elapsed2_min`'e sadeleşiyor —
+K_od artık gap'e hiç bağlı değil. `[L,U]` gap filtresi yalnızca
+görüntülenen sürenin geçersiz/placeholder olabileceği satırlara karşı bir
+veri-kalite önlemiydi; Elapsed1/Elapsed2'nin gap geçerliliğinden BAĞIMSIZ
+tutarlı olduğu gerçek veride doğrulandı (0/57.317 istisna). Benzer şekilde
+Elapsed1 (dep1==o satırında) T_IB_o'nun, Elapsed2 (arr2==o satırında)
+T_OB_o'nun DOĞRUDAN gözlemi — R_o artık bipartite LS gerektirmiyor.
+
+**Karar**: `src/data/block_times.py::BlockTimeProvider._init_from_elapsed`
+— K_od = market-bazlı medyan(`elapsed1_min+elapsed2_min`), TÜM TK
+satırları dahil (gap geçerliliğinden bağımsız); R_o = istasyon-bazlı
+medyan(Elapsed1)+medyan(Elapsed2), LS/ridge YOK. Arayüz (4 public
+metod/property) DEĞİŞMEDİ, yalnızca `__init__` kolon varlığına göre farklı
+bir iç yola giriyor (`elapsed1_min`/`elapsed2_min` yoksa mevcut LS yolu
+byte-byte korunur — `tests/unit/test_block_times.py`'deki 12 orijinal test
+regresyon kanıtı).
+
+**Skor-etkileyen veri-yorumu kararı** (bu yüzden burada açıkça
+işaretleniyor, CLAUDE.md'nin dur-ve-sor eşiği): hangi pazarların
+"doğrudan" vs "tahmini" K_od aldığını değiştiriyor. Kanıtın gücü
+göz önüne alındığında otonom ilerlendi — destekleyici sayılar
+`docs/block_time_cross_validation.md`'de (805 TK-gözlemli pazarın 25'i
+tablo-seviyesinde LS tahminine muhtaçtı, LS hatası medyan=1.28dk,
+p90=6.72dk, max=124.11dk; R_o kayması medyan=1.77dk, p90=9.22dk,
+max=1142.18dk — tek bir büyük sapma, muhtemelen zayıf-bağlı bir
+istasyon).
+
+**Etki alanı**: `src/data/block_times.py`. `[L,U]` filtresi BAŞKA HİÇBİR
+YERDE değiştirilmedi (`ranking.py::compute_baseline_best_journey`'nin
+`[L,U]` kullanımı farklı bir semantik — "meşru bağlanabilir itinerary" —
+aynen kalıyor). VARSAYIM-8'in ~575-pazarlık candidate-seviyesi LS-fallback
+popülasyonunun v2 ile yeniden ölçümü Bölüm 2'nin işi.

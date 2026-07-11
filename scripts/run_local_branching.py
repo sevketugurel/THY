@@ -36,10 +36,7 @@ from src.output.writer import write_output
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_CR = "data_raw/change_ranking_input.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
+from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
 CORE_WORKER = Path(__file__).resolve().parent / "_core_feasibility_step_worker.py"
 LOCAL_BRANCH_WORKER = Path(__file__).resolve().parent / "_local_branching_step_worker.py"
 

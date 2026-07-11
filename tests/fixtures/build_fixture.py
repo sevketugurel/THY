@@ -161,9 +161,78 @@ def build_flight_pairs():
     wb.save(FIXDIR / "synthetic_flight_pairs.xlsx")
 
 
+# ---------------------------------------------------------------------------
+# synthetic_od_table_elapsed.xlsx (M5e, VARSAYIM-14/15) -- v2 schema, exercises
+# the ElapsedTime1/ML2/ElapsedTime2 string-parse primary path + wrap-fix +
+# [L,U]-independent K_od median, at real-loader (xlsx round-trip) scale.
+# Does NOT touch synthetic_od_table.xlsx -- that fixture stays byte-identical
+# and continues to exercise the LS-fallback (no Elapsed columns) path.
+# ---------------------------------------------------------------------------
+HEADER_OD_ELAPSED = [
+    "Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "ElapsedTime1", "Arr Time",
+    "Cr2", "Dep2", "Arr2", "FlNo2", "ML2", "ElapsedTime2", "Dep Time",
+    "Gate-to-Gate Uçuş Süresi", "O&D", "Gün",
+]
+
+
+def _elapsed_str(minutes: int) -> str:
+    # Mirrors the real v2 file's Excel-1899-epoch string artifact exactly
+    # (docs/decisions.md 2026-07-11 M5e entry) -- primary parse path.
+    h, m = divmod(minutes, 60)
+    return f"30.12.1899 {h:02d}:{m:02d}:00"
+
+
+def od_row_elapsed(flno1, elapsed1_min, arr_min, flno2, elapsed2_min, dep_min, base_date, o, d, ml2="M"):
+    gap_min = dep_min - arr_min
+    true_total = elapsed1_min + gap_min + elapsed2_min
+    displayed = true_total % 1440  # organizer's wrap bug, reproduced deliberately
+    return [
+        "TK", "Turkish Airlines", o, "IST", flno1, _elapsed_str(elapsed1_min), dtm(base_date, arr_min),
+        "TK", "IST", d, flno2, ml2, _elapsed_str(elapsed2_min), dtm(base_date, dep_min),
+        duration_min(displayed), f"{o}-{d}", 1 if base_date == GUN1_BASE else 2,
+    ]
+
+
+# Market ZZA-ZZB: 3 TK rows, one with an out-of-[L,U] gap (L=60,U=300) that
+# VARSAYIM-15 says must still count toward the K_od median (unlike the
+# legacy LS path, which would exclude it -- see test_block_times.py's
+# elapsed-path tests for the equivalent raw-DataFrame proof).
+#   Row A: elapsed1=90,  gap=100 (valid),        elapsed2=130 -> k=220
+#   Row B: elapsed1=100, gap=150 (valid),        elapsed2=130 -> k=230
+#   Row C: elapsed1=50,  gap=40  (INVALID, <L),  elapsed2=150 -> k=200
+#   median(220, 230, 200) = 220 (NOT 225, which is median(220,230) if Row C
+#   were wrongly excluded).
+K_OD_ELAPSED_ZZA_ZZB = 220
+
+# Market EZE-PEK: real hand-verified wrap oracle (docs/decisions.md
+# 2026-07-11 M5e entry) -- elapsed1=1020, gap=155 (valid), elapsed2=545 ->
+# true total 1720min (28h40m); displayed (wrapped) field is 280min
+# (datetime.time(4,40)) and must NOT be what gets used.
+TRUE_TOTAL_EZE_PEK = 1720
+
+
+def build_od_table_elapsed():
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Bağlantı Tablosu"
+    ws.append(HEADER_OD_ELAPSED)
+
+    rows = [
+        od_row_elapsed(9501, 90, 700, 9502, 130, 800, GUN1_BASE, "ZZA", "ZZB"),   # Row A, k=220
+        od_row_elapsed(9503, 100, 700, 9504, 130, 850, GUN1_BASE, "ZZA", "ZZB"),  # Row B, k=230
+        od_row_elapsed(9505, 50, 700, 9506, 150, 740, GUN1_BASE, "ZZA", "ZZB"),   # Row C, k=200, gap=40<L
+        od_row_elapsed(9601, 1020, 600, 9602, 545, 755, GUN1_BASE, "EZE", "PEK"), # wrap oracle, gap=155
+    ]
+    for r in rows:
+        ws.append(r)
+
+    wb.save(FIXDIR / "synthetic_od_table_elapsed.xlsx")
+
+
 if __name__ == "__main__":
     build_od_table()
     build_yolcu_verisi()
     build_ranking_table()
     build_flight_pairs()
+    build_od_table_elapsed()
     print("Fixtures written to", FIXDIR)

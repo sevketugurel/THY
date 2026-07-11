@@ -47,10 +47,7 @@ from src.model.constraints_selection import add_b_constraints, add_c_constraints
 from src.model.objective import add_connection_reward_objective, add_ranking_reward_objective
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_CR = "data_raw/change_ranking_input.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
+from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
 DIAGNOSE_WORKER = Path(__file__).resolve().parent / "_diagnose_step_worker.py"
 STEP_TIME_LIMIT_SEC = 180
 WATCHDOG_MARGIN_SEC = 60

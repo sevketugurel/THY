@@ -183,6 +183,32 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   YERDE — herhangi bir mütevazı k (200/400/800) baştan umutsuz. 141 unit +
   106 solve yeşil. Kullanıcıya soruldu: nasıl devam edilsin (daha büyük k,
   farklı çözücü, ya da bu haliyle kapat).
+- **M5e Bölüm 1 tamam (tag: `m5e-data-v2`) — veri v2 entegrasyonu (TDD)**.
+  Organizatör 2026-07-09'da `ElapsedTime1`/`ElapsedTime2`/`ML2` kolonlu
+  güncellenmiş bir O&D paketi yayınladı + resmi WRAP uyarısı verdi
+  ("Gate-to-Gate" alanı 24h'yi aşınca sıfırlanabiliyor). İkisi de gerçek
+  veride bağımsız doğrulandı: wrap bug'ı 57.317 satırın TAMAMINDA tam
+  1440'ın-katı bir formülle kanıtlandı (495 satır/60 pazar gerçek ≥24h,
+  max 35h — hand-verified oracle: TK EZE→IST→PEK, 1020+155+545=1720dk,
+  görüntülenen 280dk); 3 kardeş dosya + O&D'nin `_updated`-olmayan kopyası
+  byte-özdeş (yalnızca O&D değişti). Yeni `src/data/elapsed_parser.py`
+  (wrap-güvenli dakika parse + süre birleştirme) + `loaders.py::load_od_table`
+  TEK düzeltme noktası (competitors.py/ranking.py SIFIR kod değişikliğiyle
+  miras aldı, regresyon testleriyle kanıtlandı) — VARSAYIM-14.
+  `BlockTimeProvider` v2: Elapsed kolonları mevcutken K_od/R_o artık
+  DOĞRUDAN bacak-gözlemi (`[L,U]` filtresi K_od için kaldırıldı — VARSAYIM-15,
+  skor-etkileyen veri-yorumu kararı olarak açıkça işaretlendi), kolonlar
+  yoksa mevcut LS yolu byte-byte korunuyor (arayüz değişmedi). Çapraz
+  doğrulama (`scripts/validate_block_times_v2.py` →
+  `docs/block_time_cross_validation.md`): 805 TK-gözlemli pazarın 25'i
+  tablo-seviyesinde LS tahminine muhtaçtı, hepsi artık doğrudan değer
+  alıyor, LS hatası medyan=1.28dk/p90=6.72dk/max=124.11dk —
+  `organizer_questions.md` madde 8/14 "veri ile çözüldü" kapatıldı. Path
+  temizliği: `FULL_OD` vb. 19 dosyada tekrarlanan sabitler
+  `src/config/paths.py`'ye konsolide edildi (`(1)` son eki düşürüldü).
+  313 test yeşil (unit+slow), fixture objective **668.75 korundu**. Full-data
+  yeniden ölçüm (Bölüm 2) ve son kampanya (Bölüm 3, Pazartesi 2026-07-13
+  23:59'a kadar) henüz başlamadı.
 
 ## Kilit Kararlar
 

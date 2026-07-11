@@ -25,9 +25,7 @@ from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
+from src.config.paths import FULL_OD, FULL_YV, FULL_FP
 CORE_WORKER = Path(__file__).resolve().parent / "_core_feasibility_step_worker.py"
 
 

@@ -60,8 +60,7 @@ from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_od_table, load_yolcu_verisi
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
+from src.config.paths import FULL_OD, FULL_YV
 
 
 def forced_status(c, L, U):

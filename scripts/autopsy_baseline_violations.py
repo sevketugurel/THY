@@ -35,10 +35,7 @@ from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_CR = "data_raw/change_ranking_input.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
+from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
 K_VALUES = (50, 100, 200, 400)
 
 

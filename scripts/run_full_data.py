@@ -30,10 +30,7 @@ from src.output.writer import write_output
 from src.solve.ladder import solve_with_ladder
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
-FULL_OD = "data_raw/O&D Rakip Bağlantı Tablosu (1).xlsx"
-FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
-FULL_CR = "data_raw/change_ranking_input.xlsx"
-FULL_FP = "data_raw/Flight Pairs.xlsx"
+from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
 
 
 def main(argv=None):
