@@ -39,6 +39,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--time-limit-sec", type=float, default=600.0)
     parser.add_argument("--watchdog-margin-sec", type=float, default=120.0)
+    parser.add_argument("--step-a-time-limit-sec", type=float, default=600.0,
+                         help="M5e Bölüm 3d (discovered hardcoded): budget for the Step A "
+                              "(A+G+F base point) re-solve, previously fixed at 600s.")
+    parser.add_argument("--step-a-watchdog-margin-sec", type=float, default=120.0)
     parser.add_argument("--mip-heuristic-effort", type=float, default=0.3)
     parser.add_argument("--mip-gap", type=float, default=0.08)
     parser.add_argument("--max-improving-sols", type=int, default=None,
@@ -109,12 +113,14 @@ def main():
         bucket_size_min=bucket_size_min, capacity_departure=config["capacity_departure"],
         capacity_arrival=config["capacity_arrival"],
     )
-    core_solve_kwargs = dict(solver="highs", time_limit_sec=600.0, seed=config["seed"],
+    core_solve_kwargs = dict(solver="highs", time_limit_sec=args.step_a_time_limit_sec, seed=config["seed"],
                               mip_gap=0.08, mip_heuristic_effort=0.3)
-    print("[warm_start_elastic] re-solving A+G+F for the base point...", flush=True)
+    print(f"[warm_start_elastic] re-solving A+G+F for the base point "
+          f"(time_limit={args.step_a_time_limit_sec}s)...", flush=True)
     t1 = time.time()
     core_result, _ = solve_step_with_watchdog(
-        core_build_kwargs, core_solve_kwargs, time_limit_sec=600.0, watchdog_margin_sec=120.0,
+        core_build_kwargs, core_solve_kwargs, time_limit_sec=args.step_a_time_limit_sec,
+        watchdog_margin_sec=args.step_a_watchdog_margin_sec,
         step_name="core_feasibility_for_warm_start", worker_script=CORE_WORKER,
     )
     print(f"[warm_start_elastic] A+G+F solve finished in {time.time()-t1:.1f}s "

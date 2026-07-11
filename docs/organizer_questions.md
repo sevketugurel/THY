@@ -35,8 +35,8 @@ kısıt kapsamı DIŞINDA kalıyor).
 
 **6. (VARSAYIM-6) E1 formülü** — bağıl dengesizlik $|n_{fwd}-n_{bwd}|/(n_{fwd}+n_{bwd})$
 kesin formül mü? Gün bazında mı dönem toplamında mı? Tek-yönlü candidate'ı olan
-pazarlar E1'den muaf mı? → `src/model/constraints_e1.py` (varsa) / ilgili E1 kısıt
-modülü. **Not**: full-data koşusunda E1 ilk şüpheli — bkz. bu turun kapanış raporu.
+pazarlar E1'den muaf mı? → `src/model/constraints_balance.py` (E1/E2 kısıt grupları). **Not**:
+full-data koşusunda E1 ilk şüpheli — bkz. bu turun kapanış raporu.
 
 **7. (VARSAYIM-7) Kapsam-dışı TK uçuşları için hub kapasitesi** — modelin
 ayarlayamadığı uçuşlar kendi mevcut tarifelerinde sabit mi kabul edilmeli, yoksa

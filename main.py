@@ -17,6 +17,7 @@ from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
+from src.data.provenance import file_provenance
 from src.data.ranking import compute_baseline_best_journey, derive_b_od, is_ranking_monotonic
 from src.model.build import build_model_m4
 from src.config.paths import FULL_CR, FULL_FP, FULL_OD, FULL_YV
@@ -46,6 +47,9 @@ def main(argv=None) -> int:
 
     if args.full_data:
         od_path, yv_path, cr_path, fp_path = FULL_OD, FULL_YV, FULL_CR, FULL_FP
+        provenance = file_provenance(od_path)
+        print(f"data_provenance: FULL_OD path={provenance['path']} "
+              f"sha256={provenance['sha256']} size_bytes={provenance['size_bytes']}")
     else:
         od_path, yv_path, cr_path, fp_path = FIXTURE_OD, FIXTURE_YV, FIXTURE_CR, FIXTURE_FP
 
