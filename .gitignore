@@ -11,3 +11,10 @@ runs/*.json
 
 # Competition data usage terms prohibit redistribution -- kept local only.
 data_raw/
+
+# Organizer's downloaded data package (any extraction folder at repo root,
+# e.g. "TEKNOFEST_tarife_input_files N") -- M5e 2026-07-11: this caused a
+# genuine "which file is active" confusion risk (an untracked copy of the
+# v1/v2 O&D file sitting at repo root alongside data_raw/'s canonical one).
+# Relocate the whole package under data_raw/ instead of leaving it at root.
+/TEKNOFEST_tarife_input_files*/

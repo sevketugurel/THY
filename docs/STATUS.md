@@ -34,8 +34,8 @@ Sıradaki adım (plan §3d): ucuz pencere deneyi (adjustable_window_min=360
 
 Organizatörün 2026-07-09 veri paketi (`ElapsedTime1`/`ElapsedTime2`/`ML2`,
 wrap-fix) entegre edildi (tag `m5e-data-v2`, bkz. Bölüm 1). Bu tablo,
-AYNI güncel kod üzerinde v1 (arşivlenmiş, `TEKNOFEST_tarife_input_files 2/O&D
-Rakip Bağlantı Tablosu.xlsx`, byte-özdeş eski `data_raw` dosyası) ile v2
+AYNI güncel kod üzerinde v1 (arşivlenmiş, `data_raw/_organizer_source_package/
+O&D Rakip Bağlantı Tablosu.xlsx`, byte-özdeş eski `data_raw` dosyası) ile v2
 (şu anki `data_raw/`) arasındaki farkı izole ediyor — kod-düzeltmesi
 kaynaklı kayma ile veri-kaynaklı kaymayı KARIŞTIRMIYOR (2026-07-09'un
 orijinal 2048-ihlal ölçümü, M5b/M5c validator düzeltmelerinden ÖNCEydi;

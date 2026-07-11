@@ -29,6 +29,7 @@ from src.output.writer import write_output
 from src.validate.independent_validator import recompute_objective, validate_output
 
 from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
+from src.data.provenance import file_provenance
 CORE_WORKER = Path(__file__).resolve().parent / "_core_feasibility_step_worker.py"
 WARM_START_WORKER = Path(__file__).resolve().parent / "_warm_start_elastic_step_worker.py"
 
@@ -159,6 +160,7 @@ def main():
 
     log = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "data_provenance": {"FULL_OD": file_provenance(FULL_OD)},
         "n_candidates": len(candidates), "build_time_sec": build_time_sec,
         "status": result.status, "objective_value": result.objective_value,
         "solve_wall_sec": round(solve_wall_sec, 1),

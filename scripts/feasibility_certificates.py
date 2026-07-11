@@ -61,6 +61,7 @@ from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_od_table, load_yolcu_verisi
 
 from src.config.paths import FULL_OD, FULL_YV
+from src.data.provenance import file_provenance
 
 
 def forced_status(c, L, U):
@@ -188,6 +189,7 @@ def main():
             })
 
     report = {
+        "data_provenance": {"FULL_OD": file_provenance(FULL_OD)},
         "n_candidates": len(candidates),
         "n_market_direction_groups": len(groups),
         "n_market_pairs": len(pair_keys),

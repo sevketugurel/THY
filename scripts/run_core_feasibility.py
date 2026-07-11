@@ -26,6 +26,7 @@ from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
 
 from src.config.paths import FULL_OD, FULL_YV, FULL_FP
+from src.data.provenance import file_provenance
 CORE_WORKER = Path(__file__).resolve().parent / "_core_feasibility_step_worker.py"
 
 
@@ -101,6 +102,7 @@ def main():
 
     log = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "data_provenance": {"FULL_OD": file_provenance(FULL_OD)},
         "n_candidates": len(candidates), "preprocessing_sec": round(preprocessing_sec, 1),
         "build_time_sec": build_time_sec, "solve_wall_sec": round(solve_wall_sec, 1),
         "status": result.status, "min_total_deviation_minutes": result.objective_value,

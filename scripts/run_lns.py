@@ -64,6 +64,7 @@ from src.solve.subprocess_watchdog import solve_step_with_watchdog
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
 from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
+from src.data.provenance import file_provenance
 LNS_WORKER = Path(__file__).resolve().parent / "_lns_step_worker.py"
 LNS_WORKER_FOLDED = Path(__file__).resolve().parent / "_lns_step_worker_folded.py"
 PROGRESS_LOG = Path("runs/lns_progress.log")
@@ -582,6 +583,7 @@ def main(argv=None):
                 _log_progress(f"stubborn component breakdown: {len(component_breakdown)} components tried, "
                               f"{sum(1 for c in component_breakdown if c['is_stubborn'])} marked stubborn")
 
+    summary["data_provenance"] = {"FULL_OD": file_provenance(FULL_OD)}
     log_path = Path("runs") / f"lns_summary_{stamp}.log.json"
     log_path.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str))
     print(json.dumps(summary, indent=2, sort_keys=True, default=str), flush=True)

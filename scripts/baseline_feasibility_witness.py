@@ -43,6 +43,7 @@ from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_tab
 from src.validate.independent_validator import validate_output
 
 from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
+from src.data.provenance import file_provenance
 
 
 def _violation_category(msg: str) -> str:
@@ -144,6 +145,7 @@ def main():
 
     summary = {
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "data_provenance": {"FULL_OD": file_provenance(FULL_OD)},
         "elapsed_sec": elapsed,
         "n_candidates_in_scope": len(candidates),
         "n_selected_connections_forced": len(selected_connections),

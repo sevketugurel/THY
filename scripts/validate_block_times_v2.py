@@ -48,6 +48,7 @@ import numpy as np
 from src.config.paths import FULL_OD
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_od_table
+from src.data.provenance import file_provenance
 
 L, U = 60, 300
 
@@ -128,6 +129,7 @@ def main():
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "data_provenance": {"FULL_OD": file_provenance(FULL_OD)},
         "L": L, "U": U,
         "n_tk_observed_markets": len(candidate_markets),
         "n_ls_direct_ok": n_ls_direct_ok,
