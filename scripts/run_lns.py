@@ -305,12 +305,12 @@ def main(argv=None):
             # then re-call with the real stored chunk index for THAT
             # component if it's an oversized one we've visited before.
             pairs, free_arr, free_dep, comp_id, comp_size, is_revisit = select_pairs_by_component(
-                pair_slack, candidates, gamma_infeasible, stubborn,
+                pair_slack, candidates, gamma_infeasible, stubborn, attempts=attempts_by_component,
                 max_instances=args.max_component_instances, seed=args.seed, chunk_index=0,
             )
             if comp_id is not None and chunk_idx_by_component[comp_id] != 0:
                 pairs, free_arr, free_dep, comp_id, comp_size, is_revisit = select_pairs_by_component(
-                    pair_slack, candidates, gamma_infeasible, stubborn,
+                    pair_slack, candidates, gamma_infeasible, stubborn, attempts=attempts_by_component,
                     max_instances=args.max_component_instances, seed=args.seed,
                     chunk_index=chunk_idx_by_component[comp_id],
                 )

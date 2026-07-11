@@ -155,6 +155,38 @@ def test_select_pairs_by_component_picks_smallest_first_then_respects_stubborn()
     assert revisit3
 
 
+def test_select_pairs_by_component_all_stubborn_rotates_by_least_attempts():
+    # Bug found empirically (docs/decisions.md 2026-07-11): once every
+    # component is stubborn, always falling back to the globally smallest
+    # one starves every other stubborn component forever (112/126 real
+    # iterations re-picked the same component). `attempts` must break the
+    # tie by LEAST-retried first, not by size.
+    candidates = _shared_leg_candidates()
+    pairs = [("A", "B", 1), ("C", "D", 1), ("E", "F", 1), ("G", "H", 1)]
+    pair_slack = _pair_slack_all_violated(pairs)
+    two_comp_id = frozenset({("A", "B", 1), ("C", "D", 1)})
+    ef_comp_id = frozenset({("E", "F", 1)})
+    gh_comp_id = frozenset({("G", "H", 1)})
+    all_stubborn = {two_comp_id, ef_comp_id, gh_comp_id}
+
+    # Without attempts info: falls back to smallest-first (documented
+    # default), which is exactly the behavior that caused the bug.
+    chosen_default, *_r, comp_id_default, _s, _rv = select_pairs_by_component(
+        pair_slack, candidates, gamma_infeasible=set(), stubborn=all_stubborn,
+    )
+    assert comp_id_default == ef_comp_id  # smallest, tie-broken -- the starved case
+
+    # With attempts info showing ef_comp_id has already been retried twice
+    # and gh_comp_id/two_comp_id have never been retried: must NOT pick
+    # ef_comp_id again -- picks the least-attempted one instead.
+    attempts = {ef_comp_id: 2, gh_comp_id: 0, two_comp_id: 0}
+    chosen_rotated, *_r2, comp_id_rotated, _s2, _rv2 = select_pairs_by_component(
+        pair_slack, candidates, gamma_infeasible=set(), stubborn=all_stubborn, attempts=attempts,
+    )
+    assert comp_id_rotated != ef_comp_id
+    assert comp_id_rotated == gh_comp_id  # tie between gh/two at 0 attempts -> smaller size wins
+
+
 def test_select_pairs_by_component_excludes_gamma_infeasible_and_zero_slack():
     candidates = _shared_leg_candidates()
     pairs = [("A", "B", 1), ("C", "D", 1)]

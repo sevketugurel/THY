@@ -246,16 +246,29 @@ def split_oversized_component(candidates, component: list, max_instances: int, s
 
 
 def select_pairs_by_component(pair_slack: dict, candidates, gamma_infeasible: set, stubborn: set,
-                               max_instances: int = 800, seed: int = 42, chunk_index: int = 0) -> tuple:
+                               attempts: dict = None, max_instances: int = 800, seed: int = 42,
+                               chunk_index: int = 0) -> tuple:
     """Stateless entry point scripts/run_lns.py calls each iteration.
-    `stubborn` (a set of frozenset(component_pairs)) and `chunk_index`
+    `stubborn` (a set of frozenset(component_pairs)), `attempts` (a dict of
+    frozenset(component_pairs) -> attempt count), and `chunk_index`
     (round-robin position within an oversized component's sub-chunks) are
     DRIVER state owned by the caller -- this function only reads them,
     mirroring how select_worst_pairs/_tune_m are pure functions with
     m_base/randomize_mode owned by the loop.
 
+    Bug found empirically (docs/decisions.md 2026-07-11, isolated
+    component/fix measurement): once EVERY component is stubborn, always
+    falling back to the globally smallest one (as the non-stubborn branch
+    correctly does) starves every OTHER stubborn component forever -- 112
+    of 126 real iterations re-picked the exact same component. In the
+    all-stubborn case, `attempts` breaks the tie by LEAST-retried first
+    (falling back to size then min-pair when `attempts` is empty/absent),
+    so retries actually rotate through the stubborn pool instead of
+    fixating on one.
+
     Returns (pairs, free_arr, free_dep, component_id, component_size,
     is_stubborn_revisit)."""
+    attempts = attempts or {}
     violated_fixable = [p for p, s in pair_slack.items() if s["total"] > 0 and p not in gamma_infeasible]
     if not violated_fixable:
         return [], set(), set(), None, 0, False
@@ -265,7 +278,10 @@ def select_pairs_by_component(pair_slack: dict, candidates, gamma_infeasible: se
 
     non_stubborn = [c for c in components if frozenset(c) not in stubborn]
     is_stubborn_revisit = not non_stubborn
-    pool = non_stubborn if non_stubborn else components
+    if non_stubborn:
+        pool = non_stubborn
+    else:
+        pool = sorted(components, key=lambda c: (attempts.get(frozenset(c), 0), len(c), min(c)))
 
     chosen_component = pool[0]
     component_id = frozenset(chosen_component)
