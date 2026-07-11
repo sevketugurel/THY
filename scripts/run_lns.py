@@ -185,6 +185,7 @@ def main(argv=None):
                               "forces a clean stop as soon as N improving solutions are found, per "
                               "docs/decisions.md 2026-07-10's mip_max_improving_sols=1 recovery trick")
     args = parser.parse_args(argv)
+    random.seed(args.seed)
 
     script_t0 = time.time()
     config = yaml.safe_load(Path("src/config/standard.yaml").read_text())
@@ -407,6 +408,34 @@ def main(argv=None):
             "final_sigma_slack": best_total, "validation_is_valid": None,
             "n_iterations": len(history),
         }
+        # Persist the best-so-far point even on a plateau stop -- otherwise
+        # all that real (if partial) progress is lost the moment the process
+        # exits, and a future session has to re-derive it from scratch.
+        if best_result is not None:
+            partial_path = Path("runs") / f"lns_best_partial_{stamp}.json"
+            write_output(partial_path, best_result, k_od_sources=k_od_sources)
+            final_slack = compute_pair_slack(
+                candidates, journey_constants, best_result.arr_times, best_result.dep_times, L, U, alpha, gamma,
+            )
+            n_e1_final = sum(1 for v in final_slack.values() if v["e1"] > 0)
+            n_e2_final = sum(1 for v in final_slack.values() if v["e2"] > 0)
+            worst_remaining = sorted(
+                final_slack.items(), key=lambda kv: -kv[1]["total"],
+            )[:20]
+            summary["partial_output_path"] = str(partial_path)
+            summary["n_e1_pairs_violated_at_stop"] = n_e1_final
+            summary["n_e2_pairs_violated_at_stop"] = n_e2_final
+            summary["n_gamma_infeasible_pairs_excluded"] = len(gamma_infeasible)
+            summary["worst_remaining_pairs"] = [
+                {"pair": list(p), "e1": s["e1"], "e2": s["e2"], "total": s["total"]}
+                for p, s in worst_remaining
+            ]
+            summary["slack_trajectory"] = [
+                {"iter": h["iter"], "before_total": h["before_total"], "after_total": h["after_total"]}
+                for h in history
+            ]
+            _log_progress(f"partial best-so-far point saved to {partial_path} "
+                          f"(E1 violated={n_e1_final}, E2 violated={n_e2_final})")
 
     log_path = Path("runs") / f"lns_summary_{stamp}.log.json"
     log_path.write_text(json.dumps(summary, indent=2, sort_keys=True, default=str))
