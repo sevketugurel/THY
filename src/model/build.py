@@ -22,9 +22,15 @@ from src.candidates.generate import Candidate
 from src.model.constraints_balance import add_e1_constraints, add_e2_constraints
 from src.model.constraints_capacity import add_f_constraints, compute_out_of_scope_baselines, compute_residual_capacity
 from src.model.constraints_competition import add_d_constraints, add_rank_onehot
-from src.model.constraints_elastic import add_elastic_e1_constraints, add_elastic_e2_constraints
-from src.model.constraints_operations import add_a_constraints, add_g_constraints
-from src.model.constraints_selection import add_b_constraints, add_c_constraints, add_flight_time_variables
+from src.model.constraints_elastic import (
+    add_elastic_e1_constraints, add_elastic_e1_constraints_folded,
+    add_elastic_e2_constraints, add_elastic_e2_constraints_folded,
+)
+from src.model.constraints_operations import add_a_constraints, add_g_constraints, add_g_constraints_folded
+from src.model.constraints_selection import (
+    add_b_constraints, add_b_constraints_folded, add_c_constraints,
+    add_flight_time_variables, add_flight_time_variables_folded,
+)
 from src.model.objective import add_connection_reward_objective, add_ranking_reward_objective
 
 
@@ -191,6 +197,51 @@ def build_elastic_feasibility_model(
     add_b_constraints(model, candidates, L=L, U=U)
     add_elastic_e1_constraints(model, candidates, alpha)
     add_elastic_e2_constraints(model, candidates, journey_constants, gamma)
+    return model
+
+
+def build_elastic_feasibility_model_folded(
+    candidates: list[Candidate], journey_constants: dict, pairs_df, r_o_lookup: dict, tau: int, x_dev: int,
+    epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
+    capacity_departure: int, capacity_arrival: int, partition,
+    true_out_of_scope_baselines: dict = None, L: int = 60, U: int = 300,
+) -> pyo.ConcreteModel:
+    """M5d LNS fold-redesign (plan: a-evet-ama-iki-tingly-canyon.md, adım 8):
+    fold-tabanlı `build_elastic_feasibility_model` eşdeğeri -- yalnızca
+    `partition.free_arr`/`free_dep` için gerçek Var/satır oluşturur. Donuk
+    (LNS'in bu iterasyonda dondurduğu) instance'lar, gerçek out-of-scope TK
+    bacaklarıyla AYNI `{instance: baseline}` sözlüğüne katılır -- A
+    (`add_a_constraints`) ve F (`compute_residual_capacity`) bu birleşik
+    sözlüğü, hiçbir kod değişikliği olmadan, kendi mevcut "kapsam dışı"
+    mekanizmalarıyla doğru şekilde işler (araştırmayla doğrulandı, adım 4).
+    Yalnızca B/E1/E2/G kendi `_folded` varyantlarını gerektiriyordu (adım
+    3/5/6/7). Adım 9'un eşdeğerlik testi bu fonksiyonun fix-tabanlı
+    yaklaşımla AYNI Σslack'i (ve GERÇEKTEN daha küçük bir model) ürettiğini
+    kanıtlar -- o kanıt olmadan bu fonksiyon gerçek bir LNS koşusuna
+    bağlanmaz."""
+    model = pyo.ConcreteModel()
+    model._candidates = candidates
+    model._partition = partition
+
+    add_flight_time_variables_folded(model, candidates, partition)
+
+    if true_out_of_scope_baselines is None:
+        true_out_of_scope_baselines = {}
+    merged_baselines = dict(true_out_of_scope_baselines)
+    merged_baselines.update({r: v for r, v in partition.reference_arr.items() if r in partition.frozen_arr})
+    merged_baselines.update({r: v for r, v in partition.reference_dep.items() if r in partition.frozen_dep})
+
+    add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau, merged_baselines)
+    add_g_constraints_folded(model, candidates, epoch_anchor, x_dev, partition)
+
+    residual_dep, residual_arr = compute_residual_capacity(
+        merged_baselines, bucket_size_min, capacity_departure, capacity_arrival,
+    )
+    add_f_constraints(model, bucket_size_min, capacity_departure, capacity_arrival, residual_dep, residual_arr)
+
+    add_b_constraints_folded(model, candidates, L, U, partition)
+    add_elastic_e1_constraints_folded(model, candidates, alpha, partition)
+    add_elastic_e2_constraints_folded(model, candidates, journey_constants, gamma, partition)
     return model
 
 
