@@ -15,7 +15,10 @@ marker: unit (solver-free, pure arithmetic).
 import pytest
 
 from src.candidates.generate import Candidate
-from src.model.big_m import derive_b_big_ms, derive_d_big_ms, derive_e2_candidate_big_ms, derive_e2_pair_big_m
+from src.model.big_m import (
+    derive_b_big_ms, derive_d_big_ms, derive_e1_pair_big_m,
+    derive_e2_candidate_big_ms, derive_e2_pair_big_m,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -129,3 +132,34 @@ def test_e2_pair_big_m_zero_when_ranges_already_within_gamma():
     # jd_hi_side - jd_lo_other = 20 <= gamma=30 -> no forcing ever needed.
     m = derive_e2_pair_big_m(jd_hi_side=20, jd_lo_other=0, gamma=30)
     assert m == 0
+
+
+# --- E1 (conditional activation) Big-M, KARAR-0/VARSAYIM-16 ---
+
+def test_e1_pair_big_m_worked_example():
+    # alpha=0.2, n_fwd_max=5, n_bwd_max=3 -> M=(1-0.2)*max(5,3)=0.8*5=4.0.
+    m = derive_e1_pair_big_m(alpha=0.2, n_fwd_max=5, n_bwd_max=3)
+    assert m == pytest.approx(4.0)
+
+
+def test_e1_pair_big_m_uses_larger_side():
+    # Symmetric check: swapping which side is larger must not change M.
+    m1 = derive_e1_pair_big_m(alpha=0.2, n_fwd_max=3, n_bwd_max=8)
+    m2 = derive_e1_pair_big_m(alpha=0.2, n_fwd_max=8, n_bwd_max=3)
+    assert m1 == m2 == pytest.approx(0.8 * 8)
+
+
+def test_e1_pair_big_m_zero_when_alpha_is_one():
+    # alpha=1.0 means the unconditional inequality is already always true
+    # (n_fwd-n_bwd <= n_fwd+n_bwd always holds for nonnegative counts) --
+    # no forcing needed regardless of activation state.
+    m = derive_e1_pair_big_m(alpha=1.0, n_fwd_max=10, n_bwd_max=1)
+    assert m == 0.0
+
+
+def test_e1_pair_big_m_stays_far_below_1440_for_realistic_counts():
+    # Candidate counts per market are small integers (tens, not thousands) --
+    # this M is data-derived and naturally tiny relative to the project's own
+    # <=1440 Big-M discipline (time-scaled Ms), never a risk of exceeding it.
+    m = derive_e1_pair_big_m(alpha=0.2, n_fwd_max=50, n_bwd_max=40)
+    assert m <= 1440

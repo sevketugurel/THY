@@ -61,6 +61,20 @@ def derive_e2_candidate_big_ms(candidate: Candidate, journey_const: int, market_
     return m_up, m_down
 
 
+def derive_e1_pair_big_m(alpha: float, n_fwd_max: int, n_bwd_max: int) -> float:
+    """M5f KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16): M for E1's conditional
+    activation gate, n_fwd-n_bwd <= alpha*(n_fwd+n_bwd) + M*(2-a_fwd-a_bwd).
+    Sized so the inequality is a no-op whenever either direction is inactive
+    (a_dir=0 forces that direction's count to 0 by construction -- see
+    add_e2_constraints' a_lb/a_ub pair): the tightest single-direction-active
+    case needs M >= (1-alpha)*n_max for that direction's own candidate count
+    n_max = |group|; using max(n_fwd_max,n_bwd_max) covers BOTH rules (fwd_rule
+    and bwd_rule) with one shared M per pair, matching the plan's formula.
+    Naturally far below MAX_ALLOWED_BIG_M (candidate counts per market are
+    small integers, never time-scaled)."""
+    return (1 - alpha) * max(n_fwd_max, n_bwd_max)
+
+
 def derive_e2_pair_big_m(jd_hi_side: int, jd_lo_other: int, gamma: int) -> int:
     """Returns M for one direction of E2's cross-market Gamma-bound:
     Jbest_side - Jbest_other <= gamma + M*(2-a_side-a_other).

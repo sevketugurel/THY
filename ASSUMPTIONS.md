@@ -816,3 +816,106 @@ YERDE değiştirilmedi (`ranking.py::compute_baseline_best_journey`'nin
 `[L,U]` kullanımı farklı bir semantik — "meşru bağlanabilir itinerary" —
 aynen kalıyor). VARSAYIM-8'in ~575-pazarlık candidate-seviyesi LS-fallback
 popülasyonunun v2 ile yeniden ölçümü Bölüm 2'nin işi.
+
+## VARSAYIM-16: E1 birincil formülasyonu KOŞULLU AKTİVASYON (KARAR-0, M5f, 2026-07-11)
+
+**Karar**: E1 (yönsel sayı dengesi) artık yalnızca HER İKİ yön de AKTİFKEN
+(her yönde ≥1 SUNULAN/seçili bağlantı) bağlayıcı — `src/model/constraints_balance.py::add_e1_constraints`
+ve elastik/folded eşdeğerleri (`src/model/constraints_elastic.py`) yeni bir
+`activation: "conditional" | "unconditional"` parametresi alır, varsayılan
+`"conditional"` (`src/config/standard.yaml::e1_activation`). Koşullu modda
+kısıt E2'nin zaten var olan aktivasyon göstergesini (`model.a_dir`, "en az
+bir aday sunuldu mu") yeniden kullanır:
+
+$$n_{fwd}-n_{bwd} \le \alpha(n_{fwd}+n_{bwd}) + M_{pair}(2-a_{fwd}-a_{bwd})$$
+$$n_{bwd}-n_{fwd} \le \alpha(n_{fwd}+n_{bwd}) + M_{pair}(2-a_{fwd}-a_{bwd})$$
+
+$M_{pair} = (1-\alpha)\cdot\max(|\Pi_{fwd}|,|\Pi_{bwd}|)$ (`src/model/big_m.py::derive_e1_pair_big_m`,
+candidate-sayısı bazlı, veri-türetilmiş, doğası gereği ≤1440 disiplinine
+tabi zaten). `activation="unconditional"` eski literal okumayı (M terimi
+yok, kısıt her zaman tam bağlayıcı) duyarlılık analizi olarak korur.
+
+**Kanıt seti**:
+1. **Brief §7 modelleme ipucu**: *"Koşullu (yalnızca her iki yön aktifken
+   bağlayıcı) kısıtları doğru kurun; aksi halde pasif yönler dengeyi yapay
+   olarak ihlal/zorlar"* — "denge" E-ailesinin kendi adı (§4.5 "Yönsel
+   Denge"), tarif edilen patoloji birebir E1'in tek-yön-sıfır vakası.
+2. E1 metnindeki "iki yön de boşsa kendiliğinden sağlanır" cümlesi yalnızca
+   0/0 belirsizliğini çözer — tek-yön-BOŞ (bir yön yapısal olarak var ama
+   sunulan sıfır) vakası metinde AÇIKÇA ele alınmamış; §7 ipucu bu boşluğu
+   dolduruyor.
+3. Mevcut kodun kendi sınır seçimi (E1_PAIRS, `_market_groups`) zaten
+   yarı-koşullu: yapısal adayı olmayan yön çifti hiç kurulmuyor (VARSAYIM-6,
+   "yapay kısıtlama olurdu" gerekçesiyle) — aynı gerekçe "yapısal aday var
+   ama sunulan sıfır" durumuna da doğal olarak uzanıyor.
+4. **Ampirik**: organizatörün KENDİ baseline'ı literal okumada 690 pair-gün
+   ihlalli (v1=v2, blok süresinden bağımsız); ulaşılan HER full-data
+   noktasında E1 fazlalık oranı medyan=p90=max=**0.800=1−α** — yani
+   ihlallerin ~TAMAMI tek-yön-sıfır vakası, gerçek bir dengesizlik değil.
+   Literal E1 belgeli bir "amaç bastırıcı" (bkz. `tests/solve/test_m4_constraints_e1.py`
+   modül docstring'i) — yarışmanın ilan edilmiş amacıyla (cazip bağlantı
+   sayısını ARTIRMAK) çelişen davranış üretiyor.
+5. VARSAYIM-9/10/11'de kullanıcı onayıyla yerleşen ilkeyle aynı desen
+   ("organizatör çözümsüz/kendi-verisiyle-çelişen bir problem tasarlamaz").
+
+**Dürüst karşı-kanıt**: E2 metni koşullu aktivasyonu AÇIKÇA söylüyor, E1
+metni söylemiyor — literal okuma metinsel olarak savunulabilir ve her zaman
+tatmin edilebilir (pazarı tamamen sıfırlayarak, infeasibility değil). Bu
+yüzden literal mod SİLİNMEDİ, bayrakla yaşıyor; `docs/organizer_questions.md`
+madde 6 organizatöre bu soruyu taşıyor.
+
+**Fixture etkisi**: sentetik fixture'da HER İKİ modda da objective=668.75
+(değişmedi) — fixture'ın E1 çiftleri optimumda zaten her iki yönde de aktif,
+tek-yön-sıfır senaryosunu hiç tetiklemiyor. Brute-force oracle
+(`tests/slow/test_bruteforce_oracle.py`) B+C+D'yi doğruluyor, E1/E2'ye
+dokunmuyor — bu değişiklikle ilgisiz, ayrıca yeniden koşuldu (yeşil).
+
+**Hizalama**: `src/validate/independent_validator.py::validate_output`
+aynı `e1_activation` parametresini alır (varsayılan `"conditional"`) —
+koşullu modda M5b'nin yapısal-kapsam genişletmesi (`_has_structural_candidate`)
+atlanır (iki mod da AYNI ihlal kümesini üretir bu durumda, matematiksel
+olarak kanıtlanabilir eşdeğerlik — bkz. kod yorumu). `scripts/feasibility_certificates.py`'nin
+E1b sertifikası iki modu da hesaplayıp raporlar. `scripts/baseline_feasibility_witness.py`
+ve `scripts/analyze_violation_footprint.py` STATUS'a iki-modlu tablo için
+her iki modu da raporlar. `src/model/lns.py::compute_pair_slack` aynı
+bayrağı alır (varsayılan koşullu) — LNS'in worst-pair seçimi artık modelin
+gerçek s_e1 davranışıyla tutarlı.
+
+## VARSAYIM-17: E2 statik-imkânsız çift muafiyeti (KARAR-0b, M5f, 2026-07-11)
+
+**Karar**: `src/model/lns.py::compute_gamma_infeasible_pairs`'ın STATİK
+kanıtladığı — iki yönün de BEST-CASE achievable Jbest aralığı (adayların
+kendi `gap_lo/gap_hi`'sinden, [L,U]'ya kırpılmış, journey_constants ile
+birlikte türetilen) Gamma'dan daha fazla ayrık olan — market çiftleri,
+HANGİ seçim yapılırsa yapılsın E2'yi asla sağlayamaz: schedule-independent,
+saf bir veri gerçeği. Bu çiftler artık `add_e2_constraints` (strict) ve
+elastik/folded eşdeğerlerinde (`src/model/constraints_elastic.py`) E2'den
+MUAF tutulur (constraint satırı hiç kurulmaz) + loglanır — A/G'deki
+VARSAYIM-9/11 exempt+log ilkesinin birebir uzantısı, ama K-subset
+dondurmasından TAMAMEN BAĞIMSIZ (freezing durumundan etkilenmez, her
+zaman aynı çiftleri yakalar).
+
+**Neden ayrı bir muafiyet (mevcut K-subset-frozen muafiyetten farkı)**:
+mevcut `add_e2_constraints`'in M5c-döneminden kalan exemption'ı yalnızca
+"HER İKİ yön de TAMAMEN K-subset-dondurulmuş" durumunu yakalar. Matematiksel
+olarak, tam-dondurulmuş-her-iki-yön durumunda bu iki kontrol (statik
+achievable-range ve frozen-value) AYNI sonucu üretir (dondurulmuş tek-nokta
+gap_lo==gap_hi için achievable range == frozen value) — ama statik kontrol
+AYRICA hiç dondurulmamış (tamamen serbest) pazarları da yakalayabilir:
+journey_constant asimetrisi tek başına, seçimden bağımsız olarak, E2'yi
+imkânsız kılabilir (bkz. `tests/solve/test_m4_constraints_e2.py::test_e2_exempts_adjustable_pair_that_is_statically_gamma_infeasible`).
+
+**Hizalama**: `src/validate/independent_validator.py`'ye bağımsız
+yeniden-uygulama eklendi (`_structural_j_best_case_range`/
+`_is_gamma_statically_infeasible` — `src.model.lns` import ETMEZ, aynı
+mantığı ham TK verisinden kasıtlı olarak KOPYALAR, VARSAYIM-9/10/11'in
+zaten kurduğu "bağımsız yeniden-uygulama" deseniyle birebir). `scripts/feasibility_certificates.py`'nin
+E2 sertifikası artık `compute_gamma_infeasible_pairs` ile çapraz kontrol
+ediyor (`karar0b_exempted_count`/`karar0b_still_unexempted` — ikincisi boş
+olmalı, dolu çıkması gerçek bir bug'a işaret eder). `scripts/analyze_violation_footprint.py`
+genuine vs KARAR-0b-exempted E2 ihlallerini ayrı raporluyor.
+
+**Γ ölçeği sorusu** (organizatörün kendi Gamma tanımı/büyüklüğü) ayrı,
+açık bir soru olarak `docs/organizer_questions.md` madde 12b'de kalıyor —
+bu karar yalnızca "mevcut Gamma altında provably imkânsız olan çiftleri
+ne yapalım" sorusunu cevaplıyor.

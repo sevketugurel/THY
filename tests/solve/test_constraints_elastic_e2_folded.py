@@ -58,7 +58,7 @@ def _build_folded(candidates, partition):
     model._candidates = candidates
     add_flight_time_variables_folded(model, candidates, partition)
     add_b_constraints_folded(model, candidates, L, U, partition)
-    add_elastic_e2_constraints_folded(model, candidates, JC, GAMMA, partition)
+    add_elastic_e2_constraints_folded(model, candidates, JC, GAMMA, partition, L=L, U=U)
     return model
 
 
@@ -70,7 +70,7 @@ def _build_fixed(candidates, partition):
     fix_reference_except_free(
         model, partition.reference_arr, partition.reference_dep, partition.free_arr, partition.free_dep,
     )
-    add_elastic_e2_constraints(model, candidates, JC, GAMMA)
+    add_elastic_e2_constraints(model, candidates, JC, GAMMA, L=L, U=U)
     return model
 
 
@@ -106,14 +106,19 @@ def test_fully_frozen_no_violation_gets_no_rows():
 
 
 def test_fully_frozen_with_violation_reports_constant_slack():
-    # fwd offered gap=100 (J=200), bwd offered gap=150 (J=250) -- diff=50>30 -> slack=20.
+    # fwd offered gap=100 (J=200), bwd offered gap=150 (J=250) -- diff=50>30.
+    # KARAR-0b/VARSAYIM-17 (M5f): both candidates are single-point (Rfix),
+    # so their achievable range IS the frozen value -- the schedule-
+    # independent static check now catches this BEFORE the frozen-value
+    # path, exempting it (0 owed, not silently-unfixable 20.0 of slack).
     c_fwd = _candidate("A", "B", 201, 301, arr_lo=0, arr_hi=0, dep_lo=100, dep_hi=100)
     c_bwd = _candidate("B", "A", 202, 302, arr_lo=0, arr_hi=0, dep_lo=150, dep_hi=150)
     candidates = [c_fwd, c_bwd]
     partition = _partition(candidates, set(), set())
     model = _build_folded(candidates, partition)
     assert len(model.E2_PAIRS) == 0
-    assert model._e2_frozen_slack_total == pytest.approx(20.0)
+    assert model._e2_frozen_slack_total == pytest.approx(0.0)
+    assert model._e2_exempted_static == 1
 
 
 def test_mixed_frozen_candidate_is_true_argmin_jbest_ge_not_dropped():

@@ -130,17 +130,32 @@ def main():
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
-    validation = validate_output(
-        output_path, FULL_OD, L=L, U=U,
-        adjustable_window_min=config["adjustable_window_min"],
-        adjustable_set=config["adjustable_set"],
-        flight_pairs_path=FULL_FP, tau=config["tau"], x_dev=config["X_dev"],
-        alpha=config["alpha"], gamma=config["gamma"],
-        bucket_size_min=config["bucket_size_min"],
-        capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
-    )
-
-    by_category = Counter(_violation_category(v) for v in validation.violations)
+    # M5f/KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16): both e1_activation
+    # modes are run and reported side by side -- the whole point of this
+    # witness is comparing the E1 violation mass before/after the decision
+    # (Kapı-2's "iki modlu tablo").
+    by_mode = {}
+    for e1_activation in ("conditional", "unconditional"):
+        validation = validate_output(
+            output_path, FULL_OD, L=L, U=U,
+            adjustable_window_min=config["adjustable_window_min"],
+            adjustable_set=config["adjustable_set"],
+            flight_pairs_path=FULL_FP, tau=config["tau"], x_dev=config["X_dev"],
+            alpha=config["alpha"], gamma=config["gamma"],
+            bucket_size_min=config["bucket_size_min"],
+            capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
+            e1_activation=e1_activation,
+        )
+        by_category = Counter(_violation_category(v) for v in validation.violations)
+        by_mode[e1_activation] = {
+            "is_valid": validation.is_valid,
+            "violation_count_total": len(validation.violations),
+            "violation_count_by_category": dict(by_category),
+            "sample_violations_by_category": {
+                cat: [v for v in validation.violations if _violation_category(v) == cat][:5]
+                for cat in by_category
+            },
+        }
     elapsed = round(time.time() - t0, 1)
 
     summary = {
@@ -149,13 +164,12 @@ def main():
         "elapsed_sec": elapsed,
         "n_candidates_in_scope": len(candidates),
         "n_selected_connections_forced": len(selected_connections),
-        "is_valid": validation.is_valid,
-        "violation_count_total": len(validation.violations),
-        "violation_count_by_category": dict(by_category),
-        "sample_violations_by_category": {
-            cat: [v for v in validation.violations if _violation_category(v) == cat][:5]
-            for cat in by_category
-        },
+        "by_e1_activation": by_mode,
+        # Backward-compat top-level fields mirror the model's default mode.
+        "is_valid": by_mode["conditional"]["is_valid"],
+        "violation_count_total": by_mode["conditional"]["violation_count_total"],
+        "violation_count_by_category": by_mode["conditional"]["violation_count_by_category"],
+        "sample_violations_by_category": by_mode["conditional"]["sample_violations_by_category"],
     }
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     log_path = Path("runs") / f"baseline_feasibility_witness_{stamp}.json"

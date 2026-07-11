@@ -30,6 +30,7 @@ from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.model.build import build_core_feasibility_model
 from src.model.deviation_objective import add_min_deviation_objective
+from src.model.lns import compute_gamma_infeasible_pairs
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
 
 from src.config.paths import FULL_OD, FULL_YV, FULL_FP
@@ -113,25 +114,36 @@ def main():
         gap_of[i] = gap
         x_of[i] = 1 if L <= gap <= U else 0
 
-    # E1: |n_fwd - n_bwd| <= alpha*(n_fwd+n_bwd) per (o,d,gun) pair.
+    # E1: |n_fwd - n_bwd| <= alpha*(n_fwd+n_bwd) per (o,d,gun) pair. M5f/
+    # KARAR-0 (VARSAYIM-16): computed for BOTH e1_activation modes -- under
+    # "conditional" (the model's default), a pair with either side at 0
+    # offered is non-binding (Kapı-2's "iki modlu tablo").
     e1_pairs = {(c.o, c.d, c.gun) for c in candidates}
-    e1_violations = []
+    e1_violations_by_mode = {"conditional": [], "unconditional": []}
     for (o, d, gun) in e1_pairs:
         if o > d:
             continue  # each unordered pair considered once
         n_fwd = sum(x_of[i] for i in groups.get((o, d, gun), []))
         n_bwd = sum(x_of[i] for i in groups.get((d, o, gun), []))
         if abs(n_fwd - n_bwd) > alpha * (n_fwd + n_bwd) + 1e-9:
-            e1_violations.append((o, d, gun, n_fwd, n_bwd))
+            e1_violations_by_mode["unconditional"].append((o, d, gun, n_fwd, n_bwd))
+            if n_fwd > 0 and n_bwd > 0:
+                e1_violations_by_mode["conditional"].append((o, d, gun, n_fwd, n_bwd))
+    e1_violations = e1_violations_by_mode["conditional"]  # default mode drives the footprint below
 
     # E2: |Jbest_fwd - Jbest_bwd| <= gamma, only when BOTH directions have >=1 offered candidate.
+    # KARAR-0b (VARSAYIM-17): pairs the static achievable-range check proves
+    # unconditionally gamma-infeasible are EXEMPTED by the model outright --
+    # excluded here too, they contribute no fixable footprint.
     jbest_of = {}
     for (o, d, gun), idxs in groups.items():
         offered = [i for i in idxs if x_of[i] == 1]
         if offered:
             jbest_of[(o, d, gun)] = min(journey_constants[(o, d)] + gap_of[i] for i in offered)
 
+    karar0b_exempted = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
     e2_violations = []
+    e2_violations_exempted = []
     seen_pairs = set()
     for (o, d, gun) in list(jbest_of):
         if (d, o, gun) not in jbest_of:
@@ -142,10 +154,16 @@ def main():
         seen_pairs.add(pair_key)
         j_fwd, j_bwd = jbest_of[(o, d, gun)], jbest_of[(d, o, gun)]
         if abs(j_fwd - j_bwd) > gamma + 1e-9:
-            e2_violations.append((o, d, gun, j_fwd, j_bwd))
+            if (o, d, gun) in karar0b_exempted or (d, o, gun) in karar0b_exempted:
+                e2_violations_exempted.append((o, d, gun, j_fwd, j_bwd))
+            else:
+                e2_violations.append((o, d, gun, j_fwd, j_bwd))
 
-    print(f"[analyze] E1 violations: {len(e1_violations)} / {len(e1_pairs)//2} pairs", flush=True)
-    print(f"[analyze] E2 violations: {len(e2_violations)} / {len(seen_pairs)} pairs with both sides offered", flush=True)
+    print(f"[analyze] E1 violations: conditional={len(e1_violations_by_mode['conditional'])} "
+          f"unconditional={len(e1_violations_by_mode['unconditional'])} / {len(e1_pairs)//2} pairs", flush=True)
+    print(f"[analyze] E2 violations: {len(e2_violations)} genuine + "
+          f"{len(e2_violations_exempted)} KARAR-0b-exempted / {len(seen_pairs)} pairs with both sides offered",
+          flush=True)
 
     violating_markets = set()
     for (o, d, gun, *_ ) in e1_violations:

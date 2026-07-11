@@ -19,12 +19,27 @@ from collections import defaultdict
 
 import pyomo.environ as pyo
 
-from src.model.big_m import derive_e2_candidate_big_ms, derive_e2_pair_big_m
+from src.model.big_m import derive_e1_pair_big_m, derive_e2_candidate_big_ms, derive_e2_pair_big_m
 from src.model.constraints_balance import _market_groups
 from src.model.deviation_objective import add_deviation_tracking
+from src.model.lns import compute_gamma_infeasible_pairs
 
 
-def add_elastic_e1_constraints(model, candidates, alpha):
+def add_elastic_e1_constraints(model, candidates, alpha, activation: str = "conditional"):
+    """KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16, M5f): bkz.
+    constraints_balance.add_e1_constraints'in aynı-isimli docstring'i --
+    BİREBİR aynı koşullu-aktivasyon mantığı, tek fark sağ tarafa eklenen
+    s_e1>=0 (elastik model s=0 iken strict versiyonla özdeş). `activation="conditional"`
+    modu model.a_dir'i (add_elastic_e2_constraints'ten, bu fonksiyondan ÖNCE
+    çalışmış olmalı) yeniden kullanır."""
+    if activation not in ("conditional", "unconditional"):
+        raise ValueError(f"add_elastic_e1_constraints: unknown activation mode {activation!r}")
+    if activation == "conditional" and not hasattr(model, "a_dir"):
+        raise RuntimeError(
+            "add_elastic_e1_constraints(activation='conditional') requires "
+            "add_elastic_e2_constraints to have already run on this model (needs model.a_dir)."
+        )
+
     groups = _market_groups(candidates)
     pairs, seen = [], set()
     for (o, d, gun) in groups:
@@ -37,17 +52,31 @@ def add_elastic_e1_constraints(model, candidates, alpha):
 
     model.E1_PAIRS = pyo.Set(initialize=pairs, dimen=3, ordered=True)
     model.s_e1 = pyo.Var(model.E1_PAIRS, domain=pyo.NonNegativeReals)
+    model._e1_activation = activation
+
+    pair_big_ms = {}
+    if activation == "conditional":
+        for (o, d, gun) in pairs:
+            pair_big_ms[(o, d, gun)] = derive_e1_pair_big_m(
+                alpha, len(groups[(o, d, gun)]), len(groups[(d, o, gun)]),
+            )
 
     def fwd_rule(m, o, d, gun):
         fwd = sum(m.x[i] for i in groups[(o, d, gun)])
         bwd = sum(m.x[i] for i in groups[(d, o, gun)])
-        return fwd - bwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        if activation == "unconditional":
+            return fwd - bwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        M = pair_big_ms[(o, d, gun)]
+        return fwd - bwd <= alpha * (fwd + bwd) + M * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun]) + m.s_e1[o, d, gun]
     model.e1_fwd = pyo.Constraint(model.E1_PAIRS, rule=fwd_rule)
 
     def bwd_rule(m, o, d, gun):
         fwd = sum(m.x[i] for i in groups[(o, d, gun)])
         bwd = sum(m.x[i] for i in groups[(d, o, gun)])
-        return bwd - fwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        if activation == "unconditional":
+            return bwd - fwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        M = pair_big_ms[(o, d, gun)]
+        return bwd - fwd <= alpha * (fwd + bwd) + M * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun]) + m.s_e1[o, d, gun]
     model.e1_bwd = pyo.Constraint(model.E1_PAIRS, rule=bwd_rule)
 
     return groups, pairs
@@ -68,7 +97,20 @@ def _split_market_e1(idxs, partition):
     return free_idxs, frozen_offered_count
 
 
-def add_elastic_e1_constraints_folded(model, candidates, alpha, partition):
+def add_elastic_e1_constraints_folded(model, candidates, alpha, partition, activation: str = "conditional"):
+    """KARAR-0 (M5f): bkz. add_elastic_e1_constraints docstring'i -- aynı
+    koşullu-aktivasyon mantığı, fold-farkındalıklı (fwd/bwd donuk-sunulmuş
+    sayımları da a_dir'in constant-katlanmış haline göre doğru şekilde
+    kapılanır -- add_elastic_e2_constraints_folded'in ÖNCE çalışmış olması
+    gerekir)."""
+    if activation not in ("conditional", "unconditional"):
+        raise ValueError(f"add_elastic_e1_constraints_folded: unknown activation mode {activation!r}")
+    if activation == "conditional" and not hasattr(model, "a_dir"):
+        raise RuntimeError(
+            "add_elastic_e1_constraints_folded(activation='conditional') requires "
+            "add_elastic_e2_constraints_folded to have already run on this model (needs model.a_dir)."
+        )
+
     groups = _market_groups(candidates)
     pairs, seen = [], set()
     for (o, d, gun) in groups:
@@ -87,6 +129,8 @@ def add_elastic_e1_constraints_folded(model, candidates, alpha, partition):
         fwd_free, fwd_frozen = split[(o, d, gun)]
         bwd_free, bwd_frozen = split[(d, o, gun)]
         if not fwd_free and not bwd_free:
+            if activation == "conditional" and (fwd_frozen == 0 or bwd_frozen == 0):
+                continue  # one side inactive -- conditional gate makes this trivially non-binding, no slack owed
             s = max(0.0, abs(fwd_frozen - bwd_frozen) - alpha * (fwd_frozen + bwd_frozen))
             frozen_slack_total += s
         else:
@@ -94,13 +138,24 @@ def add_elastic_e1_constraints_folded(model, candidates, alpha, partition):
 
     model.E1_PAIRS = pyo.Set(initialize=real_pairs, dimen=3, ordered=True)
     model.s_e1 = pyo.Var(model.E1_PAIRS, domain=pyo.NonNegativeReals)
+    model._e1_activation = activation
+
+    pair_big_ms = {}
+    if activation == "conditional":
+        for (o, d, gun) in real_pairs:
+            pair_big_ms[(o, d, gun)] = derive_e1_pair_big_m(
+                alpha, len(groups[(o, d, gun)]), len(groups[(d, o, gun)]),
+            )
 
     def fwd_rule(m, o, d, gun):
         fwd_free, fwd_frozen = split[(o, d, gun)]
         bwd_free, bwd_frozen = split[(d, o, gun)]
         fwd = sum(m.x[i] for i in fwd_free) + fwd_frozen
         bwd = sum(m.x[i] for i in bwd_free) + bwd_frozen
-        return fwd - bwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        if activation == "unconditional":
+            return fwd - bwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        M = pair_big_ms[(o, d, gun)]
+        return fwd - bwd <= alpha * (fwd + bwd) + M * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun]) + m.s_e1[o, d, gun]
     model.e1_fwd = pyo.Constraint(model.E1_PAIRS, rule=fwd_rule)
 
     def bwd_rule(m, o, d, gun):
@@ -108,7 +163,10 @@ def add_elastic_e1_constraints_folded(model, candidates, alpha, partition):
         bwd_free, bwd_frozen = split[(d, o, gun)]
         fwd = sum(m.x[i] for i in fwd_free) + fwd_frozen
         bwd = sum(m.x[i] for i in bwd_free) + bwd_frozen
-        return bwd - fwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        if activation == "unconditional":
+            return bwd - fwd <= alpha * (fwd + bwd) + m.s_e1[o, d, gun]
+        M = pair_big_ms[(o, d, gun)]
+        return bwd - fwd <= alpha * (fwd + bwd) + M * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun]) + m.s_e1[o, d, gun]
     model.e1_bwd = pyo.Constraint(model.E1_PAIRS, rule=bwd_rule)
 
     model._e1_frozen_slack_total = getattr(model, "_e1_frozen_slack_total", 0.0) + frozen_slack_total
@@ -143,7 +201,8 @@ def _effective_gap_range(i, c, partition):
     return g, g
 
 
-def add_elastic_e2_constraints_folded(model, candidates, journey_constants: dict, gamma: int, partition):
+def add_elastic_e2_constraints_folded(model, candidates, journey_constants: dict, gamma: int, partition,
+                                       L: int, U: int):
     groups = _market_groups(candidates)
     candidate_market = {i: (c.o, c.d, c.gun) for i, c in enumerate(candidates)}
 
@@ -288,9 +347,19 @@ def add_elastic_e2_constraints_folded(model, candidates, journey_constants: dict
             seen.add((o, d, gun))
             seen.add((d, o, gun))
 
+    # KARAR-0b / VARSAYIM-17 (M5f): schedule-independent static exemption --
+    # computed from candidates' own gap ranges (NOT the fold partition), so
+    # it applies identically regardless of which instances happen to be
+    # frozen this LNS iteration.
+    statically_infeasible = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
+
     real_e2_pairs = []
     frozen_e2_slack_total = 0.0
+    exempted_static_count = 0
     for (o, d, gun) in all_pairs:
+        if (o, d, gun) in statically_infeasible:
+            exempted_static_count += 1
+            continue  # provably gamma-infeasible regardless of selection -- exempt, no slack owed
         if (o, d, gun) in fully_frozen_markets and (d, o, gun) in fully_frozen_markets:
             j_fwd = frozen_jbest_const[(o, d, gun)]
             j_bwd = frozen_jbest_const[(d, o, gun)]
@@ -298,8 +367,17 @@ def add_elastic_e2_constraints_folded(model, candidates, journey_constants: dict
         else:
             real_e2_pairs.append((o, d, gun))
 
+    if exempted_static_count:
+        print(
+            f"WARNING: E2 (elastic, folded) -- {exempted_static_count} market pair(s) exempted "
+            f"(KARAR-0b/VARSAYIM-17): schedule-independent journey-constant asymmetry "
+            f"exceeds Gamma in the best case.",
+            flush=True,
+        )
+
     model.E2_PAIRS = pyo.Set(initialize=real_e2_pairs, dimen=3, ordered=True)
     model.s_e2 = pyo.Var(model.E2_PAIRS, domain=pyo.NonNegativeReals)
+    model._e2_exempted_static = getattr(model, "_e2_exempted_static", 0) + exempted_static_count
 
     pair_ms = {}
     for (o, d, gun) in real_e2_pairs:
@@ -325,7 +403,7 @@ def add_elastic_e2_constraints_folded(model, candidates, journey_constants: dict
     return all_pairs
 
 
-def add_elastic_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
+def add_elastic_e2_constraints(model, candidates, journey_constants: dict, gamma: int, L: int, U: int):
     groups = _market_groups(candidates)
     candidate_market = {i: (c.o, c.d, c.gun) for i, c in enumerate(candidates)}
 
@@ -415,11 +493,25 @@ def add_elastic_e2_constraints(model, candidates, journey_constants: dict, gamma
             seen.add((o, d, gun))
             seen.add((d, o, gun))
 
-    model.E2_PAIRS = pyo.Set(initialize=all_pairs, dimen=3, ordered=True)
+    # KARAR-0b / VARSAYIM-17 (M5f): bkz. constraints_balance.add_e2_constraints'in
+    # aynı-isimli yorumu -- schedule-independent static exemption.
+    statically_infeasible = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
+    real_pairs = [p for p in all_pairs if p not in statically_infeasible]
+    exempted_static_count = len(all_pairs) - len(real_pairs)
+    if exempted_static_count:
+        print(
+            f"WARNING: E2 (elastic) -- {exempted_static_count} market pair(s) exempted "
+            f"(KARAR-0b/VARSAYIM-17): schedule-independent journey-constant asymmetry "
+            f"exceeds Gamma in the best case.",
+            flush=True,
+        )
+
+    model.E2_PAIRS = pyo.Set(initialize=real_pairs, dimen=3, ordered=True)
     model.s_e2 = pyo.Var(model.E2_PAIRS, domain=pyo.NonNegativeReals)
+    model._e2_exempted_static = getattr(model, "_e2_exempted_static", 0) + exempted_static_count
 
     pair_ms = {}
-    for (o, d, gun) in all_pairs:
+    for (o, d, gun) in real_pairs:
         jd_lo_fwd, jd_hi_fwd = market_j_bounds[(o, d, gun)]
         jd_lo_bwd, jd_hi_bwd = market_j_bounds[(d, o, gun)]
         m_fwd = derive_e2_pair_big_m(jd_hi_fwd, jd_lo_bwd, gamma)

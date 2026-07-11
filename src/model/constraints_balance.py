@@ -7,7 +7,8 @@ from collections import defaultdict
 
 import pyomo.environ as pyo
 
-from src.model.big_m import derive_e2_candidate_big_ms, derive_e2_pair_big_m
+from src.model.big_m import derive_e1_pair_big_m, derive_e2_candidate_big_ms, derive_e2_pair_big_m
+from src.model.lns import compute_gamma_infeasible_pairs
 
 
 def _market_groups(candidates):
@@ -17,7 +18,7 @@ def _market_groups(candidates):
     return groups
 
 
-def add_e1_constraints(model, candidates, alpha: float):
+def add_e1_constraints(model, candidates, alpha: float, activation: str = "conditional"):
     """n_fwd,n_bwd zaten Sum(x_pi) -- Big-M/reifikasyon gerekmiyor, doğrudan
     lineer iki-yönlü mutlak-değer eşitsizliği. Yalnızca HER İKİ yönde de
     candidate'ı olan pazar çiftlerine uygulanır -- tek-yönlü pazarlar (bwd
@@ -32,7 +33,28 @@ def add_e1_constraints(model, candidates, alpha: float):
     değil, K-subset'in kendi tractability gevşetmesinin bir yan etkisi
     (aynen VARSAYIM-9'un G için, VARSAYIM-11'in A için yaptığı gibi). Bu
     çift MUAF tutulur + loglanır. KARIŞIK (bir taraf hâlâ ayarlanabilir)
-    çiftler her zaman kurulur -- orada gerçek bir seçim özgürlüğü var."""
+    çiftler her zaman kurulur -- orada gerçek bir seçim özgürlüğü var.
+
+    KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16, M5f): `activation="conditional"`
+    (varsayılan) modda E1 yalnızca HER İKİ yön de AKTİFKEN (>=1 sunulan
+    bağlantı, yani n_fwd>=1 VE n_bwd>=1) bağlayıcıdır -- brief §7'nin ipucu
+    ("koşullu... aksi halde pasif yönler dengeyi yapay olarak zorlar") ve
+    ampirik kanıt (organizatörün kendi baseline'ı literal okumada 690
+    pair-gün ihlalli; ulaşılan her noktada E1 fazlalık oranı sabit
+    0.800=1-alpha, yani ihlallerin ~tamamı tek-yön-sıfır vakası). Aktivasyon
+    göstergesi E2'nin `model.a_dir`'i YENİDEN KULLANILIR (satır/binary
+    ekonomisi) -- bu fonksiyon çağrılmadan ÖNCE add_e2_constraints'in
+    çalışmış olması ŞARTTIR. `activation="unconditional"` eski literal
+    okumayı duyarlılık analizi olarak korur (M terimi eklenmez, davranış
+    bu fonksiyonun önceki sürümüyle BİREBİR aynı)."""
+    if activation not in ("conditional", "unconditional"):
+        raise ValueError(f"add_e1_constraints: unknown activation mode {activation!r}")
+    if activation == "conditional" and not hasattr(model, "a_dir"):
+        raise RuntimeError(
+            "add_e1_constraints(activation='conditional') requires add_e2_constraints "
+            "to have already run on this model (needs model.a_dir)."
+        )
+
     groups = _market_groups(candidates)
 
     pairs = []
@@ -57,6 +79,8 @@ def add_e1_constraints(model, candidates, alpha: float):
         fwd_idxs, bwd_idxs = groups[(o, d, gun)], groups[(d, o, gun)]
         if _is_fully_frozen(fwd_idxs) and _is_fully_frozen(bwd_idxs):
             n_fwd, n_bwd = _frozen_count(fwd_idxs), _frozen_count(bwd_idxs)
+            if activation == "conditional" and (n_fwd == 0 or n_bwd == 0):
+                continue  # one side inactive -- conditional gate makes this trivially non-binding
             if n_fwd + n_bwd == 0 or abs(n_fwd - n_bwd) <= alpha * (n_fwd + n_bwd):
                 continue  # trivially satisfied by fixed values -- redundant row, skip
             exempted_count += 1
@@ -72,30 +96,52 @@ def add_e1_constraints(model, candidates, alpha: float):
 
     model.E1_PAIRS = pyo.Set(initialize=genuine_pairs, dimen=3, ordered=True)
     model._e1_fold_counts = {"exempted": exempted_count, "genuine": len(genuine_pairs)}
+    model._e1_activation = activation
+
+    pair_big_ms = {}
+    if activation == "conditional":
+        for (o, d, gun) in genuine_pairs:
+            pair_big_ms[(o, d, gun)] = derive_e1_pair_big_m(
+                alpha, len(groups[(o, d, gun)]), len(groups[(d, o, gun)]),
+            )
 
     def fwd_rule(m, o, d, gun):
         fwd = sum(m.x[i] for i in groups[(o, d, gun)])
         bwd = sum(m.x[i] for i in groups[(d, o, gun)])
-        return fwd - bwd <= alpha * (fwd + bwd)
+        if activation == "unconditional":
+            return fwd - bwd <= alpha * (fwd + bwd)
+        M = pair_big_ms[(o, d, gun)]
+        return fwd - bwd <= alpha * (fwd + bwd) + M * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun])
     model.e1_fwd = pyo.Constraint(model.E1_PAIRS, rule=fwd_rule)
 
     def bwd_rule(m, o, d, gun):
         fwd = sum(m.x[i] for i in groups[(o, d, gun)])
         bwd = sum(m.x[i] for i in groups[(d, o, gun)])
-        return bwd - fwd <= alpha * (fwd + bwd)
+        if activation == "unconditional":
+            return bwd - fwd <= alpha * (fwd + bwd)
+        M = pair_big_ms[(o, d, gun)]
+        return bwd - fwd <= alpha * (fwd + bwd) + M * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun])
     model.e1_bwd = pyo.Constraint(model.E1_PAIRS, rule=bwd_rule)
 
     return groups, pairs
 
 
-def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
+def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int, L: int, U: int):
     """Doğruluk argümanı: bkz. tests/solve/test_m4_constraints_e2.py modül
     docstring'i (tam argüman orada). Özet: Jbest bir "argmin sandviç" ile
     inşa edilir (D'nin OR-aggregation'ından farklı -- burada bir SEÇİLEBİLİR
     minimum gerekiyor, MIP'in doğal min() operatörü yok). a_dir (aktivasyon)
     D'nin beaten_k desenindeki OR-aggregation ile birebir aynı yapı. Tüm
     Big-M'ler candidate/market-bazlı türetilir (src.model.big_m), global
-    sabit YOK. Gerektirir: model.x, model.gap (add_b_constraints'ten)."""
+    sabit YOK. Gerektirir: model.x, model.gap (add_b_constraints'ten).
+
+    KARAR-0b (docs/CLOSING_PLAN.md, VARSAYIM-17, M5f): `L`/`U` yalnızca
+    `compute_gamma_infeasible_pairs` (src.model.lns) için kullanılır --
+    journey_constant asimetrisi yüzünden HANGİ seçim yapılırsa yapılsın
+    (schedule-independent, veri-sabit) E2'yi asla sağlayamayan çiftleri
+    statik olarak tespit eder. Bu çiftler MUAF tutulur + loglanır (A/G'nin
+    VARSAYIM-9/11 exempt+log deseninin birebir uzantısı) -- K-subset-frozen
+    exemption'dan (aşağıda) BAĞIMSIZ bir ikinci muafiyet kaynağı."""
     groups = _market_groups(candidates)
     candidate_market = {i: (c.o, c.d, c.gun) for i, c in enumerate(candidates)}
 
@@ -222,9 +268,18 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
     def _is_fully_frozen(idxs):
         return all(model.x[i].fixed for i in idxs)
 
+    # KARAR-0b / VARSAYIM-17: schedule-independent static exemption -- computed
+    # ONCE from candidates' own gap ranges + journey_constants, regardless of
+    # any freezing state (a strictly data-level fact, not a solve-time artifact).
+    statically_infeasible = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
+
     pairs = []
     exempted_count = 0
+    exempted_static_count = 0
     for (o, d, gun) in all_pairs:
+        if (o, d, gun) in statically_infeasible:
+            exempted_static_count += 1
+            continue  # provably gamma-infeasible regardless of selection -- exempt, not built
         fwd_idxs, bwd_idxs = groups[(o, d, gun)], groups[(d, o, gun)]
         if _is_fully_frozen(fwd_idxs) and _is_fully_frozen(bwd_idxs):
             j_fwd, j_bwd = _frozen_jbest(fwd_idxs), _frozen_jbest(bwd_idxs)
@@ -235,6 +290,12 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
             continue  # unconditionally violated by frozen Jbest values alone -- exempt
         pairs.append((o, d, gun))
 
+    if exempted_static_count:
+        print(
+            f"WARNING: E2 -- {exempted_static_count} market pair(s) exempted (KARAR-0b/VARSAYIM-17): "
+            f"schedule-independent journey-constant asymmetry exceeds Gamma in the best case.",
+            flush=True,
+        )
     if exempted_count:
         print(
             f"WARNING: E2 -- {exempted_count} market pair(s) exempted (M5c): "
@@ -243,7 +304,9 @@ def add_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
         )
 
     model.E2_PAIRS = pyo.Set(initialize=pairs, dimen=3, ordered=True)
-    model._e2_fold_counts.update({"exempted": exempted_count, "genuine": len(pairs)})
+    model._e2_fold_counts.update({
+        "exempted": exempted_count, "exempted_static": exempted_static_count, "genuine": len(pairs),
+    })
 
     pair_ms = {}
     for (o, d, gun) in pairs:

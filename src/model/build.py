@@ -109,7 +109,7 @@ def build_model_m4(
     b_od_data: dict, ranking_table, pairs_df, r_o_lookup: dict, tau: int, x_dev: int,
     epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
     capacity_departure: int, capacity_arrival: int,
-    L: int = 60, U: int = 300, monotonic: bool = True,
+    L: int = 60, U: int = 300, monotonic: bool = True, e1_activation: str = "conditional",
 ) -> pyo.ConcreteModel:
     model = pyo.ConcreteModel()
     model._candidates = candidates
@@ -130,8 +130,10 @@ def build_model_m4(
     add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau, out_of_scope_baselines)
     add_g_constraints(model, candidates, epoch_anchor, x_dev)
 
-    add_e1_constraints(model, candidates, alpha)
-    add_e2_constraints(model, candidates, journey_constants, gamma)
+    # KARAR-0 (M5f): E2 ÖNCE kurulur -- E1'in koşullu aktivasyonu (varsayılan)
+    # E2'nin a_dir göstergelerini yeniden kullanır, sıra bu yüzden ÖNEMLİ.
+    add_e2_constraints(model, candidates, journey_constants, gamma, L=L, U=U)
+    add_e1_constraints(model, candidates, alpha, activation=e1_activation)
 
     residual_dep, residual_arr = compute_residual_capacity(
         out_of_scope_baselines, bucket_size_min, capacity_departure, capacity_arrival,
@@ -178,6 +180,7 @@ def build_elastic_feasibility_model(
     candidates: list[Candidate], journey_constants: dict, pairs_df, r_o_lookup: dict, tau: int, x_dev: int,
     epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
     capacity_departure: int, capacity_arrival: int, L: int = 60, U: int = 300,
+    e1_activation: str = "conditional",
 ) -> pyo.ConcreteModel:
     """M5d §2 (docs/decisions.md 2026-07-10): build_core_feasibility_model
     (A/F/G) + B (needed so E1/E2 have an x/gap to reference) + SLACK-relaxed
@@ -195,8 +198,8 @@ def build_elastic_feasibility_model(
         tk_rows, bucket_size_min, capacity_departure, capacity_arrival,
     )
     add_b_constraints(model, candidates, L=L, U=U)
-    add_elastic_e1_constraints(model, candidates, alpha)
-    add_elastic_e2_constraints(model, candidates, journey_constants, gamma)
+    add_elastic_e2_constraints(model, candidates, journey_constants, gamma, L=L, U=U)
+    add_elastic_e1_constraints(model, candidates, alpha, activation=e1_activation)
     return model
 
 
@@ -205,6 +208,7 @@ def build_elastic_feasibility_model_folded(
     epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
     capacity_departure: int, capacity_arrival: int, partition,
     true_out_of_scope_baselines: dict = None, L: int = 60, U: int = 300,
+    e1_activation: str = "conditional",
 ) -> pyo.ConcreteModel:
     """M5d LNS fold-redesign (plan: a-evet-ama-iki-tingly-canyon.md, adım 8):
     fold-tabanlı `build_elastic_feasibility_model` eşdeğeri -- yalnızca
@@ -240,8 +244,8 @@ def build_elastic_feasibility_model_folded(
     add_f_constraints(model, bucket_size_min, capacity_departure, capacity_arrival, residual_dep, residual_arr)
 
     add_b_constraints_folded(model, candidates, L, U, partition)
-    add_elastic_e1_constraints_folded(model, candidates, alpha, partition)
-    add_elastic_e2_constraints_folded(model, candidates, journey_constants, gamma, partition)
+    add_elastic_e2_constraints_folded(model, candidates, journey_constants, gamma, partition, L=L, U=U)
+    add_elastic_e1_constraints_folded(model, candidates, alpha, partition, activation=e1_activation)
     return model
 
 
@@ -249,6 +253,7 @@ def build_feasibility_model(
     candidates: list[Candidate], journey_constants: dict, pairs_df, r_o_lookup: dict, tau: int, x_dev: int,
     epoch_anchor, alpha: float, gamma: int, tk_rows, bucket_size_min: int,
     capacity_departure: int, capacity_arrival: int, L: int = 60, U: int = 300,
+    e1_activation: str = "conditional",
 ) -> pyo.ConcreteModel:
     """M5c §3 (docs/decisions.md 2026-07-10, kullanıcı "Plan B" talebi):
     reward'ı TAMAMEN dışarıda bırakan, yalnızca OPERASYONEL fizibiliteyi
@@ -280,8 +285,8 @@ def build_feasibility_model(
     add_a_constraints(model, candidates, pairs_df, r_o_lookup, tau, out_of_scope_baselines)
     add_g_constraints(model, candidates, epoch_anchor, x_dev)
 
-    add_e1_constraints(model, candidates, alpha)
-    add_e2_constraints(model, candidates, journey_constants, gamma)
+    add_e2_constraints(model, candidates, journey_constants, gamma, L=L, U=U)
+    add_e1_constraints(model, candidates, alpha, activation=e1_activation)
 
     residual_dep, residual_arr = compute_residual_capacity(
         out_of_scope_baselines, bucket_size_min, capacity_departure, capacity_arrival,

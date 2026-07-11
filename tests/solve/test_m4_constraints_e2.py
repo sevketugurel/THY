@@ -102,7 +102,7 @@ def _build(candidates, journey_constants=JOURNEY_CONST, gamma=GAMMA):
     add_flight_time_variables(model, candidates)
     add_b_constraints(model, candidates, L=L, U=U)
     add_c_constraints(model, candidates)
-    add_e2_constraints(model, candidates, journey_constants, gamma=gamma)
+    add_e2_constraints(model, candidates, journey_constants, gamma=gamma, L=L, U=U)
     model._candidates = candidates
     return model
 
@@ -229,17 +229,64 @@ def test_e2_exempts_fully_frozen_pair_that_violates_gamma():
     # E2's pair constraint would make the model unconditionally infeasible
     # for a reason that's an artifact of K-subset freezing, not a genuine
     # data conflict. Must be exempted + logged, not hard-failed.
+    #
+    # M5f/KARAR-0b note: since BOTH candidates here are single-point Rfix
+    # (gap_lo==gap_hi), the achievable-range static check
+    # (compute_gamma_infeasible_pairs, VARSAYIM-17) computes the EXACT same
+    # J values as the old frozen-value check and now catches this pair
+    # FIRST (mathematically subsumes the K-subset-only case whenever both
+    # sides are fully frozen) -- it lands in `exempted_static`, not the
+    # older `exempted` counter. The old counter/path is kept as a second
+    # safety net (still exercised for pairs partially exempted by neither
+    # mechanism alone), not exercised by this specific scenario anymore.
     c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=60)
     c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=100)
     candidates = [c_fwd, c_bwd]
     model = _build(candidates)
     assert ("ZZG", "ZZH", 1) not in model.E2_PAIRS, "fully-frozen violating pair must be exempted, not built"
-    assert model._e2_fold_counts["exempted"] == 1
+    assert model._e2_fold_counts["exempted_static"] == 1
+    assert model._e2_fold_counts["exempted"] == 0
     model.objective = pyo.Objective(expr=0)
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
     assert result.status == "optimal"
     assert pyo.value(model.Jbest["ZZG", "ZZH", 1]) == pytest.approx(160.0)
     assert pyo.value(model.Jbest["ZZH", "ZZG", 1]) == pytest.approx(200.0)
+
+
+def test_e2_exempts_adjustable_pair_that_is_statically_gamma_infeasible():
+    # KARAR-0b/VARSAYIM-17 (M5f): NEITHER candidate is frozen (both genuinely
+    # adjustable, gap free in [60,300] -- fully inside [L,U], so B forces
+    # x=1 but the Var itself is NOT .fixed in the Pyomo sense) -- the OLD
+    # K-subset-frozen exemption (which requires BOTH sides fully .fixed)
+    # would never even consider this pair. But the underlying
+    # journey_constant asymmetry (100 vs 1000) means even the BEST-case J
+    # values (fwd in [160,400], bwd in [1060,1300]) are 660min apart, far
+    # beyond Gamma=30 -- provably infeasible regardless of ANY adjustable
+    # choice. Must be exempted statically (a pure data fact, schedule/
+    # freezing-independent), not left to force the model infeasible.
+    journey_constants = {("ZZG", "ZZH"): 100, ("ZZH", "ZZG"): 1000}
+    c_fwd = _adjustable_candidate("ZZG", "ZZH", 201, 301, gap_lo=60, gap_hi=300)
+    c_bwd = _adjustable_candidate("ZZH", "ZZG", 202, 302, gap_lo=60, gap_hi=300)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates, journey_constants=journey_constants)
+    assert ("ZZG", "ZZH", 1) not in model.E2_PAIRS, "statically gamma-infeasible pair must be exempted, not built"
+    assert model._e2_fold_counts["exempted_static"] == 1
+    model.objective = pyo.Objective(expr=0)
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+
+
+def test_e2_still_builds_adjustable_pair_that_is_statically_reconcilable():
+    # Control: same (non-frozen) structure but journey_constants close
+    # enough that SOME achievable choice satisfies Gamma -- must NOT be
+    # exempted (E2 must still genuinely bind here).
+    journey_constants = {("ZZG", "ZZH"): 100, ("ZZH", "ZZG"): 100}
+    c_fwd = _adjustable_candidate("ZZG", "ZZH", 201, 301, gap_lo=60, gap_hi=300)
+    c_bwd = _adjustable_candidate("ZZH", "ZZG", 202, 302, gap_lo=60, gap_hi=300)
+    candidates = [c_fwd, c_bwd]
+    model = _build(candidates, journey_constants=journey_constants)
+    assert ("ZZG", "ZZH", 1) in model.E2_PAIRS, "reconcilable pair must still be built"
+    assert model._e2_fold_counts["exempted_static"] == 0
 
 
 def test_e2_still_builds_for_fully_frozen_pair_within_gamma():

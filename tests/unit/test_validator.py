@@ -244,7 +244,7 @@ def test_validate_catches_e1_imbalance(tmp_path):
     assert any("E1" in v for v in result.violations)
 
 
-def test_validate_catches_e1_imbalance_when_one_side_has_zero_selected(tmp_path):
+def test_validate_catches_e1_imbalance_when_one_side_has_zero_selected_unconditional(tmp_path):
     # 2026-07-09 baseline autopsy finding (docs/baseline_autopsy.md #1):
     # ZZA-ZZB Gün1 has 2 STRUCTURAL candidates (MI1xMO2, MI2xMO2, per
     # fixtures/README.md ground truth) but the output selects NEITHER --
@@ -255,6 +255,35 @@ def test_validate_catches_e1_imbalance_when_one_side_has_zero_selected(tmp_path)
     # 0.2*1=0.2). The model's own add_e1_constraints scopes E1_PAIRS by
     # STRUCTURAL candidate existence (VARSAYIM-6), not selection -- the
     # validator must match.
+    #
+    # M5f/KARAR-0 note: this M5b fix only matters in `e1_activation=
+    # "unconditional"` (literal) mode -- see the companion conditional-mode
+    # test right below, which is the DEFAULT and treats this exact scenario
+    # as non-binding (one side structurally present but 0 offered).
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[
+            {"od": "ZZB-ZZA", "flno1": 9201, "flno2": 9212, "gun": 1, "gap_min": 205},
+        ],
+        adjusted_times=[
+            {"role": "IB", "flno": 9201, "gun": 1, "time_min": 795},
+            {"role": "OB", "flno": 9212, "gun": 1, "time_min": 1000},
+        ],
+        ranking_results=[],
+    )
+    result = validate_output(
+        output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, alpha=0.20, e1_activation="unconditional",
+    )
+    assert not result.is_valid
+    assert any("E1" in v for v in result.violations)
+
+
+def test_validate_e1_conditional_default_ignores_structurally_dead_reverse_direction(tmp_path):
+    # KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16, M5f): identical scenario to
+    # the unconditional test above, but under the DEFAULT `e1_activation=
+    # "conditional"` -- ZZB-ZZA is the only active direction (1 selected),
+    # ZZA-ZZB has 0 selected -- E1 is non-binding (only ONE side active),
+    # so this must NOT be reported as a violation.
     output_path = _write_output_with_ranking(
         tmp_path,
         connections=[
@@ -267,8 +296,8 @@ def test_validate_catches_e1_imbalance_when_one_side_has_zero_selected(tmp_path)
         ranking_results=[],
     )
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U, alpha=0.20)
-    assert not result.is_valid
-    assert any("E1" in v for v in result.violations)
+    assert result.is_valid, result.violations
+    assert not any("E1" in v for v in result.violations)
 
 
 def test_validate_e1_skips_pair_when_reverse_direction_has_no_real_flights(tmp_path):

@@ -10,9 +10,11 @@ Durum: **M0–M4 tamam** (A–G tam formülasyon, `build_model_m4`, main.py'ye
 bağlı, CLI end-to-end valid=True, fixture objective=668.75). **M5/M5c/M5d/M5e
 tamam** — full-data'da doğrulanmış objective_value henüz yok (kapanış planının
 ana hedefi); veri v2 entegre (Elapsed-türevli K_od/R_o, VARSAYIM-14/15).
-**M5f kapanışı sürüyor** (`docs/CLOSING_PLAN.md`, Kapı-0…6) — KARAR-0
-(E1 koşullu aktivasyon, VARSAYIM-16) ve KARAR-0b (E2 statik-imkânsız
-muafiyet, VARSAYIM-17) bu turda uygulanıyor.
+**M5f kapanışı sürüyor** (`docs/CLOSING_PLAN.md`, Kapı-0…6). **Kapı-0/1
+tamam**: KARAR-0 (E1 koşullu aktivasyon, VARSAYIM-16) ve KARAR-0b (E2
+statik-imkânsız muafiyet, VARSAYIM-17) uygulandı (model+elastik+validator+
+sertifikalar+witness hizalandı); fixture değeri HER İKİ modda da
+668.75 (değişmedi). Kapı-2 (full-data yeniden ölçüm) sırada.
 
 ---
 
@@ -333,28 +335,43 @@ gerçek örnek doğrulandı) — her rol KENDİ ayrı $T_{role,flno}$'suna sahip
 (brief "kalkış VE varış saatleri" diyerek zaten ayrı ele alıyor). Yalnızca
 2+ farklı günde modelde bulunan (role,flno) çiftleri için kısıt kurulur.
 
-### E1 — Yönsel Sayı Dengesi (M4)
+### E1 — Yönsel Sayı Dengesi (M4, KARAR-0 koşullu aktivasyon M5f)
 
 **Doğruluk argümanı**: $n_{fwd}=\sum_\pi x_\pi$ (o,d,h pazarı),
 $n_{bwd}=\sum_\pi x_\pi$ (d,o,h pazarı) zaten LİNEER ifadeler (C'nin
-market-grouping'inden) — reifikasyon/Big-M GEREKMİYOR:
+market-grouping'inden) — reifikasyon/Big-M GEREKMİYOR ana toplamlar için.
+Yalnızca HER İKİ yönde de candidate'ı olan pazar çiftlerine uygulanır
+(tek-yönlü pazarları zorlamak modelin KAPSAM sınırlamasından kaynaklanan
+yapay bir kısıtlama olurdu).
 
-$$n_{fwd}-n_{bwd}\le\alpha(n_{fwd}+n_{bwd}) \qquad n_{bwd}-n_{fwd}\le\alpha(n_{fwd}+n_{bwd})$$
+**KARAR-0 (`ASSUMPTIONS.md` VARSAYIM-16, `docs/CLOSING_PLAN.md`)**:
+varsayılan `activation="conditional"` modda kısıt yalnızca HER İKİ yön de
+AKTİFKEN (≥1 sunulan bağlantı) bağlayıcı — E2'nin zaten var olan aktivasyon
+göstergesi $a_{fwd}/a_{bwd}$ (`model.a_dir`, "en az bir aday sunuldu mu")
+yeniden kullanılır (satır/binary ekonomisi, E2 bu fonksiyondan ÖNCE
+çalışmış olmalı):
 
-İki yön de boş → $0\le0$ her ikisinde, otomatik sağlanır. Formül VARSAYIM
-(`ASSUMPTIONS.md` VARSAYIM-6) — brief kesin formül vermiyor. Yalnızca HER
-İKİ yönde de candidate'ı olan pazar çiftlerine uygulanır (tek-yönlü
-pazarları zorlamak modelin KAPSAM sınırlamasından kaynaklanan yapay bir
-kısıtlama olurdu).
+$$n_{fwd}-n_{bwd}\le\alpha(n_{fwd}+n_{bwd}) + M_{pair}(2-a_{fwd}-a_{bwd})$$
+$$n_{bwd}-n_{fwd}\le\alpha(n_{fwd}+n_{bwd}) + M_{pair}(2-a_{fwd}-a_{bwd})$$
 
-**Kritik davranışsal etki**: B'nin "$gap\in[L,U]\Rightarrow x=1$ ZORUNLU"
-kuralı, E1'i sağlamanın YEGANE yolunun bir bağlantıyı KISMEN gizlemek değil
-(B tarafından yapısal olarak engelleniyor), zamanı kaydırıp $gap$'i
-$[L,U]$ dışına iterek bağlantıyı TAMAMEN ÖLDÜRMEK olduğu anlamına gelir.
-Küçük/asimetrik pazarlarda (ör. bir yönde zaten 1-2 candidate varsa) bu,
-E1'i bir **amaç bastırıcı** yapabilir: solver tek bir fazla bağlantıyı
-dengelemek yerine TÜM pazarı sıfırlamayı (n_fwd=n_bwd=0, kendiliğinden
-sağlanan durum) tercih edebilir, eğer bu objektif açısından daha "ucuzsa".
+$M_{pair}=(1-\alpha)\cdot\max(|\Pi_{fwd}|,|\Pi_{bwd}|)$
+(`src/model/big_m.py::derive_e1_pair_big_m`, pazar-çifti bazlı, adayların
+KENDİ sayısından türetilir — global sabit YOK, doğası gereği küçük).
+$a_{fwd}=a_{bwd}=1$ olduğunda ($M$ terimi 0) formül **literal/unconditional**
+okumayla BİREBİR aynıdır — `activation="unconditional"` bu eski okumayı
+duyarlılık analizi için ayrı bir bayrakla korur (`src/config/standard.yaml::e1_activation`).
+İki yön de pasif → $0\le0$ her ikisinde, otomatik sağlanır (her iki modda).
+
+**Kritik davranışsal etki (literal/unconditional modda)**: B'nin
+"$gap\in[L,U]\Rightarrow x=1$ ZORUNLU" kuralı, E1'i sağlamanın YEGANE
+yolunun bir bağlantıyı KISMEN gizlemek değil (B tarafından yapısal olarak
+engelleniyor), zamanı kaydırıp $gap$'i $[L,U]$ dışına iterek bağlantıyı
+TAMAMEN ÖLDÜRMEK olduğu anlamına gelir. Küçük/asimetrik pazarlarda bu,
+literal E1'i bir **amaç bastırıcı** yapar: solver tek bir fazla bağlantıyı
+dengelemek yerine TÜM pazarı sıfırlamayı tercih edebilir. Ampirik kanıt
+(`ASSUMPTIONS.md` VARSAYIM-16): full-data'da ulaşılan HER noktada E1
+fazlalık oranı sabit $0.800=1-\alpha$ — ihlallerin ~tamamı tek-yön-sıfır
+vakası, koşullu aktivasyon bunu kaynağında ortadan kaldırıyor.
 `src/model/constraints_balance.py::e1_diagnostics` bu davranışı post-solve
 izler (her pazar çifti için n_fwd/n_bwd + sıfıra-inme bayrağı, rapora
 girecek metrik).
@@ -457,6 +474,16 @@ raporlanan $gap$'lerinden Python `min()` ile $J_{best}^{fwd}/J_{best}^{bwd}$'i
 yeniden hesaplar (argmin sandviç MIP mekanizmasına ihtiyaç yok — zaten
 seçilmiş adaylar arasından minimum almak yeterli) ve $\Gamma$
 eşitsizliğini bağımsız olarak assert eder.
+
+**KARAR-0b — statik-imkânsız çift muafiyeti (`ASSUMPTIONS.md` VARSAYIM-17, M5f)**:
+$a_{fwd}=a_{bwd}=1$ olsa BİLE, iki yönün candidate'larının KENDİ $[gap_{lo},gap_{hi}]$
+aralıklarından (seçimden bağımsız, [L,U]'ya kırpılmış) türetilen BEST-CASE
+$J$ aralıkları $\Gamma$'dan daha fazla ayrıksa, HİÇBİR seçim E2'yi
+sağlayamaz — `src/model/lns.py::compute_gamma_infeasible_pairs` bu çiftleri
+schedule-independent olarak tespit eder, `add_e2_constraints` (ve elastik/
+folded eşdeğerleri) bu çiftleri E2_PAIRS'ten MUAF tutar (satır hiç
+kurulmaz) + loglar. Validator aynı testi bağımsız yeniden uygular
+(`_is_gamma_statically_infeasible`, `src.model` import ETMEZ).
 
 ### F — Hub Kova/Kapasite Bağlama (M4)
 

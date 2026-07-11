@@ -34,11 +34,27 @@ def _fixed_candidate(o, d, flno1, flno2, gap, gun=1):
     )
 
 
-def _build_e1(candidates):
+def _build_e1_unconditional(candidates):
+    # KARAR-0 (M5f): explicit activation="unconditional" preserves the
+    # literal-reading slack arithmetic these tests were originally written
+    # to verify -- independent of the model's own default.
     model = pyo.ConcreteModel()
     add_flight_time_variables(model, candidates)
     add_b_constraints(model, candidates, L=L, U=U)
-    add_elastic_e1_constraints(model, candidates, ALPHA)
+    add_elastic_e1_constraints(model, candidates, ALPHA, activation="unconditional")
+    add_elastic_feasibility_objective(model)
+    model._candidates = candidates
+    return model
+
+
+def _build_e1_conditional(candidates):
+    # Conditional E1 reuses E2's a_dir -- E2 must run first (huge gamma so
+    # E2 itself never binds, isolating these tests to E1's own slack).
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, candidates)
+    add_b_constraints(model, candidates, L=L, U=U)
+    add_elastic_e2_constraints(model, candidates, JOURNEY_CONST, gamma=1_000_000, L=L, U=U)
+    add_elastic_e1_constraints(model, candidates, ALPHA, activation="conditional")
     add_elastic_feasibility_objective(model)
     model._candidates = candidates
     return model
@@ -48,7 +64,7 @@ def _build_e2(candidates, gamma=GAMMA):
     model = pyo.ConcreteModel()
     add_flight_time_variables(model, candidates)
     add_b_constraints(model, candidates, L=L, U=U)
-    add_elastic_e2_constraints(model, candidates, JOURNEY_CONST, gamma)
+    add_elastic_e2_constraints(model, candidates, JOURNEY_CONST, gamma, L=L, U=U)
     add_elastic_feasibility_objective(model)
     model._candidates = candidates
     return model
@@ -56,25 +72,46 @@ def _build_e2(candidates, gamma=GAMMA):
 
 def test_elastic_e1_slack_is_zero_when_balanced():
     # fwd=1, bwd=1 (both fixed, forced offered) -- |1-1|=0 <= alpha*2, no
-    # slack needed.
+    # slack needed. Both directions active, so unconditional and
+    # conditional modes agree.
     c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
     c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=100)
-    model = _build_e1([c_fwd, c_bwd])
+    model = _build_e1_unconditional([c_fwd, c_bwd])
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
     assert result.status == "optimal"
     assert pyo.value(model.s_e1["ZZG", "ZZH", 1]) == pytest.approx(0.0, abs=1e-6)
 
 
-def test_elastic_e1_slack_absorbs_forced_imbalance():
+def test_elastic_e1_unconditional_slack_absorbs_forced_imbalance():
     # fwd=1 (forced offered, gap=100 in [L,U]), bwd=1 candidate but forced
     # OFF (gap=1000, outside [L,U]) -- n_fwd=1, n_bwd=0 UNCONDITIONALLY.
-    # |1-0|=1 > alpha*(1)=0.2 -- minimum slack to satisfy is EXACTLY 0.8.
+    # |1-0|=1 > alpha*(1)=0.2 -- literal reading's minimum slack is EXACTLY
+    # 0.8 (this is the "tek-yön-sıfır" artifact KARAR-0's default mode
+    # eliminates -- see the conditional counterpart below).
     c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
     c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=1000)
-    model = _build_e1([c_fwd, c_bwd])
+    model = _build_e1_unconditional([c_fwd, c_bwd])
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
     assert result.status == "optimal"
     assert pyo.value(model.s_e1["ZZG", "ZZH", 1]) == pytest.approx(0.8, abs=1e-6)
+
+
+def test_elastic_e1_conditional_needs_no_slack_for_structurally_dead_direction():
+    # KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16): same raw scenario as
+    # test_elastic_e1_unconditional_slack_absorbs_forced_imbalance (fwd=1
+    # forced offered, bwd forced OFF) -- but bwd's own count is being 0 is
+    # not a real imbalance to fix, it's a structural fact (a_bwd is
+    # provably 0). Under conditional activation the gate term relaxes the
+    # inequality whenever either side is inactive, so ZERO slack should be
+    # needed -- this is the central mechanism Kapı-2/3 rely on to shrink
+    # Σslack (E1's excess ratio was measured at a constant 0.800=1-alpha in
+    # full-data runs, i.e. ~all of it was exactly this artifact).
+    c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
+    c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=1000)
+    model = _build_e1_conditional([c_fwd, c_bwd])
+    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
+    assert result.status == "optimal"
+    assert pyo.value(model.s_e1["ZZG", "ZZH", 1]) == pytest.approx(0.0, abs=1e-6)
 
 
 def test_elastic_e2_slack_is_zero_when_within_gamma():
@@ -86,16 +123,24 @@ def test_elastic_e2_slack_is_zero_when_within_gamma():
     assert pyo.value(model.s_e2["ZZG", "ZZH", 1]) == pytest.approx(0.0, abs=1e-6)
 
 
-def test_elastic_e2_slack_absorbs_forced_gamma_violation():
-    # fwd forced J=200 (gap=100), bwd forced J=300 (gap=200) -- |300-200|=100
-    # > Gamma=30 -- minimum slack EXACTLY 70, both a_dir forced to 1 (single
-    # candidate per direction, both offered).
+def test_elastic_e2_exempts_statically_infeasible_pair_instead_of_absorbing_slack():
+    # KARAR-0b/VARSAYIM-17 (M5f): fwd forced J=200 (gap=100), bwd forced
+    # J=300 (gap=200) -- |300-200|=100 > Gamma=30. Both candidates are
+    # single-point Rfix (gap_lo==gap_hi), so their achievable range IS the
+    # frozen value -- the schedule-independent static check
+    # (compute_gamma_infeasible_pairs) now catches this BEFORE it ever
+    # reaches the elastic slack machinery: exempted (no s_e2 row at all),
+    # not left to silently accumulate 70.0 of permanently-unfixable slack
+    # (a pre-KARAR-0b elastic run would have reported exactly that number,
+    # polluting Σslack with something no amount of search could ever fix).
     c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
     c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=200)
-    model = _build_e2([c_fwd, c_bwd])
-    result = solve(model, solver="highs", time_limit_sec=60, seed=42)
-    assert result.status == "optimal"
-    assert pyo.value(model.s_e2["ZZG", "ZZH", 1]) == pytest.approx(70.0, abs=1e-6)
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c_fwd, c_bwd])
+    add_b_constraints(model, [c_fwd, c_bwd], L=L, U=U)
+    add_elastic_e2_constraints(model, [c_fwd, c_bwd], JOURNEY_CONST, GAMMA, L=L, U=U)
+    assert ("ZZG", "ZZH", 1) not in model.E2_PAIRS, "statically gamma-infeasible pair must be exempted, not built"
+    assert model._e2_exempted_static == 1
 
 
 def test_elastic_objective_is_feasible_by_construction():
@@ -104,7 +149,7 @@ def test_elastic_objective_is_feasible_by_construction():
     # by construction" claim itself, not just the slack value.
     c_fwd = _fixed_candidate("ZZG", "ZZH", 201, 301, gap=100)
     c_bwd = _fixed_candidate("ZZH", "ZZG", 202, 302, gap=1000)
-    model = _build_e1([c_fwd, c_bwd])
+    model = _build_e1_unconditional([c_fwd, c_bwd])
     result = solve(model, solver="highs", time_limit_sec=60, seed=42)
     assert result.status == "optimal"
     assert result.objective_value is not None

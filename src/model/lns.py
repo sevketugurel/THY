@@ -15,11 +15,30 @@ from collections import defaultdict
 
 
 def compute_pair_slack(candidates, journey_constants: dict, arr_times: dict, dep_times: dict,
-                        L: int, U: int, alpha: float, gamma: int) -> dict:
+                        L: int, U: int, alpha: float, gamma: int,
+                        e1_activation: str = "conditional",
+                        gamma_infeasible_pairs: set = None) -> dict:
     """Independent (pure-Python) recompute of s_e1/s_e2 EXACTLY matching
     src.model.constraints_elastic's formulas, for every (o,d,gun) pair that
     the elastic model would build E1/E2 constraints for (both directions
-    present in `groups`). Returns {(o,d,gun): {"e1":..., "e2":..., "total":...}}."""
+    present in `groups`). Returns {(o,d,gun): {"e1":..., "e2":..., "total":...}}.
+
+    KARAR-0/0b (docs/CLOSING_PLAN.md, M5f): `e1_activation` mirrors
+    add_elastic_e1_constraints' own default -- "conditional" zeroes s_e1
+    whenever either direction has 0 offered candidates here (matching the
+    model's a_dir gate exactly, in pure Python, no Big-M needed since this
+    is a post-hoc recompute, not a MIP constraint). `gamma_infeasible_pairs`
+    (compute_gamma_infeasible_pairs' output -- computed ONCE per run and
+    passed in by hot-loop callers for efficiency, computed internally here
+    if omitted) zeroes s_e2 for pairs KARAR-0b exempts from the model
+    entirely, so LNS's worst-pair selection never spends free-instance
+    budget chasing permanently-unfixable slack this recompute would
+    otherwise report."""
+    if e1_activation not in ("conditional", "unconditional"):
+        raise ValueError(f"compute_pair_slack: unknown e1_activation {e1_activation!r}")
+    if gamma_infeasible_pairs is None:
+        gamma_infeasible_pairs = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
+
     groups = defaultdict(list)
     for i, c in enumerate(candidates):
         groups[(c.o, c.d, c.gun)].append(i)
@@ -49,8 +68,13 @@ def compute_pair_slack(candidates, journey_constants: dict, arr_times: dict, dep
     for (o, d, gun) in pairs:
         n_fwd = sum(x_of[i] for i in groups[(o, d, gun)])
         n_bwd = sum(x_of[i] for i in groups[(d, o, gun)])
-        s_e1 = max(0.0, abs(n_fwd - n_bwd) - alpha * (n_fwd + n_bwd))
-        if (o, d, gun) in jbest_of and (d, o, gun) in jbest_of:
+        if e1_activation == "conditional" and (n_fwd == 0 or n_bwd == 0):
+            s_e1 = 0.0
+        else:
+            s_e1 = max(0.0, abs(n_fwd - n_bwd) - alpha * (n_fwd + n_bwd))
+        if (o, d, gun) in gamma_infeasible_pairs:
+            s_e2 = 0.0
+        elif (o, d, gun) in jbest_of and (d, o, gun) in jbest_of:
             s_e2 = max(0.0, abs(jbest_of[(o, d, gun)] - jbest_of[(d, o, gun)]) - gamma)
         else:
             s_e2 = 0.0

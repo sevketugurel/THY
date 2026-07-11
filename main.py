@@ -131,7 +131,7 @@ def main(argv=None) -> int:
         epoch_anchor=anchor, alpha=config["alpha"], gamma=config["gamma"],
         tk_rows=tk, bucket_size_min=config["bucket_size_min"],
         capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
-        L=L, U=U, monotonic=monotonic,
+        L=L, U=U, monotonic=monotonic, e1_activation=config.get("e1_activation", "conditional"),
     )
     result = solve(model, solver=config["solver"], time_limit_sec=config["time_limit_sec"], seed=config["seed"])
 
@@ -147,6 +147,7 @@ def main(argv=None) -> int:
         alpha=config["alpha"], gamma=config["gamma"],
         bucket_size_min=config["bucket_size_min"],
         capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
+        e1_activation=config.get("e1_activation", "conditional"),
     )
 
     # M5c §2 (docs/decisions.md 2026-07-10): the OFFICIAL reported

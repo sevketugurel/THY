@@ -21,6 +21,10 @@ tau: 45
 X_dev: 15
 alpha: 0.20
 gamma: 30
+# KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16, M5f): E1 yalnızca HER İKİ yön
+# de AKTİFKEN (>=1 sunulan bağlantı) bağlayıcı. "unconditional" eski literal
+# okumayı duyarlılık analizi için korur.
+e1_activation: conditional   # conditional | unconditional
 
 enabled_constraints: [A, B, C, D, E1, E2, F, G]
 max_slots_per_market: 20

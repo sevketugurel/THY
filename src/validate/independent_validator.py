@@ -170,12 +170,61 @@ def _match_rotation_legs_independent(ob_occurrences, ib_occurrences):
     return matches
 
 
+def _structural_j_best_case_range(tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U, journey_const):
+    """Bağımsız yeniden-uygulama (src.model.lns.compute_gamma_infeasible_pairs'in
+    best_case_j_range'iyle BİREBİR aynı mantık, kasıtlı olarak KOPYALANMIŞ --
+    KARAR-0b/VARSAYIM-17, M5f). _has_structural_candidate'in aynı inbound x
+    outbound taramasını kullanır ama boolean yerine [L,U]'ya KIRPILMIŞ
+    achievable J aralığını (min,max) döndürür -- hiçbir yapısal aday yoksa None."""
+    is_adjustable = adjustable_set == "all"
+    day_rows = tk[tk["gun"] == gun]
+    inbound = day_rows[day_rows["dep1"] == o][["flno1", "arr_time"]].drop_duplicates(subset=["flno1"])
+    outbound = day_rows[day_rows["arr2"] == d][["flno2", "dep_time"]].drop_duplicates(subset=["flno2"])
+    los, his = [], []
+    for _, ib in inbound.iterrows():
+        arr_baseline = _epoch_min(ib["arr_time"], anchor)
+        arr_lo, arr_hi = (
+            (arr_baseline - adjustable_window_min, arr_baseline + adjustable_window_min)
+            if is_adjustable else (arr_baseline, arr_baseline)
+        )
+        for _, ob in outbound.iterrows():
+            dep_baseline = _epoch_min(ob["dep_time"], anchor)
+            dep_lo, dep_hi = (
+                (dep_baseline - adjustable_window_min, dep_baseline + adjustable_window_min)
+                if is_adjustable else (dep_baseline, dep_baseline)
+            )
+            gap_lo, gap_hi = dep_lo - arr_hi, dep_hi - arr_lo
+            clipped_lo, clipped_hi = max(gap_lo, L), min(gap_hi, U)
+            if clipped_lo > clipped_hi:
+                continue  # not a real candidate -- achievable range doesn't intersect [L,U]
+            los.append(journey_const + clipped_lo)
+            his.append(journey_const + clipped_hi)
+    if not los:
+        return None
+    return (min(los), max(his))
+
+
+def _is_gamma_statically_infeasible(tk, o, d, gun, anchor, adjustable_window_min, adjustable_set,
+                                     L, U, gamma, j_od, j_do):
+    """Bağımsız yeniden-uygulama (KARAR-0b/VARSAYIM-17): iki yönün de
+    BEST-CASE achievable J aralığı Gamma'dan daha fazla ayrıksa, HİÇBİR
+    seçim (mevcut adayların HERHANGİ bir kombinasyonu) E2'yi sağlayamaz --
+    schedule-independent bir veri gerçeği, seçilmiş bağlantılardan bağımsız."""
+    r_fwd = _structural_j_best_case_range(tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U, j_od)
+    r_bwd = _structural_j_best_case_range(tk, d, o, gun, anchor, adjustable_window_min, adjustable_set, L, U, j_do)
+    if r_fwd is None or r_bwd is None:
+        return False
+    best_gap = max(0.0, r_fwd[0] - r_bwd[1], r_bwd[0] - r_fwd[1])
+    return best_gap > gamma
+
+
 def validate_output(
     output_path: Path, od_table_path: Path, L: int, U: int,
     adjustable_window_min: int = 0, adjustable_set: str = "none",
     flight_pairs_path: Path = None, tau: int = None, x_dev: int = None,
     alpha: float = None, gamma: int = None,
     bucket_size_min: int = None, capacity_departure: int = None, capacity_arrival: int = None,
+    e1_activation: str = "conditional",
 ) -> ValidationResult:
     data = json.loads(Path(output_path).read_text())
     od_table = load_od_table(od_table_path)
@@ -245,7 +294,19 @@ def validate_output(
         # purely from `counts` (selected-only) silently skipped any pair
         # where one side had zero selected connections but a real
         # structural candidate on the other -- undercounting violations by
-        # 394/690 on the full-data baseline witness.
+        # 394/690 on the full-data baseline witness. (M5b, literal/
+        # unconditional-mode-only finding -- see the KARAR-0 note below.)
+        #
+        # KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16, M5f): under the default
+        # `e1_activation="conditional"`, E1 is only binding when BOTH sides
+        # have >=1 SELECTED connection -- any pair with either side at 0 is
+        # non-binding by construction, so the M5b structural-scope widening
+        # (which exists purely to catch violations the narrower counts-only
+        # scope would miss) never changes the verdict for those pairs: they
+        # would be skipped either way. Skipping the expensive structural
+        # fallback under conditional mode is therefore both correct AND the
+        # "koşullu modda ESKİ kapsam doğru kapsamdır" case CLOSING_PLAN
+        # describes -- unconditional mode keeps the full M5b fix.
         counts = {}
         for conn in data["selected_connections"]:
             o, d = conn["od"].split("-")
@@ -258,16 +319,22 @@ def validate_output(
         for (o, d, gun) in list(candidate_pairs):
             if (o, d, gun) in checked or (d, o, gun) in checked:
                 continue
-            fwd_exists = (o, d, gun) in counts or _has_structural_candidate(
-                tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U)
-            bwd_exists = (d, o, gun) in counts or _has_structural_candidate(
-                tk, d, o, gun, anchor, adjustable_window_min, adjustable_set, L, U)
+            if e1_activation == "conditional":
+                fwd_exists = (o, d, gun) in counts
+                bwd_exists = (d, o, gun) in counts
+            else:
+                fwd_exists = (o, d, gun) in counts or _has_structural_candidate(
+                    tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U)
+                bwd_exists = (d, o, gun) in counts or _has_structural_candidate(
+                    tk, d, o, gun, anchor, adjustable_window_min, adjustable_set, L, U)
             if not (fwd_exists and bwd_exists):
                 continue
             checked.add((o, d, gun))
             checked.add((d, o, gun))
             n_fwd, n_bwd = counts.get((o, d, gun), 0), counts.get((d, o, gun), 0)
             if n_fwd + n_bwd == 0:
+                continue
+            if e1_activation == "conditional" and (n_fwd == 0 or n_bwd == 0):
                 continue
             if abs(n_fwd - n_bwd) > alpha * (n_fwd + n_bwd):
                 violations.append(
@@ -314,6 +381,22 @@ def validate_output(
             jbest_fwd = min(journeys_by_market[(o, d, gun)])
             jbest_bwd = min(journeys_by_market[(d, o, gun)])
             if abs(jbest_fwd - jbest_bwd) > gamma:
+                # KARAR-0b (docs/CLOSING_PLAN.md, VARSAYIM-17, M5f): exempt
+                # pairs where the underlying journey_constant asymmetry makes
+                # E2 provably unsatisfiable regardless of selection -- a
+                # schedule-independent data fact, not a violation to report.
+                try:
+                    j_od = provider_e2.get_journey_constant(o, d)
+                except KeyError:
+                    j_od = provider_e2.get_journey_constant_estimate(o, d)
+                try:
+                    j_do = provider_e2.get_journey_constant(d, o)
+                except KeyError:
+                    j_do = provider_e2.get_journey_constant_estimate(d, o)
+                if _is_gamma_statically_infeasible(
+                    tk, o, d, gun, anchor, adjustable_window_min, adjustable_set, L, U, gamma, j_od, j_do,
+                ):
+                    continue
                 violations.append(
                     f"E2 {o}-{d} Gün={gun}: |Jbest_fwd({jbest_fwd})-Jbest_bwd({jbest_bwd})| "
                     f"exceeds Gamma({gamma})"

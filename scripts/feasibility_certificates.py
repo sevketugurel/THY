@@ -40,10 +40,18 @@ does the true range):
          condition (does it even construct E1 there?).
     E1b: pairs where E1 IS built (both directions have >=1 raw candidate)
          -- does ANY (n_fwd,n_bwd) in [F_fwd,K_fwd]x[F_bwd,K_bwd] satisfy
-         |n_fwd-n_bwd| <= alpha*(n_fwd+n_bwd)?
+         |n_fwd-n_bwd| <= alpha*(n_fwd+n_bwd)? M5f/KARAR-0 (VARSAYIM-16):
+         computed and reported for BOTH e1_activation modes -- under
+         "conditional" (the model's default), a side reaching 0 (only
+         possible when its own forced-on floor F is 0) is ALSO a
+         satisfying point, since one-sided-zero is non-binding.
     E2:  pairs where both directions have >=1 forced-on candidate -- are
          the Jbest outer-bound ranges [min_all_J_lo, min_forced_J_hi] for
-         fwd/bwd more than Gamma apart even in the best case?
+         fwd/bwd more than Gamma apart even in the best case? M5f/KARAR-0b
+         (VARSAYIM-17): every pair this catches is now a SUBSET of what
+         `src.model.lns.compute_gamma_infeasible_pairs` exempts from the
+         model outright (forced-on candidates are always within their own
+         achievable range) -- annotated below, not a live infeasibility.
 
 Kullanım: .venv/bin/python3 -u scripts/feasibility_certificates.py
 """
@@ -59,6 +67,7 @@ import yaml
 from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_od_table, load_yolcu_verisi
+from src.model.lns import compute_gamma_infeasible_pairs
 
 from src.config.paths import FULL_OD, FULL_YV
 from src.data.provenance import file_provenance
@@ -147,22 +156,36 @@ def main():
             cert_e1a.append((d, o, gun, bwd["F"], fwd["K"]))
 
     # --- Certificate E1b ---
-    cert_e1b_fail = []
-    for (o, d, gun) in e1_would_be_built:
-        fwd, bwd = summary[(o, d, gun)], summary[(d, o, gun)]
-        found = False
+    # KARAR-0 (docs/CLOSING_PLAN.md, VARSAYIM-16, M5f): under
+    # activation="conditional" (the model's default), E1 is only binding
+    # when BOTH sides have >=1 offered -- so ANY achievable (n_fwd,n_bwd)
+    # with EITHER side at 0 also counts as "satisfiable" here, on top of the
+    # unconditional alpha-threshold search. A side can reach 0 only if its
+    # own forced-on floor F is 0 (forced-on candidates can never be
+    # un-selected). Both modes are computed and reported side by side --
+    # this cert's meaning genuinely changes with the flag (per CLOSING_PLAN),
+    # so hiding one mode would misrepresent which pairs are provably
+    # unfixable under the ACTIVE formulation.
+    def _e1b_satisfiable(fwd, bwd, activation):
+        if activation == "conditional" and (fwd["F"] == 0 or bwd["F"] == 0):
+            return True
         for n_fwd in range(fwd["F"], fwd["K"] + 1):
             for n_bwd in range(bwd["F"], bwd["K"] + 1):
                 if n_fwd + n_bwd == 0 or abs(n_fwd - n_bwd) <= alpha * (n_fwd + n_bwd):
-                    found = True
-                    break
-            if found:
-                break
-        if not found:
-            cert_e1b_fail.append({
-                "o": o, "d": d, "gun": gun,
-                "fwd_range": [fwd["F"], fwd["K"]], "bwd_range": [bwd["F"], bwd["K"]],
-            })
+                    return True
+        return False
+
+    cert_e1b_fail_by_mode = {}
+    for activation in ("conditional", "unconditional"):
+        fails = []
+        for (o, d, gun) in e1_would_be_built:
+            fwd, bwd = summary[(o, d, gun)], summary[(d, o, gun)]
+            if not _e1b_satisfiable(fwd, bwd, activation):
+                fails.append({
+                    "o": o, "d": d, "gun": gun,
+                    "fwd_range": [fwd["F"], fwd["K"]], "bwd_range": [bwd["F"], bwd["K"]],
+                })
+        cert_e1b_fail_by_mode[activation] = fails
 
     # --- Certificate E2 ---
     cert_e2_fail = []
@@ -188,6 +211,14 @@ def main():
                 "fwd_range": [j_lo_fwd, j_hi_fwd], "bwd_range": [j_lo_bwd, j_hi_bwd],
             })
 
+    # KARAR-0b (VARSAYIM-17, M5f): cross-check against the now-implemented
+    # model-side exemption -- every cert_e2_fail pair should already be a
+    # subset of what the model itself exempts (forced-on candidates are
+    # always within their own achievable range).
+    e2_karar0b_exempted = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
+    cert_e2_fail_keys = {(e["o"], e["d"], e["gun"]) for e in cert_e2_fail}
+    cert_e2_still_unexempted = sorted(cert_e2_fail_keys - e2_karar0b_exempted)
+
     report = {
         "data_provenance": {"FULL_OD": file_provenance(FULL_OD)},
         "n_candidates": len(candidates),
@@ -205,22 +236,37 @@ def main():
             "examples": cert_e1a[:20],
         },
         "cert_e1b_no_satisfying_pair_in_box": {
-            "count": len(cert_e1b_fail),
             "note": ("pairs where E1 IS built (both directions have >=1 raw candidate) but "
-                     "NO (n_fwd,n_bwd) in [F,K]x[F,K] satisfies |n_fwd-n_bwd|<=alpha*(n_fwd+n_bwd) "
-                     "-- since [F,K] is a SAFE OVER-approximation of the true achievable range, "
-                     "failure here is a genuine PROOF of infeasibility under this E1 formulation. "
-                     "NOTE the existing exempt+log machinery (model.x[i].fixed) does NOT catch "
-                     "these -- .fix() only fires for gap_lo==gap_hi, not this broader forced set."),
-            "examples": cert_e1b_fail[:20],
+                     "NO (n_fwd,n_bwd) in [F,K]x[F,K] satisfies the ACTIVE e1_activation mode's "
+                     "definition of satisfiable -- since [F,K] is a SAFE OVER-approximation of "
+                     "the true achievable range, failure here is a genuine PROOF of infeasibility "
+                     "under that formulation. NOTE the existing exempt+log machinery "
+                     "(model.x[i].fixed) does NOT catch these -- .fix() only fires for "
+                     "gap_lo==gap_hi, not this broader forced set. M5f/KARAR-0 (VARSAYIM-16): "
+                     "both modes reported -- 'conditional' is the model's default."),
+            "conditional": {
+                "count": len(cert_e1b_fail_by_mode["conditional"]),
+                "examples": cert_e1b_fail_by_mode["conditional"][:20],
+            },
+            "unconditional": {
+                "count": len(cert_e1b_fail_by_mode["unconditional"]),
+                "examples": cert_e1b_fail_by_mode["unconditional"][:20],
+            },
         },
         "cert_e2_disjoint_jbest_ranges": {
             "count": len(cert_e2_fail),
             "note": ("pairs where both directions have >=1 forced-on candidate, and the "
                      "Jbest outer-bound ranges [min_all_J_lo, min_forced_J_hi] for fwd/bwd "
                      "are more than Gamma apart in the BEST case -- genuine PROOF of "
-                     "infeasibility under this E2 formulation, same blind spot as E1b."),
+                     "infeasibility under this E2 formulation, same blind spot as E1b. "
+                     "M5f/KARAR-0b (VARSAYIM-17): every one of these is now a SUBSET of "
+                     "compute_gamma_infeasible_pairs' broader achievable-range check, which the "
+                     "model uses to EXEMPT such pairs outright (see karar0b_still_unexempted "
+                     "below -- expected to be empty; a nonempty result would mean this cert "
+                     "found something the model-side exemption misses, a real bug)."),
             "examples": cert_e2_fail[:20],
+            "karar0b_exempted_count": len(e2_karar0b_exempted),
+            "karar0b_still_unexempted": cert_e2_still_unexempted,
         },
     }
 
