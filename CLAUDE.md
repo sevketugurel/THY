@@ -252,6 +252,27 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   kombinatoryal patlama. Kullanıcıya danışılıyor: Adım A için ayrı bütçe,
   `w=720` denemesi, ya da pencere deneyini kapatıp `w=180` sonucunu son
   nokta kabul etmek.
+- **M5f kapanışı — Kapı-0/1/2/3 tamam, Branch B kesinleşti (2026-07-11,
+  `docs/CLOSING_PLAN.md`)**. Kapı-0: hijyen (kök `conftest.py`, requirements
+  pin, organizatör docx git'ten çıkarıldı). **Kapı-1 (tag `m5f-e1-conditional`)**:
+  KARAR-0 — E1 artık varsayılan olarak KOŞULLU aktivasyon (yalnızca her iki
+  yön de aktifken bağlayıcı, `e1_activation: conditional|unconditional`,
+  VARSAYIM-16); KARAR-0b — E2, `compute_gamma_infeasible_pairs`'ın statik
+  kanıtladığı 63 çiftten MUAF (VARSAYIM-17). Validator/sertifikalar/witness
+  hizalandı, fixture 668.75 HER İKİ modda da korundu, 340 test yeşil. Kapı-2:
+  full-data'da ölçüldü — baseline E1 ihlali 690→296 (-57%, beklenen ~0-50'den
+  fazla ama plan bunu öngörüp Kapı-3'e devam kuralı koymuştu). **Kapı-3
+  (kampanya) tükendi, Branch B kesinleşti**: (a) elastik+warm-start ilk
+  denemede incumbent verdi (elastik-obj=347660.50, KARAR-0-öncesinden
+  iyi); (b) LNS component/fold 4 iterasyonda %9.5 iyileşip TAM PLATO —
+  kalan slack'in %99.78'i E2 (E1'in payı KARAR-0 sayesinde 123.60dk'ya
+  düşmüş); (c) yeni `scripts/run_lns_multi_component.py` (en kötü 3
+  bileşeni AYNI ANDA serbest bırakma, tek deneme hakkı) 6.8s'de KESİN
+  infeasible döndü. Full-data'da doğrulanmış objective_value HÂLÂ YOK —
+  sekizinci bağımsız kanıt (ASSUMPTIONS.md VARSAYIM-12 GÜNCELLEME 5).
+  Kapı-4 (yalnız Branch A) uygulanamaz, atlandı. Sırada: Kapı-5 (üretim
+  merdiveni, main.py --full-data'nın ihlalli tarife ASLA yazmama garantisi)
+  → Kapı-6 (teslimat, Branch B paketi: teşhis çıktısı + fixture kanıtı).
 
 ## Kilit Kararlar
 
