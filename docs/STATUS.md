@@ -8,6 +8,28 @@ bu dosya güncellenir.
 **Güncel durum (2026-07-11): full-data'da bağımsız validator'dan geçen bir
 objective_value HÂLÂ YOK.** `m5d-first-incumbent` tag'i ÜRETİLEMEDİ.
 
+## M5e Bölüm 3 — son kampanya (v2 veri), Adım a+b+e
+
+| Adım | Script | Sonuç |
+|---|---|---|
+| a) Elastik+warm-start | `scripts/warm_start_elastic.py` | 1. deneme (600s+120s) `watchdog_killed`; 2. deneme (900s, `--max-improving-sols 1`) **43.2s'de gerçek incumbent**, elastik-obj=369921.70, warm-start log-kanıtlı |
+| b) LNS component/fold | `scripts/run_lns.py --builder folded --selection component` | Σslack 69559.20→**62821.90** (%9.68 azalma), 23 iterasyonda plato (kriter b) — **v1'in adım-13 sonucuyla (68865.62→62487.27, %9.28) neredeyse birebir aynı büyüklük mertebesi** |
+| e) Kabul-edilebilirlik dökümü | `validate_output`+`recompute_objective` (partial best point) | 1763 strict ihlal (E1=645, E2=1114, G=4); E1 fazlalık oranı medyan/p90/max **hepsi 0.800** (çoğu ihlal tek-yönlü sıfır-karşı-aday durumu); E2 fazlalık dakika medyan=37.5/p90=125.0/max=425.0; reward-recompute=2959336.81 (BİLGİ AMAÇLI — strict-feasible DEĞİL, teslim edilemez) |
+
+**Kriter (a) [Σslack≈0] YİNE tetiklenmedi.** Daha da önemlisi: LNS'in
+component-bazlı denemesinde 23 iterasyonun büyük kısmı (iter 6-17, 19-23)
+**gerçek `status=infeasible`** verdi (zaman-aşımı DEĞİL, HiGHS'in kendi
+infeasibility sertifikası) — v1'in adım-13'te bulduğu "6/9 bileşen
+dondurulmuş çevrede GERÇEKTEN infeasible" bulgusunun **v2 veriyle ÜÇÜNCÜ
+bağımsız doğrulaması**. Bu, full-data'daki yapısal zorluğun LS-tahmin
+kaynaklı bir blok-süresi hatası OLMADIĞINI güçlü şekilde gösteriyor — daha
+doğru (Elapsed-türevli) K_od/R_o ile bile aynı örüntü aynen tekrarlanıyor.
+
+Tag `m5e-first-incumbent` HENÜZ ÜRETİLEMEDİ (Σslack sıfıra inmedi).
+Sıradaki adım (plan §3d): ucuz pencere deneyi (adjustable_window_min=360
+önce, 720 SONRA — VARSAYIM-3'ün kendi geçmişi 720'nin Big-M>1440
+üretebildiğini gösteriyor) — kullanıcıya danışılarak devam edilecek.
+
 ## DATA v2 EPOCH (M5e, 2026-07-11) — yeniden ölçüm, v1 ↔ v2 yan yana
 
 Organizatörün 2026-07-09 veri paketi (`ElapsedTime1`/`ElapsedTime2`/`ML2`,
@@ -219,8 +241,22 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-11T14:51:29.411619+00:00. Son 0 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-11T14:57:10.276142+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-
+| 9 | infeasible | 62821.90 | 62821.90 | 618 | 235 | 2.7s |
+| 10 | infeasible | 62821.90 | 62821.90 | 624 | 239 | 2.7s |
+| 11 | infeasible | 62821.90 | 62821.90 | 624 | 239 | 2.7s |
+| 12 | infeasible | 62821.90 | 62821.90 | 667 | 240 | 2.8s |
+| 13 | infeasible | 62821.90 | 62821.90 | 667 | 240 | 2.7s |
+| 14 | infeasible | 62821.90 | 62821.90 | 656 | 243 | 2.8s |
+| 15 | infeasible | 62821.90 | 62821.90 | 656 | 243 | 2.7s |
+| 16 | infeasible | 62821.90 | 62821.90 | 652 | 247 | 2.7s |
+| 17 | infeasible | 62821.90 | 62821.90 | 652 | 247 | 2.7s |
+| 18 | time_limit | 62821.90 | 63223.80 | 337 | 120 | 3.1s |
+| 19 | infeasible | 62821.90 | 62821.90 | 637 | 235 | 2.7s |
+| 20 | infeasible | 62821.90 | 62821.90 | 618 | 235 | 2.7s |
+| 21 | infeasible | 62821.90 | 62821.90 | 624 | 239 | 2.6s |
+| 22 | infeasible | 62821.90 | 62821.90 | 667 | 240 | 2.7s |
+| 23 | infeasible | 62821.90 | 62821.90 | 656 | 243 | 2.7s |

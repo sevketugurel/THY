@@ -221,8 +221,20 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   pratikte aynı mertebe); LNS bağlı-bileşen sayısı 9→7 (boyutlar
   217-247, yapısal karakter DEĞİŞMEDİ). **Dur-ve-sor değerlendirmesi**:
   hiçbir kalem büyük yapısal çelişki göstermiyor, Bölüm 3'e (son kampanya,
-  Pazartesi 2026-07-13 23:59'a kadar) geçiş için engel YOK. Bölüm 3 henüz
-  başlamadı.
+  Pazartesi 2026-07-13 23:59'a kadar) geçiş için engel YOK.
+- **M5e Bölüm 3 sürüyor (tag yok — Σslack≈0 henüz ulaşılamadı) — Adım
+  a+b+e tamam**. Elastik+warm-start (a): 900s bütçe + `--max-improving-sols 1`
+  ile 43.2s'de gerçek incumbent (elastik-obj=369921.70). LNS component/fold
+  (b): Σslack 69559.20→62821.90 (%9.68 azalma), 23 iterasyonda plato —
+  v1'in adım-13 sonucuyla (%9.28) neredeyse birebir aynı. **Kritik**:
+  iterasyonların çoğu gerçek `status=infeasible` verdi (zaman-aşımı
+  değil) — full-data'daki yapısal zorluğun eski LS-tahmin kaynaklı bir
+  artefakt OLMADIĞININ üçüncü bağımsız kanıtı, daha doğru Elapsed-türevli
+  K_od/R_o ile de AYNI örüntü. Kabul-edilebilirlik dökümü (e): 1763 strict
+  ihlal (E1=645/E2=1114/G=4), E1 fazlalık oranı sabit 0.800 (çoğu
+  ihlal tek-yönlü sıfır-aday durumu), E2 fazlalık dk medyan=37.5/p90=125/
+  max=425. `m5e-first-incumbent` tag'i YİNE üretilemedi. Sıradaki adım
+  (plan §3d, kullanıcıya danışılacak): pencere deneyi (adjustable_window_min=360).
 
 ## Kilit Kararlar
 
