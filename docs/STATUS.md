@@ -107,11 +107,48 @@ büyüklük mertebesine ulaştı. Fold'un eşdeğerliği gerçek fixture verisiy
 kanıtlandı (`tests/solve/test_lns_fold_equivalence.py`, E2+A+G'yi aynı anda
 karışık hale getiren senaryo, satır oranı %16.9).
 
-**Sıradaki adım**: gerçek full-data LNS koşusu (`--builder folded --selection
-component`), kabul kriterleri öncekiyle birebir aynı: (a) Σslack≈0 →
-doğrulama zinciri → `m5d-first-incumbent` tag → DUR; (b) tüm bileşenler 2x
-denendi, slack kaldı → inatçı bileşen dökümüyle DUR; (c) 3 saatlik bütçe
-dolarsa DUR.
+**Adım 13 SONUÇ (2026-07-11, gerçek full-data koşusu)**: `--builder folded
+--selection component`, aynı başlangıç Σslack=68865.62. **Kriter (b)
+tetiklendi** — sadece **22 iterasyonda** (3 saatlik bütçenin çok altında,
+gerçek çalışma süresi birkaç dakika), tüm bağlantılı bileşenler (ağda
+TOPLAM 9 tane) 2'şer kez denendi, 20 iterasyon boyunca iyileşme olmadı →
+otomatik DUR. Final Σslack=**62487.27** (**%9.28** azalma) — izole
+3-iterasyonluk ölçümle BİREBİR AYNI sayı: yani gerçek koşu da iyileşmesini
+yalnızca İLK İKİ iterasyonda yaptı (iter 1: 68865.62→63522.55, iter 2:
+63522.55→62487.27), sonraki 20 iterasyon boyunca hiçbir şey değişmedi.
+
+**Yeni ve daha ciddi bulgu**: 9 bileşenin 7'si stubborn işaretlendi, ama
+"iyileşme yok" değil çoğunlukla **GERÇEK INFEASIBLE** sonucuyla (ör.
+comp_34884/comp_69945/comp_79198/comp_55384/comp_45834/comp_33381 —
+6/7 stubborn bileşen "status=infeasible NO USABLE RESULT" verdi, yalnızca
+1/7 zaman-aşımıyla iyileşmesiz kaldı). Bu, önceki turların "iyileşme
+yavaş/plato" bulgusundan FARKLI ve daha keskin: bir bağlantılı bileşeni
+TEK BAŞINA serbest bırakıp geri kalan AĞIN TAMAMINI (A/F/G hâlâ HARD
+kısıt olan elastik modelde) mevcut referans noktasına dondurunca, o
+bileşen için HİÇBİR atama (E1/E2 slack'i ne olursa olsun) A/F/G'yi
+sağlayamıyor — yani mevcut referans noktası, bu bileşenlerin çevresinde
+o kadar sıkışmış ki yerel bir düzeltme alanı bile yok. Kalan 2 bileşen
+(comp_13969/comp_34677, attempts=0) tam olarak iter 1/2'nin başarılı
+bileşenleriydi — hiç stubborn olmadılar.
+
+| component_id | boyut (pair) | deneme | stubborn? | kalan slack |
+|---|---|---|---|---|
+| comp_34884 | 245 | 2 | evet | 9614.78 |
+| comp_69945 | 238 | 3 | evet | 9475.46 |
+| comp_79198 | 236 | 3 | evet | 9409.17 |
+| comp_55384 | 233 | 3 | evet | 8915.25 |
+| comp_45834 | 232 | 3 | evet | 8882.26 |
+| comp_33381 | 236 | 3 | evet | 8620.98 |
+| comp_81757 | 124 | 3 | evet | 1280.72 |
+| comp_13969 | 216 | 0 | hayır (başarılı, iter 1) | 1278.92 |
+| comp_34677 | 130 | 0 | hayır (başarılı, iter 2) | 1273.98 |
+
+Tam çıktı: `runs/lns_summary_20260711T103522Z.log.json` (stubborn_component_breakdown
++ slack_trajectory + worst_remaining_pairs), kısmi nokta:
+`runs/lns_best_partial_20260711T103522Z.json`. **Kriter (a) [Σslack≈0]
+tetiklenmedi — doğrulanmış objective_value HÂLÂ YOK.** Kullanıcıya
+dönülecek (protokol gereği reward-max tırmanışına veya yeni bir arama
+stratejisine OTONOM geçilmiyor).
 
 ### Ham iterasyon logu (koşu 2, son 15)
 
@@ -135,22 +172,22 @@ dolarsa DUR.
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-11T10:27:47.240608+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-11T10:36:36.779358+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 106 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.7s |
-| 107 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 20.0s |
-| 108 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 19.9s |
-| 109 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 19.7s |
-| 110 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.8s |
-| 111 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 19.9s |
-| 112 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 19.8s |
-| 113 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.9s |
-| 114 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 19.9s |
-| 115 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 19.4s |
-| 116 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 19.2s |
-| 117 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.2s |
-| 118 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 19.1s |
-| 119 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 19.1s |
-| 120 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.0s |
+| 8 | infeasible | 62487.27 | 62487.27 | 610 | 233 | 2.7s |
+| 9 | infeasible | 62487.27 | 62487.27 | 656 | 236 | 2.9s |
+| 10 | infeasible | 62487.27 | 62487.27 | 656 | 236 | 2.8s |
+| 11 | infeasible | 62487.27 | 62487.27 | 615 | 236 | 2.7s |
+| 12 | infeasible | 62487.27 | 62487.27 | 615 | 236 | 2.7s |
+| 13 | infeasible | 62487.27 | 62487.27 | 644 | 238 | 2.8s |
+| 14 | infeasible | 62487.27 | 62487.27 | 644 | 238 | 2.6s |
+| 15 | infeasible | 62487.27 | 62487.27 | 641 | 245 | 2.6s |
+| 16 | infeasible | 62487.27 | 62487.27 | 641 | 245 | 2.6s |
+| 17 | time_limit | 62487.27 | 62864.74 | 348 | 124 | 3.3s |
+| 18 | infeasible | 62487.27 | 62487.27 | 626 | 232 | 2.6s |
+| 19 | infeasible | 62487.27 | 62487.27 | 610 | 233 | 2.6s |
+| 20 | infeasible | 62487.27 | 62487.27 | 656 | 236 | 2.6s |
+| 21 | infeasible | 62487.27 | 62487.27 | 615 | 236 | 2.5s |
+| 22 | infeasible | 62487.27 | 62487.27 | 644 | 238 | 2.6s |
