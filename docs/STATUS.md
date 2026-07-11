@@ -85,6 +85,34 @@ stratejisi (örn. en-yüksek-ROI/en-kolay-düzeltilebilir pair'leri önceliklend
 worst-slack yerine), daha uzun iterasyon bütçesi, ya da paralel
 Gurobi/SCIP hattı.
 
+## M5d LNS Yeniden Tasarımı (2026-07-11) — bağlantılı-bileşen + fold
+
+Kullanıcı platonun İKİ bağımsız nedenini belirledi (worst-first hedefleme
++ fix-sonra-presolve maliyeti) ve iki yükseltmeyi BİRLİKTE istedi. Plan:
+`.claude/plans/a-evet-ama-iki-tingly-canyon.md`. Ayrıntı: `docs/decisions.md`
+2026-07-11 girdisi. **Üç yönlü izole karşılaştırma** (aynı başlangıç
+Σslack=68865.62, aynı component-seçici, farklı worker):
+
+| Yaklaşım | İterasyon | Süre | Σslack sonucu | Azalma |
+|---|---|---|---|---|
+| flat/fix (worst-first, eski builder) | 51-61 | ~85-100dk | 49086.73 / 50204.06 | %27-29 |
+| **component/fix** (yeni hedefleme, ESKİ builder) | 110+ | ~40dk | **68865.62 (DEĞİŞMEDİ)** | **%0** |
+| **component/fold** (yeni hedefleme, YENİ builder) | 3 | **~20s solve** | 62487.27 | **%9.28** |
+
+**Sonuç açık**: component/fix'in SIFIR ilerlemesi, hedeflemenin (component
+seçimi) kendi başına yeterli olmadığını kanıtlıyor — sorun HIZDI. Aynı
+hedefleme, fold-tabanlı builder ile birleşince 3 iterasyonda (satır sayısı
+fixed'in ~%17'si) flat/fix'in 50+ iterasyon/onlarca dakikada ulaştığı
+büyüklük mertebesine ulaştı. Fold'un eşdeğerliği gerçek fixture verisiyle
+kanıtlandı (`tests/solve/test_lns_fold_equivalence.py`, E2+A+G'yi aynı anda
+karışık hale getiren senaryo, satır oranı %16.9).
+
+**Sıradaki adım**: gerçek full-data LNS koşusu (`--builder folded --selection
+component`), kabul kriterleri öncekiyle birebir aynı: (a) Σslack≈0 →
+doğrulama zinciri → `m5d-first-incumbent` tag → DUR; (b) tüm bileşenler 2x
+denendi, slack kaldı → inatçı bileşen dökümüyle DUR; (c) 3 saatlik bütçe
+dolarsa DUR.
+
 ### Ham iterasyon logu (koşu 2, son 15)
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
@@ -104,3 +132,25 @@ Gurobi/SCIP hattı.
 | 59 | time_limit | 50204.06 | 50204.06 | 1347 | 320 | 92.4s |
 | 60 | time_limit | 50204.06 | 50204.06 | 1369 | 320 | 94.2s |
 | 61 | time_limit | 50204.06 | 50204.06 | 1440 | 320 | 97.7s |
+
+## LNS İlerleme (M5d)
+
+Son güncelleme: 2026-07-11T10:24:31.732873+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+
+| iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
+|---|---|---|---|---|---|---|
+| 96 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.9s |
+| 97 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 20.0s |
+| 98 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 19.9s |
+| 99 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.9s |
+| 100 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 20.0s |
+| 101 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 20.4s |
+| 102 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 20.3s |
+| 103 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 20.1s |
+| 104 | time_limit | 68865.62 | 68865.62 | 644 | 238 | 20.8s |
+| 105 | time_limit | 68865.62 | 68865.62 | 641 | 245 | 20.0s |
+| 106 | time_limit | 68865.62 | 68865.62 | 566 | 216 | 19.7s |
+| 107 | time_limit | 68865.62 | 68865.62 | 626 | 232 | 20.0s |
+| 108 | time_limit | 68865.62 | 68865.62 | 610 | 233 | 19.9s |
+| 109 | time_limit | 68865.62 | 68865.62 | 656 | 236 | 19.7s |
+| 110 | time_limit | 68865.62 | 68865.62 | 615 | 236 | 19.8s |
