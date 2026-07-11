@@ -4,6 +4,19 @@ point -- e.g. from build_core_feasibility_model's A+G+F solve. Every
 variable family gets an explicit, hand-derived .value (no partial starts):
 see the ultrathink in each block below for why the derivation is exact or
 a safe (never-too-small) overestimate.
+
+M5d LNS fold-redesign note (plan a-evet-ama-iki-tingly-canyon.md, adım 10):
+this function is written against build_elastic_feasibility_model's Vars
+(x/gap/y, Jbest, s_e1/s_e2 all real Vars). build_elastic_feasibility_model_folded
+makes model.Jbest a pyo.Expression (real Var only for non-fully-frozen
+markets, via model._jbest_var) -- `.value =` on an Expression is not
+meaningful, so this function is NOT correctness-safe for a folded model
+beyond the x/gap/y loop (already guarded below). The new folded LNS worker
+does not call this -- the folded free-subproblem is small enough to solve
+cold, and warm-starting was never free of subtlety even for the fix-based
+model (the s_e2 conservative-overestimate was part of what caused earlier
+plateaus, see docs/decisions.md). Retrofitting full Jbest/s_e2 support here
+for the folded model is a follow-up, not required for this task.
 """
 from collections import defaultdict
 
@@ -46,11 +59,22 @@ def derive_and_set_warm_start(
 
     # B's reification, applied deterministically (no choice involved): gap
     # is fully determined by t, x is fully determined by gap.
+    # M5d LNS fold-redesign (plan a-evet-ama-iki-tingly-canyon.md, adım 10):
+    # gap_of/x_of are still computed for EVERY candidate (needed below for
+    # a_dir/w/Jbest derivation regardless of fold status), but .value is
+    # only SET for candidates model.CANDIDATES actually declares a Var for
+    # -- a folded model excludes fully-frozen candidates from x/gap/y
+    # entirely (their value is already implicit in the model structure via
+    # partition.x_const/gap_const), so indexing model.x[i] for one would
+    # raise a KeyError.
+    model_candidates = set(model.CANDIDATES)
     gap_of, x_of = {}, {}
     for i, c in enumerate(candidates):
         gap = dep_times[c.r2_id] - arr_times[c.r1_id]
         gap_of[i] = gap
         x_of[i] = 1 if L <= gap <= U else 0
+        if i not in model_candidates:
+            continue
         model.x[i].value = x_of[i]
         model.gap[i].value = gap
         # y only matters when x=0 (B's backward-reification switch selects
