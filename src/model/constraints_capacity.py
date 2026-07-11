@@ -43,17 +43,15 @@ def derive_window_reachable_buckets(lo: int, hi: int, bucket_size_min: int) -> l
     return list(range(k_lo, k_hi + 1))
 
 
-def compute_out_of_scope_baselines(tk_rows, model, epoch_anchor) -> dict:
-    """Tüm TK satırlarını tarar, model'in ARR_INSTANCES/DEP_INSTANCES
-    kapsamı DIŞINDA kalan (role,flno,gun) örneklerinin HAM (baseline)
-    epoch-dakika zamanını döner -- bu uçuşlar modelde hiç değişken değil
-    (candidate üretiminde hiçbir eşleşmeleri achievable-range kapısını
-    geçmemiş), F'nin rezidüel kapasite hesabı VE A'nın rotasyon kısıtının
-    "kısmen kapsam-dışı" edge-case'i için ortak kaynak (VARSAYIM, bkz
-    ASSUMPTIONS.md)."""
-    in_scope_arr = set(model.ARR_INSTANCES)
-    in_scope_dep = set(model.DEP_INSTANCES)
-
+def compute_out_of_scope_baselines_from_keys(tk_rows, in_scope_arr: set, in_scope_dep: set, epoch_anchor) -> dict:
+    """Tüm TK satırlarını tarar, `in_scope_arr`/`in_scope_dep` KÜMELERİ
+    DIŞINDA kalan (role,flno,gun) örneklerinin HAM (baseline) epoch-dakika
+    zamanını döner. `compute_out_of_scope_baselines`'ın model-bağımsız
+    çekirdeği (M5d LNS fold-redesign, plan a-evet-ama-iki-tingly-canyon.md
+    adım 4) -- fold-tabanlı LNS'te "kapsam dışı" kümesi artık yalnızca
+    gerçek out-of-scope TK bacaklarını değil, BU ITERASYONDA donuk
+    (frozen) instance'ları da içerir; bu fonksiyon HANGİ kümenin
+    dışlandığını bilmeden çalışır, çağıran birleştirir."""
     def epoch_min(ts):
         return int((ts - epoch_anchor).total_seconds() // 60)
 
@@ -66,6 +64,19 @@ def compute_out_of_scope_baselines(tk_rows, model, epoch_anchor) -> dict:
         if dep_key not in in_scope_dep and dep_key not in baselines:
             baselines[dep_key] = epoch_min(row.dep_time)
     return baselines
+
+
+def compute_out_of_scope_baselines(tk_rows, model, epoch_anchor) -> dict:
+    """Tüm TK satırlarını tarar, model'in ARR_INSTANCES/DEP_INSTANCES
+    kapsamı DIŞINDA kalan (role,flno,gun) örneklerinin HAM (baseline)
+    epoch-dakika zamanını döner -- bu uçuşlar modelde hiç değişken değil
+    (candidate üretiminde hiçbir eşleşmeleri achievable-range kapısını
+    geçmemiş), F'nin rezidüel kapasite hesabı VE A'nın rotasyon kısıtının
+    "kısmen kapsam-dışı" edge-case'i için ortak kaynak (VARSAYIM, bkz
+    ASSUMPTIONS.md)."""
+    return compute_out_of_scope_baselines_from_keys(
+        tk_rows, set(model.ARR_INSTANCES), set(model.DEP_INSTANCES), epoch_anchor,
+    )
 
 
 def compute_residual_capacity(out_of_scope_baselines: dict, bucket_size_min: int,

@@ -27,6 +27,7 @@ import pytest
 from src.candidates.generate import Candidate
 from src.model.constraints_capacity import (
     compute_out_of_scope_baselines,
+    compute_out_of_scope_baselines_from_keys,
     compute_residual_capacity,
     derive_window_reachable_buckets,
 )
@@ -142,3 +143,31 @@ def test_compute_out_of_scope_baselines_empty_when_everything_in_scope():
     add_flight_time_variables(model, [c])
     baselines = compute_out_of_scope_baselines(tk_rows, model, anchor)
     assert baselines == {}
+
+
+def test_compute_out_of_scope_baselines_matches_from_keys_core():
+    # M5d LNS fold-redesign (plan a-evet-ama-iki-tingly-canyon.md adım 4):
+    # behavior-preserving refactor regression -- the model-based wrapper
+    # must produce EXACTLY what the model-free core produces given the
+    # model's own ARR_INSTANCES/DEP_INSTANCES as the in-scope sets.
+    anchor = pd.Timestamp("2024-01-01")
+    tk_rows = pd.DataFrame([
+        {"dep1": "X", "flno1": 101, "arr_time": anchor + pd.Timedelta(minutes=500),
+         "arr2": "Y", "flno2": 201, "dep_time": anchor + pd.Timedelta(minutes=600), "gun": 1},
+        {"dep1": "X", "flno1": 102, "arr_time": anchor + pd.Timedelta(minutes=700),
+         "arr2": "Z", "flno2": 202, "dep_time": anchor + pd.Timedelta(minutes=800), "gun": 1},
+    ])
+    c = Candidate(
+        od="X-Y", o="X", d="Y", gun=1, flno1=101, flno2=201,
+        r1_id=("IB", 101, 1), r2_id=("OB", 201, 1),
+        arr_time=None, dep_time=None, gap_min=100,
+        arr_lo=500, arr_hi=500, dep_lo=600, dep_hi=600,
+        gap_lo=100, gap_hi=100,
+    )
+    model = pyo.ConcreteModel()
+    add_flight_time_variables(model, [c])
+    via_model = compute_out_of_scope_baselines(tk_rows, model, anchor)
+    via_keys = compute_out_of_scope_baselines_from_keys(
+        tk_rows, set(model.ARR_INSTANCES), set(model.DEP_INSTANCES), anchor,
+    )
+    assert via_model == via_keys == {("IB", 102, 1): 700, ("OB", 202, 1): 800}
