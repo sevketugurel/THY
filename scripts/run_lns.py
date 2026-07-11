@@ -54,7 +54,8 @@ from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
 from src.model.lns import (
-    compute_gamma_infeasible_pairs, compute_pair_slack, free_instances_for_pairs, select_worst_pairs,
+    compute_gamma_infeasible_pairs, compute_pair_slack, free_instances_for_pairs, select_pairs_by_component,
+    select_worst_pairs,
 )
 from src.output.writer import write_output
 from src.solve.subprocess_watchdog import solve_step_with_watchdog
@@ -170,6 +171,13 @@ def main(argv=None):
     parser.add_argument("--max-wall-sec", type=float, default=10800.0)
     parser.add_argument("--plateau-iters", type=int, default=20,
                          help="stop (report, don't error) after this many iterations without a new best")
+    parser.add_argument("--selection", choices=["flat", "component"], default="flat",
+                         help="M5d LNS redesign (plan a-evet-ama-iki-tingly-canyon.md, adım 2): 'flat' is the "
+                              "original worst-slack-first/randomize targeting; 'component' targets one connected "
+                              "component (via src.model.lns.select_pairs_by_component) at a time -- never splits "
+                              "a connected violation-neighborhood across iterations, which flat targeting could.")
+    parser.add_argument("--max-component-instances", type=int, default=800,
+                         help="oversized-component split threshold for --selection component")
     parser.add_argument("--output", default="runs/lns_output.json")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epsilon", type=float, default=0.0,
@@ -273,6 +281,12 @@ def main(argv=None):
     best_result = None  # last SolveResult that achieved best_total
     last_improvement_iter = 0
 
+    # --selection component driver state (owned here, select_pairs_by_component
+    # itself is stateless -- mirrors m_base/randomize_mode above).
+    stubborn = set()
+    attempts_by_component = defaultdict(int)
+    chunk_idx_by_component = defaultdict(int)
+
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     _log_progress(f"# LNS run started {stamp}, starting Sigma-slack={best_total:.2f}")
 
@@ -285,7 +299,27 @@ def main(argv=None):
             break
 
         improved = False
-        if randomize_mode:
+        comp_id = None
+        if args.selection == "component":
+            # comp_id is independent of chunk_index -- probe once with 0,
+            # then re-call with the real stored chunk index for THAT
+            # component if it's an oversized one we've visited before.
+            pairs, free_arr, free_dep, comp_id, comp_size, is_revisit = select_pairs_by_component(
+                pair_slack, candidates, gamma_infeasible, stubborn,
+                max_instances=args.max_component_instances, seed=args.seed, chunk_index=0,
+            )
+            if comp_id is not None and chunk_idx_by_component[comp_id] != 0:
+                pairs, free_arr, free_dep, comp_id, comp_size, is_revisit = select_pairs_by_component(
+                    pair_slack, candidates, gamma_infeasible, stubborn,
+                    max_instances=args.max_component_instances, seed=args.seed,
+                    chunk_index=chunk_idx_by_component[comp_id],
+                )
+            n_free = len(free_arr) + len(free_dep)
+            if pairs:
+                chunk_idx_by_component[comp_id] += 1
+                _log_progress(f"iter={it} PRE component comp_size={comp_size} n_pairs={len(pairs)} "
+                              f"n_free={n_free} stubborn_revisit={is_revisit}")
+        elif randomize_mode:
             positive = [p for p, s in pair_slack.items() if s["total"] > 0 and p not in gamma_infeasible]
             m = min(len(positive), max(m_base, args.m_base))
             pairs = random.sample(positive, m) if positive else []
@@ -326,6 +360,11 @@ def main(argv=None):
             history.append({"iter": it, "status": result.status, "before_total": best_total,
                              "after_total": best_total, "n_free": n_free, "m": len(pairs), "solve_sec": solve_sec})
             no_improve_streak += 1
+            if comp_id is not None:
+                attempts_by_component[comp_id] += 1
+                if attempts_by_component[comp_id] >= 2:
+                    stubborn.add(comp_id)
+                    _log_progress(f"iter={it} component marked STUBBORN (no usable result twice)")
         else:
             after_slack = compute_pair_slack(
                 candidates, journey_constants, result.arr_times, result.dep_times, L, U, alpha, gamma,
@@ -354,13 +393,23 @@ def main(argv=None):
                 plateau_count = 0
                 randomize_mode = False
 
-        if no_improve_streak >= 2 and not randomize_mode:
+            if comp_id is not None:
+                if improved:
+                    stubborn.discard(comp_id)
+                    attempts_by_component[comp_id] = 0
+                else:
+                    attempts_by_component[comp_id] += 1
+                    if attempts_by_component[comp_id] >= 2:
+                        stubborn.add(comp_id)
+                        _log_progress(f"iter={it} component marked STUBBORN (2 attempts, no improvement)")
+
+        if args.selection != "component" and no_improve_streak >= 2 and not randomize_mode:
             m_base *= 2
             _log_progress(f"iter={it} widening m_base -> {m_base} (2 consecutive <1% improvements)")
             no_improve_streak = 0
             plateau_count += 1
 
-        if plateau_count >= 2 and not randomize_mode:
+        if args.selection != "component" and plateau_count >= 2 and not randomize_mode:
             randomize_mode = True
             _log_progress(f"iter={it} switching to RANDOMIZE block selection (cycle-breaker)")
 
