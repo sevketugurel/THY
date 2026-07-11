@@ -286,6 +286,129 @@ def add_g_constraints(model, candidates, epoch_anchor, x_dev: int):
     return multi_day
 
 
+# --- M5d LNS fold-redesign (plan: a-evet-ama-iki-tingly-canyon.md, adim 6,
+# EN YUKSEK RISK): G partial-cluster fold. G'nin HIC fold emsali yoktu --
+# role_flno_guns'u model.ARR_INSTANCES/DEP_INSTANCES'tan turetmek (fold'lu
+# modelde bunlar yalnizca SERBEST alt-kumeyi icerir) donuk gunleri
+# SESSIZCE dusururdu. Burada role_flno_guns TAM aday listesinden kurulur;
+# serbest gun -> bugunku g_lower/g_upper (gercek T_ref Var referansi);
+# donuk gun -> YENI g_lower_partial/g_upper_partial (A'nin
+# partial_rotation_rule'uyle BIREBIR ayni desen: sabit deger T_ref'in bir
+# tarafina). T_ref'in KENDI bounds'u HER ZAMAN butun donuk noktalari
+# kapsamali (aksi halde G, elastik modelde bile HARD kisit oldugu icin
+# model sahte-infeasible olur) -- t_bounds_rule bunu hem serbest hem donuk
+# gunlerin normalize edilmis degerlerini birlikte tarayarak garanti eder.
+# Tamamen donuk bir cluster'da Var/satir HIC kurulmaz -- diam<=x_dev
+# invariant'i zaten cluster_flight_days'in KENDI ic assert'inde (half_width=0
+# ile) dogrulanir, referans nokta feasible bir incumbent'tan geldigi icin
+# HER ZAMAN tutmali; tutmazsa bu ayri bir bug'a isaret eder, bastirilmaz.
+def add_g_constraints_folded(model, candidates, epoch_anchor, x_dev: int, partition):
+    day_offset = _day_offsets(candidates, epoch_anchor)
+    baseline_tod = _baseline_tod(candidates)
+
+    role_flno_guns = {}
+    bounds_by_key = {}
+    for c in candidates:
+        arr_key = ("IB", c.flno1, c.gun)
+        bounds_by_key.setdefault(arr_key, (c.arr_lo, c.arr_hi))
+        role_flno_guns.setdefault(("IB", c.flno1), set()).add(c.gun)
+        dep_key = ("OB", c.flno2, c.gun)
+        bounds_by_key.setdefault(dep_key, (c.dep_lo, c.dep_hi))
+        role_flno_guns.setdefault(("OB", c.flno2), set()).add(c.gun)
+
+    def is_free(role, flno, gun):
+        key = (role, flno, gun)
+        return key in partition.free_arr if role == "IB" else key in partition.free_dep
+
+    def reference_value(role, flno, gun):
+        key = (role, flno, gun)
+        return partition.reference_arr[key] if role == "IB" else partition.reference_dep[key]
+
+    multi_day = {k: sorted(guns) for k, guns in role_flno_guns.items() if len(guns) >= 2}
+
+    cluster_of_gun = {}
+    g_flights_index = []
+    cluster_free_guns, cluster_frozen_guns = {}, {}
+    for (role, flno), guns in multi_day.items():
+        occurrences = []
+        for gun in guns:
+            if is_free(role, flno, gun):
+                lo, hi = bounds_by_key[(role, flno, gun)]
+                half_width = (hi - lo) // 2
+            else:
+                half_width = 0
+            occurrences.append((gun, baseline_tod[role, flno, gun], half_width))
+        clusters = cluster_flight_days(occurrences, x_dev)
+        for cluster in clusters:
+            cluster_key = min(cluster)
+            for gun in cluster:
+                cluster_of_gun[role, flno, gun] = cluster_key
+            if len(cluster) < 2:
+                continue
+            free_guns = [g for g in cluster if is_free(role, flno, g)]
+            frozen_guns = [g for g in cluster if not is_free(role, flno, g)]
+            if not free_guns:
+                continue  # fully-frozen cluster: no genuine freedom, no Var/rows needed
+            g_flights_index.append((role, flno, cluster_key))
+            cluster_free_guns[(role, flno, cluster_key)] = free_guns
+            cluster_frozen_guns[(role, flno, cluster_key)] = frozen_guns
+
+    model.G_FLIGHTS = pyo.Set(initialize=g_flights_index, dimen=3, ordered=True)
+    if not g_flights_index:
+        return multi_day
+
+    def t_bounds_rule(m, role, flno, cluster_key):
+        los, his = [], []
+        for g in cluster_free_guns[(role, flno, cluster_key)]:
+            lo, hi = bounds_by_key[(role, flno, g)]
+            off = day_offset[(role, flno, g)]
+            los.append(lo - off)
+            his.append(hi - off)
+        for g in cluster_frozen_guns[(role, flno, cluster_key)]:
+            val = reference_value(role, flno, g)
+            off = day_offset[(role, flno, g)]
+            los.append(val - off)
+            his.append(val - off)
+        return (min(los), max(his))
+    model.T_ref = pyo.Var(model.G_FLIGHTS, domain=pyo.Integers, bounds=t_bounds_rule)
+
+    free_day_index = [
+        (role, flno, cluster_key, gun)
+        for (role, flno, cluster_key) in g_flights_index
+        for gun in cluster_free_guns[(role, flno, cluster_key)]
+    ]
+    model.G_FLIGHT_DAYS = pyo.Set(initialize=free_day_index, dimen=4, ordered=True)
+
+    def lower_rule(m, role, flno, cluster_key, gun):
+        t = m.t_arr[role, flno, gun] if role == "IB" else m.t_dep[role, flno, gun]
+        return t - day_offset[(role, flno, gun)] >= m.T_ref[role, flno, cluster_key]
+    model.g_lower = pyo.Constraint(model.G_FLIGHT_DAYS, rule=lower_rule)
+
+    def upper_rule(m, role, flno, cluster_key, gun):
+        t = m.t_arr[role, flno, gun] if role == "IB" else m.t_dep[role, flno, gun]
+        return t - day_offset[(role, flno, gun)] <= m.T_ref[role, flno, cluster_key] + x_dev
+    model.g_upper = pyo.Constraint(model.G_FLIGHT_DAYS, rule=upper_rule)
+
+    frozen_day_index = [
+        (role, flno, cluster_key, gun)
+        for (role, flno, cluster_key) in g_flights_index
+        for gun in cluster_frozen_guns[(role, flno, cluster_key)]
+    ]
+    model.G_FLIGHT_DAYS_PARTIAL = pyo.Set(initialize=frozen_day_index, dimen=4, ordered=True)
+
+    def lower_partial_rule(m, role, flno, cluster_key, gun):
+        val = reference_value(role, flno, gun)
+        return val - day_offset[(role, flno, gun)] >= m.T_ref[role, flno, cluster_key]
+    model.g_lower_partial = pyo.Constraint(model.G_FLIGHT_DAYS_PARTIAL, rule=lower_partial_rule)
+
+    def upper_partial_rule(m, role, flno, cluster_key, gun):
+        val = reference_value(role, flno, gun)
+        return val - day_offset[(role, flno, gun)] <= m.T_ref[role, flno, cluster_key] + x_dev
+    model.g_upper_partial = pyo.Constraint(model.G_FLIGHT_DAYS_PARTIAL, rule=upper_partial_rule)
+
+    return multi_day
+
+
 def add_a_constraints(model, candidates, pairs_df, r_o_lookup: dict, tau: int, out_of_scope_baselines: dict = None):
     full_pairs, partial_pairs = build_rotation_pairs(model, candidates, pairs_df, out_of_scope_baselines)
 
