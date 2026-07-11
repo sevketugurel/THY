@@ -38,6 +38,7 @@ should not be rewritten hundreds of times an hour).
 Kullanım: .venv/bin/python3 -u scripts/run_lns.py
 """
 import argparse
+import dataclasses
 import json
 import random
 import sys
@@ -53,6 +54,7 @@ import yaml
 from src.candidates.generate import compute_epoch_anchor, generate_candidates
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_flight_pairs, load_od_table, load_yolcu_verisi
+from src.model.constraints_capacity import compute_out_of_scope_baselines_from_keys
 from src.model.lns import (
     compute_gamma_infeasible_pairs, compute_pair_slack, free_instances_for_pairs, select_pairs_by_component,
     select_worst_pairs,
@@ -66,6 +68,7 @@ FULL_YV = "data_raw/Yolcu Verisi_masked.xlsx"
 FULL_CR = "data_raw/change_ranking_input.xlsx"
 FULL_FP = "data_raw/Flight Pairs.xlsx"
 LNS_WORKER = Path(__file__).resolve().parent / "_lns_step_worker.py"
+LNS_WORKER_FOLDED = Path(__file__).resolve().parent / "_lns_step_worker_folded.py"
 PROGRESS_LOG = Path("runs/lns_progress.log")
 STATUS_MD = Path("docs/STATUS.md")
 STARTING_INCUMBENT = Path("runs/warm_start_elastic_output.json")
@@ -178,6 +181,13 @@ def main(argv=None):
                               "a connected violation-neighborhood across iterations, which flat targeting could.")
     parser.add_argument("--max-component-instances", type=int, default=800,
                          help="oversized-component split threshold for --selection component")
+    parser.add_argument("--builder", choices=["fix", "folded"], default="fix",
+                         help="M5d LNS redesign (plan a-evet-ama-iki-tingly-canyon.md, adım 3-9): 'fix' is the "
+                              "original full-model + .fix() approach (~100+s/iteration presolve cost at full-data "
+                              "scale); 'folded' builds real Var/rows ONLY for the free subset "
+                              "(build_elastic_feasibility_model_folded, proven equivalent + genuinely smaller via "
+                              "tests/solve/test_lns_fold_equivalence.py). 'fix' kept as a rollback/regression "
+                              "baseline, not deleted.")
     parser.add_argument("--output", default="runs/lns_output.json")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epsilon", type=float, default=0.0,
@@ -241,7 +251,33 @@ def main(argv=None):
 
     print(f"[run_lns] preprocessing done, n_candidates={len(candidates)}", flush=True)
 
+    # Only needed for --builder folded (build_elastic_feasibility_model_folded
+    # merges this with the CURRENT iteration's frozen instances) -- computed
+    # once since it's schedule-independent (candidates' scope never changes
+    # between iterations, only which subset is free/frozen does).
+    true_out_of_scope_baselines = None
+    if args.builder == "folded":
+        full_arr_keys = {c.r1_id for c in candidates}
+        full_dep_keys = {c.r2_id for c in candidates}
+        true_out_of_scope_baselines = compute_out_of_scope_baselines_from_keys(
+            tk, full_arr_keys, full_dep_keys, anchor,
+        )
+        print(f"[run_lns] true_out_of_scope_baselines: {len(true_out_of_scope_baselines)} instances", flush=True)
+
     reference_arr, reference_dep = _load_starting_reference(candidates)
+    # M5d LNS redesign (adım 10 fix): --builder folded's result.selected/
+    # gap_values only cover model.CANDIDATES for the CURRENT iteration's
+    # free subset (unlike fix's, which always covers every candidate) --
+    # maintain a running merged view, seeded from the starting reference's
+    # own implied selection, so the final write_output call (whichever
+    # iteration ends up "best") is never missing candidates that were
+    # frozen the whole time or frozen in an earlier iteration.
+    selected_full, gap_full = {}, {}
+    for c in candidates:
+        gap = reference_dep[c.r2_id] - reference_arr[c.r1_id]
+        selected_full[c] = 1 if L <= gap <= U else 0
+        gap_full[c] = gap
+
     pair_slack = compute_pair_slack(candidates, journey_constants, reference_arr, reference_dep, L, U, alpha, gamma)
     best_total = sum(v["total"] for v in pair_slack.values())
     n_e1_viol = sum(1 for v in pair_slack.values() if v["e1"] > 0)
@@ -337,20 +373,33 @@ def main(argv=None):
         _log_progress(f"iter={it} PRE m~{len(pairs)} n_free={n_free} (before building) "
                        f"before_total={best_total:.2f} randomize={randomize_mode}")
 
-        build_kwargs = {
-            "model_kwargs": model_kwargs_base,
-            "epsilon": args.epsilon,
-            "fix_kwargs": {
-                "reference_arr": reference_arr, "reference_dep": reference_dep,
-                "free_arr": free_arr, "free_dep": free_dep,
-            },
-        }
+        if args.builder == "folded":
+            build_kwargs = {
+                "model_kwargs": model_kwargs_base,
+                "epsilon": args.epsilon,
+                "true_out_of_scope_baselines": true_out_of_scope_baselines,
+                "partition_kwargs": {
+                    "reference_arr": reference_arr, "reference_dep": reference_dep,
+                    "free_arr": free_arr, "free_dep": free_dep,
+                },
+            }
+            worker_script = LNS_WORKER_FOLDED
+        else:
+            build_kwargs = {
+                "model_kwargs": model_kwargs_base,
+                "epsilon": args.epsilon,
+                "fix_kwargs": {
+                    "reference_arr": reference_arr, "reference_dep": reference_dep,
+                    "free_arr": free_arr, "free_dep": free_dep,
+                },
+            }
+            worker_script = LNS_WORKER
         iter_solve_kwargs = dict(solve_kwargs, log_file=highs_log_dir / f"iter{it}.highs.log")
         t_solve = time.time()
         result, build_time_sec = solve_step_with_watchdog(
             build_kwargs, iter_solve_kwargs, time_limit_sec=args.iter_time_limit_sec,
             watchdog_margin_sec=args.watchdog_margin_sec, step_name=f"lns_iter{it}",
-            worker_script=LNS_WORKER,
+            worker_script=worker_script,
         )
         solve_sec = time.time() - t_solve
 
@@ -366,9 +415,14 @@ def main(argv=None):
                     stubborn.add(comp_id)
                     _log_progress(f"iter={it} component marked STUBBORN (no usable result twice)")
         else:
-            after_slack = compute_pair_slack(
-                candidates, journey_constants, result.arr_times, result.dep_times, L, U, alpha, gamma,
-            )
+            # M5d LNS redesign (adım 10 fix): --builder folded's
+            # result.arr_times/dep_times only cover the FREE subset (unlike
+            # fix's, which always covers every instance) -- merge onto the
+            # CURRENT reference before recomputing slack or adopting, or the
+            # frozen 90%+ of the point would be silently lost.
+            merged_arr = {**reference_arr, **result.arr_times}
+            merged_dep = {**reference_dep, **result.dep_times}
+            after_slack = compute_pair_slack(candidates, journey_constants, merged_arr, merged_dep, L, U, alpha, gamma)
             after_total = sum(v["total"] for v in after_slack.values())
             improved = after_total < best_total - 1e-9
             rel_improve = (best_total - after_total) / best_total if best_total > 0 else 0.0
@@ -379,7 +433,9 @@ def main(argv=None):
                              "after_total": after_total, "n_free": n_free, "m": len(pairs), "solve_sec": solve_sec})
 
             if after_total <= best_total + 1e-9:
-                reference_arr, reference_dep = result.arr_times, result.dep_times
+                reference_arr, reference_dep = merged_arr, merged_dep
+                selected_full.update(result.selected)
+                gap_full.update(result.gap_values or {})
                 pair_slack = after_slack
                 best_result = result
                 if improved:
@@ -422,6 +478,17 @@ def main(argv=None):
             break
 
     _refresh_status_md(history, datetime.now(timezone.utc).isoformat())
+
+    # M5d LNS redesign (adım 10 fix): reconstruct a COMPLETE result for
+    # write_output -- best_result's own raw .selected/.gap_values/
+    # .arr_times/.dep_times may only cover the LAST iteration's free subset
+    # (--builder folded); selected_full/gap_full/reference_arr/reference_dep
+    # are the running merged view across every candidate/instance ever seen.
+    if best_result is not None:
+        best_result = dataclasses.replace(
+            best_result, selected=selected_full, gap_values=gap_full,
+            arr_times=reference_arr, dep_times=reference_dep,
+        )
 
     if best_total <= SLACK_EPS and best_result is not None:
         output_path = Path(args.output)
