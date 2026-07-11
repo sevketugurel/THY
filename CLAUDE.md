@@ -206,9 +206,23 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   `organizer_questions.md` madde 8/14 "veri ile çözüldü" kapatıldı. Path
   temizliği: `FULL_OD` vb. 19 dosyada tekrarlanan sabitler
   `src/config/paths.py`'ye konsolide edildi (`(1)` son eki düşürüldü).
-  313 test yeşil (unit+slow), fixture objective **668.75 korundu**. Full-data
-  yeniden ölçüm (Bölüm 2) ve son kampanya (Bölüm 3, Pazartesi 2026-07-13
-  23:59'a kadar) henüz başlamadı.
+  313 test yeşil (unit+slow), fixture objective **668.75 korundu**.
+- **M5e Bölüm 2 tamam (tag: `m5e-remeasured`) — yeniden ölçüm, v1↔v2 yan
+  yana**. Metodolojik disiplin: v1 sütunu bugünkü kodla YENİDEN ölçüldü
+  (arşivlenmiş eski O&D dosyası üzerinden) — kod-düzeltmesi kaynaklı kayma
+  ile veri-kaynaklı kaymayı karıştırmamak için. Tam tablo
+  `docs/STATUS.md`'nin "DATA v2 EPOCH" bölümünde. Özet: baseline ihlal
+  toplamı 2137→2102 (-1.6%, A ailesi tek başına -26.4% düşerken E1/F/G
+  DEĞİŞMEDİ — beklenen, blok-süresine bağlı değiller); Gamma-infeasible
+  pair 76→63 (-17.1%, ama TEK YÖNLÜ DEĞİL — 19 çözüldü, 6 yeni); A
+  uzlaştırılamaz-çift (VARSAYIM-11) 382→349 (-8.6%); statik E1/E2
+  sertifikaları hâlâ 0/0/0 temiz; A+G+F referans min_total_deviation
+  4233.0→4551.0 (+7.5%); elastik Σslack tabanı 68865.62→69559.20 (+1.0%,
+  pratikte aynı mertebe); LNS bağlı-bileşen sayısı 9→7 (boyutlar
+  217-247, yapısal karakter DEĞİŞMEDİ). **Dur-ve-sor değerlendirmesi**:
+  hiçbir kalem büyük yapısal çelişki göstermiyor, Bölüm 3'e (son kampanya,
+  Pazartesi 2026-07-13 23:59'a kadar) geçiş için engel YOK. Bölüm 3 henüz
+  başlamadı.
 
 ## Kilit Kararlar
 

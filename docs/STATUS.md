@@ -8,6 +8,53 @@ bu dosya güncellenir.
 **Güncel durum (2026-07-11): full-data'da bağımsız validator'dan geçen bir
 objective_value HÂLÂ YOK.** `m5d-first-incumbent` tag'i ÜRETİLEMEDİ.
 
+## DATA v2 EPOCH (M5e, 2026-07-11) — yeniden ölçüm, v1 ↔ v2 yan yana
+
+Organizatörün 2026-07-09 veri paketi (`ElapsedTime1`/`ElapsedTime2`/`ML2`,
+wrap-fix) entegre edildi (tag `m5e-data-v2`, bkz. Bölüm 1). Bu tablo,
+AYNI güncel kod üzerinde v1 (arşivlenmiş, `TEKNOFEST_tarife_input_files 2/O&D
+Rakip Bağlantı Tablosu.xlsx`, byte-özdeş eski `data_raw` dosyası) ile v2
+(şu anki `data_raw/`) arasındaki farkı izole ediyor — kod-düzeltmesi
+kaynaklı kayma ile veri-kaynaklı kaymayı KARIŞTIRMIYOR (2026-07-09'un
+orijinal 2048-ihlal ölçümü, M5b/M5c validator düzeltmelerinden ÖNCEydi;
+buradaki v1 sütunu bugünkü kodla YENİDEN ölçüldü).
+
+| Kalem | v1 (bugünkü kodla yeniden ölçüldü) | v2 | Değişim | Kaynak |
+|---|---|---|---|---|
+| Baseline ihlal — toplam | 2137 | 2102 | **-35 (-1.6%)** | `scripts/baseline_feasibility_witness.py` |
+| Baseline ihlal — A | 144 | 106 | **-38 (-26.4%)** | aynı |
+| Baseline ihlal — E1 | 690 | 690 | 0 (beklenen — E1 blok-süresine bağlı değil) | aynı |
+| Baseline ihlal — E2 | 1219 | 1222 | +3 (küçük) | aynı |
+| Baseline ihlal — F | 31 | 31 | 0 (beklenen — kapasiteye bağlı değil) | aynı |
+| Baseline ihlal — G | 53 | 53 | 0 (beklenen — güne bağlı değil) | aynı |
+| Gamma-infeasible pair sayısı | 76 | 63 | **-13 (-17.1%)**, ama TEK-YÖNLÜ DEĞİL: 57 ortak, 19 yalnızca v1'de, 6 yeni v2'de | `compute_gamma_infeasible_pairs` (scratch script, `docs/decisions.md`) |
+| A uzlaştırılamaz çift (VARSAYIM-11 exemption) | 382 | 349 | **-33 (-8.6%)** | `scripts/run_core_feasibility.py` (WARNING log) |
+| Statik E1/E2 sertifikaları (a/b/e2) | 0/0/0 (temiz) | 0/0/0 (temiz) | değişmedi — hâlâ provably-infeasible DEĞİL | `scripts/feasibility_certificates.py` |
+| A+G+F referans (min_total_deviation_min) | 4233.0 (205.7s) | **4551.0 (238.5s)** | +318.0 (+7.5%) — daha az exemption = daha çok gerçek kısıt | `scripts/run_core_feasibility.py` |
+| K_od kaynak (805 TK-gözlemli pazar) | 780 direkt / 25 LS-tahmini | 780 direkt (aynı filtre) / 25→**25/25 artık DOĞRUDAN** (VARSAYIM-15) | LS hatası medyan=1.28dk/p90=6.72dk/max=124.11dk | `scripts/validate_block_times_v2.py`, `docs/block_time_cross_validation.md` |
+| n_candidates (rho-filtreli) | 18118 | 18147 | +29 (K_od kapsamı genişledi) | aynı script'ler |
+| Elastik Σslack tabanı | 68865.62 (v1, 2026-07-10, 5 denemenin 2'si `time_limit`) | **69559.20** (E1=667/1225 pair ihlalli) | +693.58 (+1.0%) — pratikte AYNI mertebe | `scripts/warm_start_elastic.py` + `scripts/run_lns.py --max-iterations 0` |
+| LNS bağlı-bileşen sayısı (violated-fixable, gamma-infeasible hariç) | 9 | **7** (boyutlar: 217,235,235,239,240,243,247 — hepsi büyük, tek-pair mikro-bileşen yok) | -2 bileşen, benzer toplam ölçek | `src/model/lns.py::build_pair_adjacency`+`connected_components` |
+
+**Not (elastik Σslack v2 tabanı)**: v1'in kendi geçmişi bu adımın flaky
+olduğunu gösteriyor (600s+120s bütçeyle 5 denemenin 3'ü `watchdog_killed`,
+yalnızca 2'si gerçek incumbent verdi). v2'de aynı bütçeyle ilk deneme
+`watchdog_killed` (720.2s, incumbent yok, ama warm-start log-kanıtlı kabul
+edildi); `--max-improving-sols 1` "temiz-dur" hilesiyle 900s bütçeli ikinci
+deneme **43.2s'de gerçek incumbent verdi** (`status=time_limit`,
+elastik-obj=369921.70, 1892 strict ihlal — E1=667/E2=1225, v1'in Phase-2
+seed'iyle [1879 ihlal] aynı büyüklük mertebesi). Bağımsız Σslack recompute
+(`run_lns.py --max-iterations 0`, gerçek slack formülüyle, elastik amaç
+fonksiyonunun ε·deviation terimini İÇERMEZ): **69559.20** — v1'in
+68865.62'sine göre pratik olarak AYNI (%1.0 fark), gamma-infeasible pair
+sayısı (63) yukarıdaki satırla BİREBİR tutarlı (çapraz-kontrol geçti).
+
+**Dur-ve-sor değerlendirmesi**: yukarıdaki hiçbir kalem v1'e göre BÜYÜK
+yapısal bir çelişki göstermiyor — tüm değişimler küçük-orta büyüklükte
+(%1.6-%26.4 aralığında) ve YÖNÜ beklenen (K_od/R_o iyileşmesi → A ve
+Gamma-infeasible azalıyor; E1/F/G değişmiyor çünkü blok-süresine
+bağlı değiller). Bölüm 3'e geçiş için engel YOK.
+
 ## Bu oturumun (M5d Adım 1+2) koşuları
 
 | Tarih (UTC) | Script | Amaç | Sonuç | objective | valid |
@@ -172,22 +219,8 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-11T10:36:36.779358+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-11T14:51:29.411619+00:00. Son 0 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 8 | infeasible | 62487.27 | 62487.27 | 610 | 233 | 2.7s |
-| 9 | infeasible | 62487.27 | 62487.27 | 656 | 236 | 2.9s |
-| 10 | infeasible | 62487.27 | 62487.27 | 656 | 236 | 2.8s |
-| 11 | infeasible | 62487.27 | 62487.27 | 615 | 236 | 2.7s |
-| 12 | infeasible | 62487.27 | 62487.27 | 615 | 236 | 2.7s |
-| 13 | infeasible | 62487.27 | 62487.27 | 644 | 238 | 2.8s |
-| 14 | infeasible | 62487.27 | 62487.27 | 644 | 238 | 2.6s |
-| 15 | infeasible | 62487.27 | 62487.27 | 641 | 245 | 2.6s |
-| 16 | infeasible | 62487.27 | 62487.27 | 641 | 245 | 2.6s |
-| 17 | time_limit | 62487.27 | 62864.74 | 348 | 124 | 3.3s |
-| 18 | infeasible | 62487.27 | 62487.27 | 626 | 232 | 2.6s |
-| 19 | infeasible | 62487.27 | 62487.27 | 610 | 233 | 2.6s |
-| 20 | infeasible | 62487.27 | 62487.27 | 656 | 236 | 2.6s |
-| 21 | infeasible | 62487.27 | 62487.27 | 615 | 236 | 2.5s |
-| 22 | infeasible | 62487.27 | 62487.27 | 644 | 238 | 2.6s |
+
