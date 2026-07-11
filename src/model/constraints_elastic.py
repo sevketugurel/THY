@@ -115,6 +115,216 @@ def add_elastic_e1_constraints_folded(model, candidates, alpha, partition):
     return groups, real_pairs
 
 
+# --- M5d LNS fold-redesign (plan: a-evet-ama-iki-tingly-canyon.md, adim 7,
+# EN ZOR TEK PARCA): E2 fold. Tam-donuk pazar-yon -> a_dir/Jbest sabit
+# float (strict modeldeki _frozen_jbest'in tasinmis/genellenmis hali), Var
+# yok. Tam-serbest -> degismez. KARISIK yon (asil yeni kisim): a_dir/w
+# gercek Var kalir, donuk-sunulmus adaylar da w'ya sahip olur (donuk-
+# sunulmamis olmaz). KILIT DOGRULUK KARARI: jbest_ge_rule donuk-sunulmus
+# adaylar icin DAHI gercek bir satir olarak TUTULUR (yalnizca jbest_le_rule
+# sabite indirgenir, ve bu INDIRGEME OZEL-DURUM KODU GEREKTIRMEDEN, x_val
+# fonksiyonunun x_const=1 dondurmesiyle DOGAL olarak olur) -- eger donuk-
+# sunulmus bir aday GERCEK argmin ise ve bu satir atlansaydi, serbest bir
+# adaya sahte sekilde w=1 zorlanabilirdi (E2'nin jbest sandvicinin butunlugu
+# icin kritik, bkz. tests/solve/test_m4_constraints_e2.py'nin adversarial
+# testi -- ayni ilke burada bir de fold/frozen adaylar icin dogrulanmali).
+def _split_market_e2(idxs, partition):
+    free_idxs = [i for i in idxs if partition.is_free_candidate[i]]
+    frozen = [i for i in idxs if not partition.is_free_candidate[i]]
+    frozen_offered = [i for i in frozen if partition.x_const[i] == 1]
+    frozen_not_offered = [i for i in frozen if partition.x_const[i] == 0]
+    return free_idxs, frozen_offered, frozen_not_offered
+
+
+def _effective_gap_range(i, c, partition):
+    if partition.is_free_candidate[i]:
+        return c.gap_lo, c.gap_hi
+    g = partition.gap_const[i]
+    return g, g
+
+
+def add_elastic_e2_constraints_folded(model, candidates, journey_constants: dict, gamma: int, partition):
+    groups = _market_groups(candidates)
+    candidate_market = {i: (c.o, c.d, c.gun) for i, c in enumerate(candidates)}
+
+    market_j_bounds = {}
+    for (o, d, gun), idxs in groups.items():
+        j_los, j_his = [], []
+        for i in idxs:
+            lo, hi = _effective_gap_range(i, candidates[i], partition)
+            j_los.append(journey_constants[(o, d)] + lo)
+            j_his.append(journey_constants[(o, d)] + hi)
+        market_j_bounds[(o, d, gun)] = (min(j_los), max(j_his))
+
+    model.E2_MARKETS = pyo.Set(initialize=list(groups.keys()), dimen=3, ordered=True)
+
+    split = {k: _split_market_e2(idxs, partition) for k, idxs in groups.items()}
+    fully_frozen_markets = {k for k, (free, fo, fno) in split.items() if not free}
+    remaining_markets = [k for k in groups if k not in fully_frozen_markets]
+    # A "singleton" (exactly 1 total candidate) market in remaining_markets
+    # always has that lone candidate FREE (a frozen singleton would have
+    # empty free_idxs, landing it in fully_frozen_markets instead) --
+    # identical fold to the pre-existing (unfolded) singleton logic.
+    singleton_markets = {k for k in remaining_markets if len(groups[k]) == 1}
+    multi_markets = [k for k in remaining_markets if k not in singleton_markets]
+
+    frozen_a_dir_const, frozen_jbest_const = {}, {}
+    for k in fully_frozen_markets:
+        o, d, gun = k
+        free, frozen_offered, frozen_not_offered = split[k]
+        if frozen_offered:
+            frozen_a_dir_const[k] = 1
+            frozen_jbest_const[k] = min(
+                journey_constants[(o, d)] + partition.gap_const[i] for i in frozen_offered
+            )
+        else:
+            frozen_a_dir_const[k] = 0
+            frozen_jbest_const[k] = market_j_bounds[k][0]  # non-binding, any own-bound value is valid
+
+    def _x_val(m, i):
+        return m.x[i] if partition.is_free_candidate[i] else partition.x_const[i]
+
+    def _gap_val(m, i):
+        return m.gap[i] if partition.is_free_candidate[i] else partition.gap_const[i]
+
+    model.A_DIR_MARKETS = pyo.Set(initialize=multi_markets, dimen=3, ordered=True)
+    e2_candidates = sorted(
+        i for k in remaining_markets for i in (split[k][0] + split[k][1])
+    )
+    model.E2_CANDIDATES = pyo.Set(initialize=e2_candidates, ordered=True)
+    w_var_candidates = sorted(
+        i for k in multi_markets for i in (split[k][0] + split[k][1])
+    )
+    model.W_CANDIDATES = pyo.Set(initialize=w_var_candidates, ordered=True)
+    # a_lb/w_le_x are only meaningful (non-redundant) for FREE candidates --
+    # a frozen-offered candidate's x_const=1 already satisfies both
+    # trivially (w<=1 is implied by Binary domain, a_dir>=1 is enforced via
+    # the .setlb(1) below instead of an extra row).
+    free_multi_candidates = sorted(i for k in multi_markets for i in split[k][0])
+    model.A_LB_CANDIDATES = pyo.Set(initialize=free_multi_candidates, ordered=True)
+
+    model._a_dir_var = pyo.Var(model.A_DIR_MARKETS, domain=pyo.Binary)
+    model._w_var = pyo.Var(model.W_CANDIDATES, domain=pyo.Binary)
+
+    for k in multi_markets:
+        free, frozen_offered, frozen_not_offered = split[k]
+        if frozen_offered:
+            model._a_dir_var[k].setlb(1)
+
+    def a_dir_expr_rule(m, o, d, gun):
+        k = (o, d, gun)
+        if k in fully_frozen_markets:
+            return frozen_a_dir_const[k]
+        if k in singleton_markets:
+            free, _fo, _fno = split[k]
+            return m.x[free[0]]
+        return m._a_dir_var[o, d, gun]
+    model.a_dir = pyo.Expression(model.E2_MARKETS, rule=a_dir_expr_rule)
+
+    def w_expr_rule(m, i):
+        k = candidate_market[i]
+        if k in singleton_markets:
+            return m.x[i]
+        return m._w_var[i]
+    model.w = pyo.Expression(model.E2_CANDIDATES, rule=w_expr_rule)
+
+    model.E2_JBEST_MARKETS = pyo.Set(initialize=remaining_markets, dimen=3, ordered=True)
+
+    def jbest_bounds_rule(m, o, d, gun):
+        return market_j_bounds[(o, d, gun)]
+    model._jbest_var = pyo.Var(model.E2_JBEST_MARKETS, domain=pyo.Reals, bounds=jbest_bounds_rule)
+
+    def jbest_expr_rule(m, o, d, gun):
+        k = (o, d, gun)
+        if k in fully_frozen_markets:
+            return frozen_jbest_const[k]
+        return m._jbest_var[o, d, gun]
+    model.Jbest = pyo.Expression(model.E2_MARKETS, rule=jbest_expr_rule)
+
+    def a_lb_rule(m, i):
+        o, d, gun = candidate_market[i]
+        return m._a_dir_var[o, d, gun] >= m.x[i]
+    model.e2_a_lb = pyo.Constraint(model.A_LB_CANDIDATES, rule=a_lb_rule)
+
+    def a_ub_rule(m, o, d, gun):
+        return m._a_dir_var[o, d, gun] <= sum(_x_val(m, i) for i in groups[(o, d, gun)])
+    model.e2_a_ub = pyo.Constraint(model.A_DIR_MARKETS, rule=a_ub_rule)
+
+    def w_sum_rule(m, o, d, gun):
+        free, frozen_offered, frozen_not_offered = split[(o, d, gun)]
+        return sum(m.w[i] for i in free + frozen_offered) == m._a_dir_var[o, d, gun]
+    model.e2_w_sum = pyo.Constraint(model.A_DIR_MARKETS, rule=w_sum_rule)
+
+    def w_le_x_rule(m, i):
+        return m._w_var[i] <= m.x[i]
+    model.e2_w_le_x = pyo.Constraint(model.A_LB_CANDIDATES, rule=w_le_x_rule)
+
+    e2_candidate_ms = {}
+    for i in e2_candidates:
+        o, d, gun = candidate_market[i]
+        jd_lo, jd_hi = market_j_bounds[(o, d, gun)]
+        e2_candidate_ms[i] = derive_e2_candidate_big_ms(candidates[i], journey_constants[(o, d)], jd_lo, jd_hi)
+
+    def jbest_le_rule(m, i):
+        o, d, gun = candidate_market[i]
+        m_up, _ = e2_candidate_ms[i]
+        j_pi = journey_constants[(o, d)] + _gap_val(m, i)
+        return m.Jbest[o, d, gun] <= j_pi + m_up * (1 - _x_val(m, i))
+    model.e2_jbest_le = pyo.Constraint(model.E2_CANDIDATES, rule=jbest_le_rule)
+
+    def jbest_ge_rule(m, i):
+        o, d, gun = candidate_market[i]
+        _, m_down = e2_candidate_ms[i]
+        j_pi = journey_constants[(o, d)] + _gap_val(m, i)
+        return m.Jbest[o, d, gun] >= j_pi - m_down * (1 - m.w[i])
+    model.e2_jbest_ge = pyo.Constraint(model.E2_CANDIDATES, rule=jbest_ge_rule)
+
+    all_pairs, seen = [], set()
+    for (o, d, gun) in groups:
+        if (o, d, gun) in seen:
+            continue
+        if (d, o, gun) in groups:
+            all_pairs.append((o, d, gun))
+            seen.add((o, d, gun))
+            seen.add((d, o, gun))
+
+    real_e2_pairs = []
+    frozen_e2_slack_total = 0.0
+    for (o, d, gun) in all_pairs:
+        if (o, d, gun) in fully_frozen_markets and (d, o, gun) in fully_frozen_markets:
+            j_fwd = frozen_jbest_const[(o, d, gun)]
+            j_bwd = frozen_jbest_const[(d, o, gun)]
+            frozen_e2_slack_total += max(0.0, abs(j_fwd - j_bwd) - gamma)
+        else:
+            real_e2_pairs.append((o, d, gun))
+
+    model.E2_PAIRS = pyo.Set(initialize=real_e2_pairs, dimen=3, ordered=True)
+    model.s_e2 = pyo.Var(model.E2_PAIRS, domain=pyo.NonNegativeReals)
+
+    pair_ms = {}
+    for (o, d, gun) in real_e2_pairs:
+        jd_lo_fwd, jd_hi_fwd = market_j_bounds[(o, d, gun)]
+        jd_lo_bwd, jd_hi_bwd = market_j_bounds[(d, o, gun)]
+        m_fwd = derive_e2_pair_big_m(jd_hi_fwd, jd_lo_bwd, gamma)
+        m_bwd = derive_e2_pair_big_m(jd_hi_bwd, jd_lo_fwd, gamma)
+        pair_ms[o, d, gun] = (m_fwd, m_bwd)
+
+    def e2_fwd_rule(m, o, d, gun):
+        m_fwd, _ = pair_ms[o, d, gun]
+        return (m.Jbest[o, d, gun] - m.Jbest[d, o, gun]
+                <= gamma + m_fwd * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun]) + m.s_e2[o, d, gun])
+    model.e2_fwd = pyo.Constraint(model.E2_PAIRS, rule=e2_fwd_rule)
+
+    def e2_bwd_rule(m, o, d, gun):
+        _, m_bwd = pair_ms[o, d, gun]
+        return (m.Jbest[d, o, gun] - m.Jbest[o, d, gun]
+                <= gamma + m_bwd * (2 - m.a_dir[o, d, gun] - m.a_dir[d, o, gun]) + m.s_e2[o, d, gun])
+    model.e2_bwd = pyo.Constraint(model.E2_PAIRS, rule=e2_bwd_rule)
+
+    model._e2_frozen_slack_total = getattr(model, "_e2_frozen_slack_total", 0.0) + frozen_e2_slack_total
+    return all_pairs
+
+
 def add_elastic_e2_constraints(model, candidates, journey_constants: dict, gamma: int):
     groups = _market_groups(candidates)
     candidate_market = {i: (c.o, c.d, c.gun) for i, c in enumerate(candidates)}
