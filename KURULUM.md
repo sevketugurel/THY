@@ -7,12 +7,40 @@ platform bağımsız); Windows test edilmedi.
 
 ## 0 · Ön koşullar
 
-- Python **3.11+** (proje 3.14.4 ile geliştirildi/test edildi; `pyomo`/`highspy`
-  pin'li sürümleri 3.11-3.14 aralığında çalışır).
-- ~300 MB disk (bağımlılıklar + HiGHS ikili dosyası dahil).
-- İnternet erişimi (yalnızca `pip install` adımı için).
+İki kurulum yolu var — **Yol A (Docker, önerilen)** ortam farklarını
+(Python sürümü, işletim sistemi) sıfırlar; **Yol B (venv)** Docker
+kurulu değilse birincil alternatiftir. Her iki yol da AYNI pinned
+`requirements.txt`'i kullanır, sonuçlar (668.75/valid=True) özdeştir.
+
+- **Yol A**: Docker Engine + Docker Compose v2 (`docker compose version`
+  ile kontrol edin). Test edildiği sürüm: Docker 27.5.1 (macOS/Darwin arm64).
+- **Yol B**: Python **3.11+** (proje 3.14.4 ile geliştirildi/test edildi;
+  `pyomo`/`highspy` pin'li sürümleri 3.11-3.14 aralığında çalışır), ~300 MB
+  disk, internet erişimi (yalnızca `pip install` adımı için).
 
 ## 1 · Kurulum
+
+### Yol A · Docker (önerilen, 2 komut)
+
+```bash
+cd THY   # zip'ten çıkardığınız proje kökü
+docker compose build     # imajı kur (~45s, requirements.txt pinned)
+docker compose run --rm demo   # 668.75/valid=True (§3b ile aynı)
+```
+
+`data_raw/` ve `runs/` **volume** olarak mount edilir (`docker-compose.yml`)
+— yarışma verisi imaja GÖMÜLMEZ. `--full-data` için önce §2'yi uygulayıp
+`docker compose run --rm full` çalıştırın; testler için
+`docker compose run --rm test`. Kısayollar: `./run.sh docker-build|docker-test|docker-demo|docker-full`.
+
+**Doğrulandı** (bu makinede, Docker 27.5.1, `--no-cache` temiz build):
+build 38.24s, `docker-test` 365/365 test 13.33s'de, `docker-demo` <2s'de
+668.75/optimal/valid=True — venv yolundakiyle BİREBİR AYNI sonuç.
+Full-data koşusu container'da TEKRARLANMADI (venv'de ~44dk22s ölçüldü,
+aynı sürenin container'da da geçerli olması beklenir — kod ve
+bağımlılıklar özdeş).
+
+### Yol B · venv (3 komut)
 
 ```bash
 cd THY   # zip'ten çıkardığınız proje kökü
@@ -31,6 +59,10 @@ numpy==2.5.1
 PyYAML==6.0.3
 pytest==9.1.1
 ```
+
+Aşağıdaki §3'teki komutlar Yol B (venv) için yazılmıştır; Yol A (Docker)
+kullanıyorsanız aynı sırayı `./run.sh docker-test`/`docker-demo`/`docker-full`
+ile çalıştırın.
 
 ## 2 · Veri dosyalarının yerleşimi (yalnızca gerçek-veri koşusu için gerekli)
 
@@ -58,7 +90,7 @@ nedeniyle) — organizatörden temin edilip yukarıdaki klasöre elle kopyalanı
 ```bash
 python -m pytest
 ```
-**Beklenen çıktı** (son satır): `348 passed in ~20s`
+**Beklenen çıktı** (son satır): `365 passed in ~20s`
 (bazı sistemlerde ±5-10s sapabilir; solve testleri ≤60sn limitlidir).
 
 > Not: çıplak `pytest` da çalışır (kök `conftest.py` sayesinde), ama
@@ -136,3 +168,6 @@ DEĞİŞTİRMEZ — yalnızca raporun bir eki olarak sunulur.
   izlenebilir.
 - **`data_raw/` dosya adı uyuşmazlığı** → dosya adları TAM eşleşmeli (bkz.
   §2); yanlış adla `FileNotFoundError` alınır, sessiz bir hata YOKTUR.
+- **Docker: `Cannot connect to the Docker daemon`** → Docker Desktop/Engine
+  çalışmıyor; başlatıp (`open -a Docker` macOS'ta) `docker info`'nun
+  başarılı dönmesini bekleyin, sonra tekrar deneyin.

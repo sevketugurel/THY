@@ -54,6 +54,44 @@ düşer) ama KÖKÜ ÇÖZMEZ. Ayrıntı: `runs/gamma_sensitivity_scan.json`,
 GÜNCELLEME 6 (bkz. aşağıda), `docs/organizer_questions.md` madde 12b.
 Resmî teslim konfigürasyonu Γ=30'da KALIYOR — bu bölüm rapora EK'tir.
 
+## Kapı-D2/D3 — Docker teslim katmanı + statik HTML sonuç panosu (2026-07-12)
+
+Kapı-B/D0/D1(kısmi) önceki turda commit edildi (`f6b8869`, `7cdbdcb`,
+`7d2bef4`). Bu tur (context `/clear` sonrası devam) D2/D3'ü tamamladı ve
+D2'nin sayılarını `--no-cache` temiz build ile YENİDEN doğruladı (önceki
+turun rakamları önbellekli bir build'den geliyordu, dürüstlük için
+tekrarlandı):
+
+- **D2 (Docker)**: `Dockerfile` (`python:3.14-slim`, pinned `requirements.txt`,
+  `data_raw/`+`runs/` imaja GÖMÜLMEZ) + `docker-compose.yml` (`test`/`demo`/`full`
+  servisleri, volume mount) + `.dockerignore`. Bu oturumda `docker compose
+  build --no-cache` ile GERÇEKTEN ölçüldü: build **38.24s**, `docker compose
+  run --rm test` **365 passed 13.33s'de** (venv'deki 365 ile BİREBİR AYNI —
+  önceki turun "358" rakamı Kapı-D3 testleri eklenmeden ÖNCEydi, güncellendi),
+  `docker compose run --rm demo` **<2s'de 668.75/optimal/valid=True** — venv
+  ile birebir aynı sonuç. `--full-data` container'da TEKRARLANMADI (venv'de
+  44dk22s ölçüldü, dondurma bütçesini gereksiz tüketmemek için).
+  `KURULUM.md`/`docs/TESLIM_BEKLENTILERI.md` §1c bu rakamlarla güncellendi.
+- **D3 (statik HTML pano)**: `src/report/dashboard.py::build_dashboard_html`
+  (saf fonksiyon, dosya I/O yok, `generated_at` dışarıdan verildiği için
+  byte-deterministik — `tests/unit/test_dashboard.py` 7 test: determinizm,
+  fixture içeriği, full-data teşhis + "ihlalli tarife yok" ibaresi, Γ
+  taraması TÜM satırları, provenance sha256, self-contained/no-external-refs,
+  HTML-escape). `scripts/generate_dashboard.py` `outputs/*.json`'dan (yoksa
+  `runs/` eşdeğerlerine düşer) + `data_raw/`nin 4 dosyasının sha256'sından
+  (`src/data/provenance.py::file_provenance`) `runs/dashboard.html` üretiyor
+  (7597 bytes, bu oturumda üretildi ve eyeball-kontrol edildi: 4 bölüm hepsi
+  dolu, `http(s)://`/`cdn.` sıfır eşleşme). `outputs/dashboard.html`'e
+  kopyalandı (pakete bu yoldan giriyor).
+- **D4 hazırlığı**: `scripts/package_submission.py`'nin `INCLUDE_PATHS`'i
+  zaten `Dockerfile`/`docker-compose.yml`/`.dockerignore`/`outputs` içeriyordu
+  (önceki turdan) — docstring'i buna göre güncellendi, gerçek paketleme +
+  `v1.2-submission` tag'i bu turun sonunda.
+
+Sanity: `python -m pytest` bu oturumda 365 passed (data_raw VAR), data_raw
+geçici olarak kaldırılıp 361 passed + 4 skipped doğrulandı (Kapı-9'un
+skip-guard deseni hâlâ doğru çalışıyor).
+
 ## Kapı-5 — üretim merdiveni, GERÇEK full-data'da uçtan uca doğrulandı (M5f, 2026-07-11)
 
 `main.py --full-data` artık tek komutla `src/solve/ladder.py::solve_with_ladder`

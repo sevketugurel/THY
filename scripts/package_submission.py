@@ -8,9 +8,13 @@ son, mekanik kapısı.
 Paketlenen içerik (kaynak kodu + dokümantasyon, YARIŞMA VERİSİ HARİÇ --
 data_raw/ ve runs/*.json zaten .gitignore'da, bu script AYRICA dışlar):
 main.py, requirements.txt, README.md, CLAUDE.md, ASSUMPTIONS.md, KURULUM.md,
-run.sh, pytest.ini, conftest.py, src/, tests/, scripts/, docs/ (model.pdf +
-report.pdf + TESLIM_BEKLENTILERI.md dahil, docs/ altında oldukları için
-otomatik), tests/fixtures/ (sentetik veri, paylaşılabilir).
+run.sh, Dockerfile, docker-compose.yml, .dockerignore, pytest.ini,
+conftest.py, src/, tests/, scripts/, docs/ (model.pdf + report.pdf +
+TESLIM_BEKLENTILERI.md dahil, docs/ altında oldukları için otomatik),
+tests/fixtures/ (sentetik veri, paylaşılabilir), outputs/ (Kapı-D0/D3:
+fixture_output.json + full_data_output.json + GAMMA_SENSITIVITY_STATIC_SCAN.json
++ dashboard.html -- resmî Γ=30 çıktısı hangisi olduğu KURULUM.md/README.md'de
+açıkça not edilir, ihlalli bir tarife BURAYA ASLA konmaz).
 
 Kullanım: .venv/bin/python3 -u scripts/package_submission.py [--skip-tests]
 (--skip-tests yalnızca hızlı yerel deneme için -- gerçek bir v1.0-submission
@@ -28,8 +32,9 @@ ROOT = Path(__file__).resolve().parent.parent
 INCLUDE_PATHS = [
     "main.py", "requirements.txt", "README.md", "CLAUDE.md", "ASSUMPTIONS.md",
     "KURULUM.md", "run.sh",
+    "Dockerfile", "docker-compose.yml", ".dockerignore",
     "pytest.ini", "conftest.py",
-    "src", "tests", "scripts", "docs",
+    "src", "tests", "scripts", "docs", "outputs",
 ]
 
 EXCLUDE_SUFFIXES = (".pyc",)

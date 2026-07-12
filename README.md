@@ -19,6 +19,9 @@ serbestçe paylaşılabilir; `--fixture` modu bunu kullanır, gerçek veri gerek
 
 ## Kurulum ve Çalıştırma
 
+İki yol var — ayrıntı `KURULUM.md`: **Docker** (`docker compose build &&
+docker compose run --rm demo`, ortam farkı yok) veya **venv** (aşağıda).
+
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt

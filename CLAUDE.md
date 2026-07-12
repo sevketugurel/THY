@@ -293,6 +293,34 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   `.gitignore` düzeltmesi (`runs/*.json`→`runs/*`, alt-dizin/zip kapsam
   dışıydı), final paket (159 dosya) + tag `v1.1-submission`. Push YOK,
   teslim kullanıcıda.
+- **v1.2 kapanışı tamam (2026-07-12, tag: `v1.2-submission`)** — dört ek
+  kapı: **Kapı-B** (Γ statik ön-tarama, solver YOK): Γ ∈ {30,45,60,90,120,
+  150,180} için statik-imkânsız çift + baseline E2 ihlali + bağımsız-çift
+  alt sınır taraması (`scripts/scan_gamma_sensitivity.py`,
+  `src/model/gamma_scan.py`, 10 test) — Γ=180'de bile alt sınır 717.5dk
+  (sıfırdan uzak), **Γ\*>180 → Kapı-C kampanyası plan'ın kendi kuralıyla
+  KOŞULMADI** (dokuzuncu bağımsız Branch-B kanıtı). **Kapı-D0**: paket
+  çıktı-dosyası boşluğu kapatıldı — `outputs/{fixture,full_data}_output.json`
+  + `GAMMA_SENSITIVITY_STATIC_SCAN.json`, resmî Γ=30 çıktısı KURULUM.md'de
+  açıkça işaretli. **Kapı-D1**: `docs/report.md`'ye "Γ Duyarlılık Analizi"
+  eki + PDF yeniden üretildi; `TESLIM_BEKLENTILERI.md` rubrik tahmini
+  ~64–82→~65–83/100 güncellendi. **Kapı-D2** (Docker): `Dockerfile`
+  (`python:3.14-slim`, pinned reqs, veri imaja gömülmez) +
+  `docker-compose.yml` (`test`/`demo`/`full`, volume mount) — `--no-cache`
+  temiz build ile GERÇEKTEN ölçüldü: build 38.24s, `docker compose run --rm
+  test` 365 passed 13.33s'de, `docker compose run --rm demo` <2s'de
+  668.75/valid=True (venv ile birebir aynı). **Kapı-D3** (statik pano):
+  `src/report/dashboard.py::build_dashboard_html` (saf/deterministik
+  fonksiyon, 7 test) + `scripts/generate_dashboard.py` →
+  `runs/dashboard.html` (self-contained, CDN/harici referans YOK) →
+  `outputs/dashboard.html`. **Kapı-D4**: `scripts/package_submission.py`
+  fixture+tam-suite kapısından geçti (365 passed), 173 dosya paketlendi
+  (v1.1'e göre +14: Docker 3 dosyası + `outputs/` 4 dosyası + dashboard/gamma
+  scripti+testleri 5 dosyası + `src/report/` 2 dosyası). Test sayısı bu
+  turda 348→365 (Kapı-B'nin 10 `gamma_scan` testi + Kapı-D3'ün 7
+  `test_dashboard.py` testi), `data_raw/` yokken 361 passed + 4 skipped
+  (Kapı-9 skip-guard deseni hâlâ doğru). Push YOK, v1.0/v1.1 tag'lerine
+  DOKUNULMADI, teslim kullanıcıda.
 
 ## Kilit Kararlar
 

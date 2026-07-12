@@ -1,0 +1,24 @@
+# Kapı-D2 — THY IST Hub Tarife Optimizasyonu, Docker teslim katmanı.
+# Kullanım: KURULUM.md §1 (Docker yolu). data_raw/ ve runs/ VOLUME'dür --
+# yarışma verisi imaja gömülmez, host'taki data_raw/'u yerel olarak
+# doldurmanız gerekir (bkz. KURULUM.md §2).
+services:
+  test:
+    build: .
+    entrypoint: ["python", "-m", "pytest", "-q"]
+    volumes:
+      - ./data_raw:/app/data_raw:ro
+      - ./runs:/app/runs
+
+  demo:
+    build: .
+    command: ["--config", "src/config/standard.yaml", "--fixture"]
+    volumes:
+      - ./runs:/app/runs
+
+  full:
+    build: .
+    command: ["--config", "src/config/standard.yaml", "--full-data"]
+    volumes:
+      - ./data_raw:/app/data_raw:ro
+      - ./runs:/app/runs

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>THY IST Hub Tarife Optimizasyonu — Sonuç Panosu</title>
+<style>
+body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; font-size: 14px;
+       line-height: 1.45; max-width: 980px; margin: 0 auto; padding: 24px; color: #1a1a1a; }
+h1 { font-size: 22px; margin-bottom: 4px; }
+h2 { font-size: 17px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 2em; }
+.subtitle { color: #555; margin-top: 0; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 0.8em 0; }
+th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+th { background: #eee; }
+tr.official td { background: #fff3e0; font-weight: 600; }
+code { background: #f2f2f2; padding: 0 3px; font-size: 0.92em; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: 600; }
+.badge-ok { background: #dff0d8; color: #3c763d; }
+.badge-diag { background: #f2dede; color: #a94442; }
+.note { color: #555; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>THY IST Hub Tarife Optimizasyonu — Sonuç Panosu</h1>
+<p class="subtitle">Üretildi: 2026-07-12T13:07:09Z · Resmî teslim konfigürasyonu: Γ=30</p>
+
+<h2>1 · Fixture (sentetik) sonuç — 668.75 / optimal</h2>
+<p class="note"><span class="badge badge-ok">valid=True</span> — CLI = recompute_objective = brute-force oracle, üç bağımsız yoldan doğrulanmış (bkz. docs/STATUS.md).</p>
+<table>
+<thead><tr><th>O-D</th><th>Gün</th><th>Uçuş 1</th><th>Uçuş 2</th><th>Gap (dk)</th><th>Sıra</th><th>Yenilen rakipler</th></tr></thead>
+<tbody>
+<tr><td>ZZA-ZZB</td><td>1</td><td>9101</td><td>9112</td><td>80</td><td>1</td><td>R1</td></tr>
+<tr><td>ZZA-ZZB</td><td>2</td><td>9101</td><td>9112</td><td>93</td><td>0</td><td>—</td></tr>
+<tr><td>ZZA-ZZB</td><td>1</td><td>9102</td><td>9111</td><td>61</td><td>1</td><td>R1</td></tr>
+<tr><td>ZZA-ZZB</td><td>2</td><td>9102</td><td>9111</td><td>63</td><td>0</td><td>—</td></tr>
+<tr><td>ZZA-ZZB</td><td>1</td><td>9102</td><td>9112</td><td>300</td><td>1</td><td>R1</td></tr>
+<tr><td>ZZA-ZZB</td><td>2</td><td>9102</td><td>9112</td><td>300</td><td>0</td><td>—</td></tr>
+<tr><td>ZZA-ZZB</td><td>1</td><td>9301</td><td>9112</td><td>60</td><td>1</td><td>R1</td></tr>
+<tr><td>ZZA-ZZB</td><td>2</td><td>9301</td><td>9112</td><td>63</td><td>0</td><td>—</td></tr>
+<tr><td>ZZB-ZZA</td><td>1</td><td>9201</td><td>9212</td><td>126</td><td>1</td><td>R3, R4, R5</td></tr>
+<tr><td>ZZB-ZZA</td><td>2</td><td>9201</td><td>9212</td><td>153</td><td>0</td><td>—</td></tr>
+<tr><td>ZZB-ZZA</td><td>1</td><td>9202</td><td>9211</td><td>300</td><td>1</td><td>R3, R4, R5</td></tr>
+<tr><td>ZZB-ZZA</td><td>2</td><td>9202</td><td>9211</td><td>300</td><td>0</td><td>—</td></tr>
+<tr><td>ZZB-ZZA</td><td>1</td><td>9202</td><td>9311</td><td>60</td><td>1</td><td>R3, R4, R5</td></tr>
+<tr><td>ZZB-ZZA</td><td>2</td><td>9202</td><td>9311</td><td>60</td><td>0</td><td>—</td></tr>
+<tr><td>ZZB-ZZA</td><td>1</td><td>9401</td><td>9211</td><td>71</td><td>1</td><td>R3, R4, R5</td></tr>
+<tr><td>ZZB-ZZA</td><td>2</td><td>9401</td><td>9211</td><td>71</td><td>0</td><td>—</td></tr>
+<tr><td>ZZB-ZZA</td><td>1</td><td>9401</td><td>9212</td><td>281</td><td>1</td><td>R3, R4, R5</td></tr>
+<tr><td>ZZB-ZZA</td><td>2</td><td>9401</td><td>9212</td><td>293</td><td>0</td><td>—</td></tr>
+</tbody>
+</table>
+
+<h2>2 · Full-data teşhis özeti — resmî Γ=30 çıktısı</h2>
+<p><span class="badge badge-diag">no_feasible_solution_found</span> objective_value = —</p>
+<p class="note">Üretim merdiveninin üç adımı da (tam model → elastik fallback → teşhis) doğrulanmış bir
+sonuç üretemedi — <strong>hiçbir ihlalli tarife dosyaya yazılmadı</strong> (üretim merdiveninin kendi
+garantisi). Gerçek ölçüm: 44dk22s, iki adım da watchdog_killed (bkz. docs/TESLIM_BEKLENTILERI.md §1b).</p>
+
+<h2>3 · Γ Duyarlılık Analizi (EK — resmî sonucu değiştirmez)</h2>
+<table>
+<thead><tr><th>Γ (dk)</th><th>Statik-imkânsız çift</th><th>Baseline E2 ihlal (adet)</th><th>Baseline E2 ihlal kütlesi (dk)</th><th>Bağımsız-çift alt sınır (dk)</th></tr></thead>
+<tbody>
+<tr class="official"><td>30 (resmî)</td><td>63</td><td>1222</td><td>70072.5</td><td>5055</td></tr>
+<tr><td>45</td><td>49</td><td>926</td><td>53245</td><td>4200</td></tr>
+<tr><td>60</td><td>38</td><td>710</td><td>40712.5</td><td>3552.5</td></tr>
+<tr><td>90</td><td>29</td><td>333</td><td>25325</td><td>2502.5</td></tr>
+<tr><td>120</td><td>29</td><td>215</td><td>17032.5</td><td>1632.5</td></tr>
+<tr><td>150</td><td>11</td><td>136</td><td>11427.5</td><td>1047.5</td></tr>
+<tr><td>180</td><td>7</td><td>92</td><td>8165</td><td>717.5</td></tr>
+</tbody>
+</table>
+<svg viewBox="0 0 440 205" width="100%" style="max-width:440px" role="img" aria-label="Γ başına bağımsız-çift alt sınır (dk)"><rect x="10" y="20.0" width="46" height="160.0" fill="#b34700" /><text x="33.0" y="16.0" font-size="9" text-anchor="middle">5055</text><rect x="70" y="47.06231454005933" width="46" height="132.9" fill="#2f6f9f" /><text x="93.0" y="43.06231454005933" font-size="9" text-anchor="middle">4200</text><rect x="130" y="67.5568743818002" width="46" height="112.4" fill="#2f6f9f" /><text x="153.0" y="63.5568743818002" font-size="9" text-anchor="middle">3552.5</text><rect x="190" y="100.79129574678535" width="46" height="79.2" fill="#2f6f9f" /><text x="213.0" y="96.79129574678535" font-size="9" text-anchor="middle">2502.5</text><rect x="250" y="128.3283877349159" width="46" height="51.7" fill="#2f6f9f" /><text x="273.0" y="124.3283877349159" font-size="9" text-anchor="middle">1632.5</text><rect x="310" y="146.84470820969338" width="46" height="33.2" fill="#2f6f9f" /><text x="333.0" y="142.84470820969338" font-size="9" text-anchor="middle">1047.5</text><rect x="370" y="157.28981206726013" width="46" height="22.7" fill="#2f6f9f" /><text x="393.0" y="153.28981206726013" font-size="9" text-anchor="middle">717.5</text><text x="33.0" y="194" font-size="9" text-anchor="middle">Γ=30</text><text x="93.0" y="194" font-size="9" text-anchor="middle">Γ=45</text><text x="153.0" y="194" font-size="9" text-anchor="middle">Γ=60</text><text x="213.0" y="194" font-size="9" text-anchor="middle">Γ=90</text><text x="273.0" y="194" font-size="9" text-anchor="middle">Γ=120</text><text x="333.0" y="194" font-size="9" text-anchor="middle">Γ=150</text><text x="393.0" y="194" font-size="9" text-anchor="middle">Γ=180</text></svg>
+<p class="note">Karar: Γ*=None, kampanya koşuldu mu = False.
+independent-pair lower bound (c) never reaches 0 within the swept range (45, 60, 90, 120, 150, 180) -- Γ*&gt;180. Per Kapı-B instructions: do NOT run the Kapı-C campaign, report this finding, proceed to Kapı-D.</p>
+
+<h2>4 · Veri Provenance (SHA-256)</h2>
+<table>
+<thead><tr><th>Dosya</th><th>Yol</th><th>SHA-256</th></tr></thead>
+<tbody>
+<tr><td>O&amp;D</td><td>/Users/sevketugurel/Desktop/THY/data_raw/O&amp;D Rakip Bağlantı Tablosu.xlsx</td><td><code>fec548202bd59c56ac7fbfda02169184e85e2fb840ea11c6fcf9a035aac858b4</code></td></tr>
+<tr><td>Yolcu Verisi</td><td>/Users/sevketugurel/Desktop/THY/data_raw/Yolcu Verisi_masked.xlsx</td><td><code>66889e7317a7803411b06c0d211769d5317da9c18d04106f4d42dba0e484938d</code></td></tr>
+<tr><td>Change Ranking</td><td>/Users/sevketugurel/Desktop/THY/data_raw/change_ranking_input.xlsx</td><td><code>ffaa612a253454175f401d1bc33fcc111e42c39d197e021c384ebcae6f9aa6db</code></td></tr>
+<tr><td>Flight Pairs</td><td>/Users/sevketugurel/Desktop/THY/data_raw/Flight Pairs.xlsx</td><td><code>87c172bc63bbef23f1cd425a54396fb11fc246ee5792717544a79937d8e1004f</code></td></tr>
+</tbody>
+</table>
+
+</body>
+</html>
