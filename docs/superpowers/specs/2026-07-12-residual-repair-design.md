@@ -1,6 +1,7 @@
-# Residual Conflict Repair Engine — Tasarım Spec'i
+# Residual Conflict Repair Engine (RCR Engine) — Tasarım Spec'i
 
-Tarih: 2026-07-12 (akşam) · Durum: **kullanıcı onaylı** · Tur adı: M5i
+Tarih: 2026-07-12 (akşam) · Durum: **kullanıcı onaylı** · Kampanya adı: M5i
+Resmi ad: **Residual Conflict Repair Engine**, kısa ad: **RCR Engine** (kullanıcı, 2026-07-12)
 Dondurma: 2026-07-14 18:00 · Teslim: 2026-07-16 17:00
 
 ## 0. Karar özeti (kullanıcı onaylı, normatif)
