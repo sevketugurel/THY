@@ -135,7 +135,7 @@ değiştirilmez.
    `runs/residual_repair_round<N>_directions.json`.
 4. `run_lns --reference <en-iyi-partial> --deactivation-file <roundN>
    --selection component --builder fix --max-wall-sec 2400` (40 dk;
-   diğer düğmeler default, seed=42).
+   diğer düğmeler default, seed=42; builder seçimi için §4.8).
 5. Tur sonu ölçüm + log + keep-best kararı.
 
 ### 4.2 Tur logu (her tur, diske anında)
@@ -183,13 +183,43 @@ kalan bütçenin tamamı `run_lns` (aynı set, `--reference` en-iyi partial).
 warm_start_elastic watchdog'a takılırsa (0.7 riski) atlanır ve doğrudan
 LNS-only devam edilir (B'nin kendi Plan-B'si).
 
-### 4.7 Genel dur koşulları
+### 4.7 Genel dur koşulları ve validator smoke (kullanıcı düzeltmesi #2)
 
 - **Σslack = 0** → strict `validate_output` → **valid=True ise DUR**:
   kullanıcıya rapor; `outputs/full_data_output.json` yazılmaz, onay beklenir.
   (Σslack=0 ⇒ strict-valid beklenir; yine de tek otorite validator'dır.)
+- **Smoke koşusu**: keep-best anlamlı düştüğünde (§4.4 ile aynı eşik: tur
+  düşüşü mevcut Σslack'in ≥%8'i) strict validator o turun partial'ında
+  OPSİYONEL olarak koşulur ve sonucu tur loguna yazılır
+  (`validator_status: "smoke:invalid(E1=..,E2=..,diğer=..)"`). Amaç
+  E1/E2 dışı ailelerde (A/G/F/pencere/rank) sürpriz olmadığını erkenden
+  teyit etmek — böylece "Σslack=0 ⇒ valid" çıkarımı güvenli kalır. Nihai
+  başarı kriteri DEĞİŞMEZ: valid=True şart + kullanıcıya rapor olmadan
+  `outputs/` yazılmaz.
 - **4h duvar** → sabah-değerlendirme raporu (kampanya logu + öneri).
 - §4.5'in erken-dur dalı.
+
+### 4.8 Builder politikası (kullanıcı düzeltmesi #1)
+
+Kullanıcı direktifi: fix'e kör bağlı kalınmaz; folded'ın hız avantajı
+(iterasyon başına çok daha küçük model) mümkün olan her yerde kullanılır.
+Kod gerçeği: `--deactivation-file` bugün `--builder folded` ile
+BİRLEŞTİRİLEMİYOR (`run_lns.py:216-218` hard error) — folded builder donuk
+adaylara gerçek `x` değişkeni vermez, donuk bir kill edilmiş yönün x=0'ı
+oraya işlenemez. Not: en güncel büyük kazanım (14100→10944, M5h level04)
+fix+deactivation ile geldi; folded'ın kazanımları deactivation'sız
+kampanyalardandı (M5e-3b, M5h Kapı-3b). Politika:
+
+- **Kill içeren turlar** (kampanyanın normali): `--builder fix` (zorunlu).
+- **Round-1 fallback**: ilk tur yavaş/ilerlemesiz biterse (mekanik sağlam),
+  AYNI referanstan bir kez `--builder folded` İLE ve bu turun kill'leri
+  OLMADAN (folded kill taşıyamadığından saf-yoğunlaştırma) yeniden denenir —
+  bu bir A/B teşhisi: folded-kill'siz kazanıyorsa kaldıraç kill değildir,
+  sabah raporuna "mekanik pivot" önerisi düşülür.
+- **Folded+deactivation desteği** (sabah opsiyonu, gece kapsam dışı):
+  doğru semantik "kill edilen yönün instance'ları free-set'e zorla dahil"
+  gerektirir — aksi halde donuk killed adaylar sahte x=0 sabitiyle kanonik
+  Σslack muhasebesinden sapar (bkz. §8).
 
 ## 5. Hata durumları
 
@@ -216,6 +246,8 @@ LNS-only devam edilir (B'nin kendi Plan-B'si).
 
 - Rapor/STATUS.md entegrasyonu: sabah değerlendirmesinden sonra ayrı iş.
 - SCIP portfolio denemesi: bu gecenin bütçesinde değil (sabah opsiyonu).
+- Folded builder'a deactivation desteği: sabah opsiyonu (§4.8) — gece
+  kampanyası buna gate'lenmez.
 - ML katmanı yok: §3.1'in deterministic ödül-katkı skoru maliyet tanımıdır;
   rapor anlatısında "AI-assisted prioritization" ancak bu haliyle ve
   dürüstçe anlatılır.
@@ -233,3 +265,9 @@ LNS-only devam edilir (B'nin kendi Plan-B'si).
 - **E1-only çiftler** (küçük, sayı-bazlı slack): worst-K sıralamasında sona
   kalırlar; kampanya E2'yi bitirip onlara ulaşamadan 4h dolabilir — sabah
   raporunda kalan-iş olarak görünür.
+- **Folded+kill semantik tuzağı**: donuk killed adayı x=0 SABİTİ yapmak,
+  zamanı pencere-içindeyken "sunulmuyor" saymaktır — sub-model içi
+  under-claim. compute_pair_slack (x'i ZAMANDAN türetir) bunu reddeder;
+  keep-best sahte iyileşmeleri zaten eler ama turlar boşa yanar. Bu yüzden
+  §4.8'in "free-set'e zorla dahil" semantiği olmadan folded'a kill
+  bağlanmayacak.
