@@ -141,6 +141,44 @@ uzun bir bütçe (saatler) bunu netleştirebilirdi; Gurobi'nin ücretsiz
 lisansı ~2000 satır/değişkenle sınırlı olduğundan (model ~330K satır)
 denenemedi, akademik lisans temin edilemedi.
 
+### 5b · Γ Duyarlılık Analizi (EK — resmî sonucu değiştirmez)
+
+**Resmî teslim konfigürasyonu Γ=30'da kalır.** Bu bölüm, "E2'nin zorluğu
+toleransın (Γ) dar olmasından mı kaynaklanıyor?" sorusuna solver
+harcamadan kısmi bir cevap arayan bir ek analizdir (Kapı-B,
+`scripts/scan_gamma_sensitivity.py`, saf-pandas — solve YOK).
+
+Üç solver-free sinyal, full-data'da (18.147 aday, 3.258 yön-çifti):
+
+| Γ (dk) | Statik-imkânsız çift | Baseline E2 ihlal (adet) | Baseline E2 ihlal kütlesi (dk) | Bağımsız-çift alt sınır (dk) |
+|---|---|---|---|---|
+| 30 (resmî) | 63 | 1.222 | 70.072,5 | 5.055,0 |
+| 45 | 49 | 926 | 53.245,0 | 4.200,0 |
+| 60 | 38 | 710 | 40.712,5 | 3.552,5 |
+| 90 | 29 | 333 | 25.325,0 | 2.502,5 |
+| 120 | 29 | 215 | 17.032,5 | 1.632,5 |
+| 150 | 11 | 136 | 11.427,5 | 1.047,5 |
+| 180 | 7 | 92 | 8.165,0 | 717,5 |
+
+Son sütun (bağımsız-çift alt sınır), her yön-çiftinin kendi en iyi
+durumuna BAĞIMSIZ ulaştığını varsayan iyimser bir tahmindir (bacak-paylaşım
+kuplajını yok sayar — §5'in 8. maddesindeki ağ-çapı ayak izi bulgusuyla
+aynı yapısal gerçek). Gerçek bir solve'un Σs_e2'si bu sayıdan KÜÇÜK
+OLAMAZ. **Γ=180'de bile bu alt sınır 717,5dk ile sıfırdan uzak** — Γ'yı
+6 katına çıkarmak (30→180) mutlak ihlal sayılarını ~86% azaltıyor ama
+Σslack=0'a ulaştırmıyor. Karar kuralı gereği (alt sınır swept aralığın
+hiçbir noktasında 0'a inmediği için Γ*>180), bu bulgudan sonra planlanan
+solver kampanyası (Kapı-C) **koşulmadı** — ek 3 saatlik bütçe harcamak
+yerine, mevcut kanıt "Γ tek başına yeterli değil" sonucunu zaten net
+gösteriyordu.
+
+**Yorum**: bu, §5'in dokuzuncu bağımsız kanıt yönüdür ve aynı sonuca
+Γ ekseninde ulaşır — full-data'daki E2 zorluğu toleransın darlığından
+değil, ağ genelindeki kuplajlı bacak-paylaşım yapısından kaynaklanıyor.
+Ham veri: `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json`, ayrıntı
+`docs/STATUS.md` "Kapı-B" bölümü, `ASSUMPTIONS.md` VARSAYIM-12
+GÜNCELLEME 6.
+
 **Üretim merdiveni garantisi** (Kriter 3 + dayanıklılık): `main.py --full-data`
 tek komutla 3 adımlı bir merdiven koşar — (1) tam model bütçeli solve, (2)
 başarısızsa TEK bir bekçili elastik solve denemesi (Σslack≈0 ise
