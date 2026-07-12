@@ -252,11 +252,24 @@ def main():
         round_rec = {"round": n_round, "mode": mode, "k": round_k if mode == "A" else "ALL",
                      "kills_added": len(kills), "equalization_only": len(eq_only),
                      "sigma_before": sigma_before}
-        if summary is None or not summary.get("partial_output_path"):
+        if summary is None:
             mechanics.append((len(kills) > 0, False))
             round_rec.update({"status": "failed", "next_repair_decision": "revert+continue",
                               "validator_status": "not-run"})
             print(f"[campaign] round {n_round} FAILED (özet yok) -- referans korunur", flush=True)
+        elif not summary.get("partial_output_path"):
+            # LNS koştu ama hiç iyileşme üretmedi (best-partial dosyası yok) --
+            # bu mekanik arıza DEĞİL (round-1 otopsisi: 20 iterasyon gerçekten
+            # koştu); keep-best gereği referans + kill seti korunur.
+            mechanics.append((len(kills) > 0, summary.get("n_iterations", 0) > 0))
+            round_rec.update({"status": "ok-no-improve",
+                              "sigma_slack": sigma_before,
+                              "lns_summary_n_iterations": summary.get("n_iterations"),
+                              "next_repair_decision": "revert",
+                              "validator_status": "not-run",
+                              "wall_sec": round(time.time() - t0, 1)})
+            print(f"[campaign] round {n_round}: iyileşme yok "
+                  f"({summary.get('n_iterations')} iterasyon) -- referans korunur", flush=True)
         else:
             new_partial = summary["partial_output_path"]
             ps_new, sigma_after, n_e1_a, n_e2_a = _measure(

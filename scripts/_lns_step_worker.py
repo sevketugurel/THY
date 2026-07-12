@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.model.build import build_elastic_feasibility_model
 from src.model.constraints_elastic import add_elastic_feasibility_objective
-from src.model.deactivation import apply_deactivation, market_direction_index
+from src.repair.opportunistic import select_opportunistic_kills
 from src.model.lns import fix_reference_except_free
 from src.model.warm_start import derive_and_set_warm_start
 from src.solve.runner import solve
@@ -65,10 +65,25 @@ def main():
     # the same reason as _warm_start_elastic_step_worker.py -- .fix(0) must
     # be the final word over whatever the pre-deactivation reference point's
     # warm-start hint set. Absent/empty is a no-op, identical to before this.
+    #
+    # M5i round-1 otopsi düzeltmesi (src/repair/opportunistic.py): fix(0)
+    # YALNIZCA bu iterasyonun serbestlik durumunda pencere-dışına
+    # ulaşabilen kill-adaylarına -- donuk+pencere-içi adaya fix(0) basmak
+    # B reifikasyonuyla çelişip alt-modeli KOŞULSUZ infeasible yapıyordu
+    # (round 1: 20/20 iterasyon). Referansı kill setine zaten saygılı olan
+    # eski akışlarda (M5h) skipped=0 çıkar, davranış birebir aynı kalır.
     directions_to_kill = spec["build_kwargs"].get("directions_to_kill") or []
     if directions_to_kill:
-        direction_index = market_direction_index(model_kwargs["candidates"])
-        apply_deactivation(model, direction_index, directions_to_kill)
+        fix_indices, n_skipped = select_opportunistic_kills(
+            model_kwargs["candidates"], directions_to_kill,
+            fix_kwargs["free_arr"], fix_kwargs["free_dep"],
+            fix_kwargs["reference_arr"], fix_kwargs["reference_dep"],
+            L=model_kwargs["L"], U=model_kwargs["U"],
+        )
+        for i in fix_indices:
+            model.x[i].fix(0)
+        print(f"[_lns_step_worker] opportunistic kills: fixed={len(fix_indices)} "
+              f"skipped={n_skipped} (of {len(directions_to_kill)} directions)", flush=True)
     build_time_sec = time.time() - t0
     print(f"[_lns_step_worker] fixed+warm-started in total {build_time_sec:.1f}s, solving...", flush=True)
 
