@@ -132,6 +132,22 @@ büyüklüğü/ölçeği sorusu ise AÇIK kalıyor (organizatörden gelecek bir 
 yalnızca `gamma` config değerini değiştirir, muafiyet mekanizmasının
 kendisini değil).
 
+**Γ-duyarlılık ön-tarama güncellemesi (Kapı-B, 2026-07-12, solver YOK)**:
+Gamma'nın "büyüklüğü/ölçeği" sorusuna solver harcamadan kısmi bir cevap
+üretildi — full-data'da Γ ∈ {30,45,60,90,120,150,180} taraması
+(`scripts/scan_gamma_sensitivity.py`, tablo `docs/STATUS.md` "Kapı-B"
+bölümünde) gösteriyor ki bağımsız-çift alt sınır (her çiftin kendi en iyi
+durumuna bağımsız ulaştığını varsayan iyimser tahmin) Γ=180'de bile
+717.5dk ile sıfırdan uzak — yani **Γ'yı 6 katına çıkarmak (30→180) bile
+E2'yi full-data'da çözülebilir kılmaya YETMEZ**. Bu, sorunun sadece "Gamma
+çok mu dar" sorusundan öte, ağ genelinde kuplajlı bacak-paylaşım yapısından
+kaynaklandığını gösteriyor (VARSAYIM-12 GÜNCELLEME 6) — organizatöre
+sorulacak soru buna göre daralıyor: "Gamma'yı büyütmek E2'yi pratikte
+çözülebilir kılmaya yetmiyor görünüyor; brief'in E2 kısıtını gerçek veri
+ölçeğinde YORUMLAMA biçimimizde (pazar-çifti-bazlı simetrik JT-farkı) bir
+gözden kaçırma mı var, yoksa bu ölçekte E2'nin BEKLENEN davranışı zaten
+kısmi/istisna-tutmalı mı?"
+
 ## Kapsam / veri (plan §7'den, henüz kod kararına dönüşmemiş)
 
 **13. Slot pencereleri (H)** — kick-off'ta "düzenlenmiş havalimanlarında varış

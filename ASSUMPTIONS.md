@@ -719,6 +719,24 @@ BÜYÜK BİR KESİMİNİ eşzamanlı gerektiren gerçek bir yapısal özellik gi
 görünüyor. Kapı-3 plan'ın kendi durma kuralıyla (adım c platoyu kıramazsa
 DUR) kapandı — Branch B kesinleşti, kalan Σslack dökümü rapora giriyor.
 
+**GÜNCELLEME 6 (2026-07-12, Kapı-B Γ-duyarlılık ön-taraması — DOKUZUNCU
+bağımsız kanıt, solver YOK)**: full-data'da Γ ∈ {30 (resmî),45,60,90,120,
+150,180} için solver-free bir ön-tarama (`scripts/scan_gamma_sensitivity.py`,
+`src/model/gamma_scan.py`) çalıştırıldı — hedef, E2'nin zorluğunun resmi
+Γ=30'un DAR olmasından mı yoksa yapısal kuplajdan mı kaynaklandığını
+solver harcamadan ayırt etmek. Üç sinyal: statik-imkânsız çift sayısı,
+baseline E2 ihlal sayısı/kütlesi, ve bağımsız-çift alt sınırı (her çiftin
+KENDİ en iyi durumuna bağımsız ulaştığını varsayan iyimser tahmin — gerçek
+bir solve'un Σs_e2'si bundan küçük olamaz). Sonuç: Γ=180'de bile alt sınır
+717.5dk (Γ=30'daki 5055.0dk'dan ~86% düşük ama SIFIRDAN UZAK) — swept
+aralığın hiçbir noktasında 0'a inmiyor, yani **Γ*>180**. Plan'ın kendi karar
+kuralı gereği Kapı-C solver kampanyası KOŞULMADI (tam tablo:
+`docs/STATUS.md` "Kapı-B" bölümü, ham veri `runs/gamma_sensitivity_scan.json`).
+Bu, GÜNCELLEME 1-5'in "Γ küçüklüğü değil, ağ-genelinde kuplajlı
+bacak-paylaşımı" teşhisinin Γ EKSENİNDE de doğrulanması: toleransı 6 kat
+gevşetmek (30→180) mutlak ihlal sayılarını azaltıyor ama kökü çözmüyor.
+Organizatör sorusu güncellendi (`docs/organizer_questions.md` madde 12b).
+
 ## VARSAYIM-13: E2'nin Jbest değişkeni Integers değil Reals olmalı (M5d, gerçek bug — 2026-07-10)
 
 **Bulgu**: `add_e2_constraints`/`add_elastic_e2_constraints`'in `Jbest` değişkeni

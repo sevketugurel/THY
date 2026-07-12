@@ -12,6 +12,48 @@ Branch B kesinleşti** (aşağıda). **Kapı-5 (üretim merdiveni) tamam ve
 GERÇEK full-data'da uçtan uca doğrulandı** (aşağıda) — Kapı-6 (teslimat)
 sırada.
 
+## Kapı-B — Γ statik ön-tarama (solver YOK), sonuç: kampanya KOŞULMADI (2026-07-12)
+
+Amaç: resmî Γ=30 dışında, E2'nin daha büyük bir Γ toleransıyla full-data'da
+Σs_e2=0'a ulaşıp ulaşamayacağını solver harcamadan ön-elemek
+(`scripts/scan_gamma_sensitivity.py`, saf-Python/pandas, `src/model/gamma_scan.py`
+— `compute_gamma_infeasible_pairs`'ın best-case-gap çekirdeğinin sayısal
+genellemesi, `tests/unit/test_gamma_scan.py` 10 test ile doğrulandı, biri
+doğrudan `compute_gamma_infeasible_pairs`'la tutarlılık kontrolü).
+
+Üç sinyal, Γ ∈ {30 (resmî), 45, 60, 90, 120, 150, 180} için full-data'da
+(18147 aday, 3258 çift):
+
+| Γ | statik-imkânsız çift | baseline E2 ihlal (adet) | baseline E2 ihlal kütlesi (dk) | bağımsız-çift alt sınır (dk) |
+|---|---|---|---|---|
+| 30 (resmî) | 63 | 1222 | 70072.5 | 5055.0 |
+| 45 | 49 | 926 | 53245.0 | 4200.0 |
+| 60 | 38 | 710 | 40712.5 | 3552.5 |
+| 90 | 29 | 333 | 25325.0 | 2502.5 |
+| 120 | 29 | 215 | 17032.5 | 1632.5 |
+| 150 | 11 | 136 | 11427.5 | 1047.5 |
+| 180 | 7 | 92 | 8165.0 | 717.5 |
+
+**Bağımsız-çift alt sınır** (c) sütunu, her çiftin KENDİ en iyi durumuna
+BAĞIMSIZ ulaşabildiğini varsayan iyimser bir tahmindir (bacak-paylaşım
+kuplajını yok sayar — M5c'nin K-subset bulgusuyla aynı yapısal gerçek).
+Gerçek bir solve'un Σs_e2'si bu sayıdan KÜÇÜK OLAMAZ. Γ=180'de bile bu alt
+sınır 717.5dk ile SIFIRDAN UZAK — swept aralığın (45–180) HİÇBİR noktasında
+0'a inmiyor, düşüş oranı da (30→180 arası ~86% azalma ama kalan mutlak
+değer hâlâ üç haneli) yakın gelecekte sıfırlanacağına işaret etmiyor.
+
+**KARAR (plan'ın kendi kuralı, Γ*>180 dalı): Γ*>180 → Kapı-C solver
+kampanyası KOŞULMADI.** Bu, M5/M5c/M5e/M5f'in sekiz+ bağımsız kanıtıyla
+(farklı model/amaç/ayar kombinasyonları, statik sertifikalar, greedy
+witness) AYNI yöne işaret eden dokuzuncu bağımsız kanıt: E2'nin full-data
+zorluğu Γ'nın küçüklüğünden değil, ağ genelindeki (neredeyse her yerde,
+`analyze_violation_footprint.py` bulgusuyla tutarlı) kuplajlı bacak-paylaşım
+yapısından kaynaklanıyor — Γ'yı gevşetmek semptomu hafifletir (mutlak sayılar
+düşer) ama KÖKÜ ÇÖZMEZ. Ayrıntı: `runs/gamma_sensitivity_scan.json`,
+`src/model/gamma_scan.py` (docstring), `ASSUMPTIONS.md` VARSAYIM-12
+GÜNCELLEME 6 (bkz. aşağıda), `docs/organizer_questions.md` madde 12b.
+Resmî teslim konfigürasyonu Γ=30'da KALIYOR — bu bölüm rapora EK'tir.
+
 ## Kapı-5 — üretim merdiveni, GERÇEK full-data'da uçtan uca doğrulandı (M5f, 2026-07-11)
 
 `main.py --full-data` artık tek komutla `src/solve/ladder.py::solve_with_ladder`
