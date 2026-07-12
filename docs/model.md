@@ -8,13 +8,18 @@ güncellenmelidir (ve tersi).
 
 Durum: **M0–M4 tamam** (A–G tam formülasyon, `build_model_m4`, main.py'ye
 bağlı, CLI end-to-end valid=True, fixture objective=668.75). **M5/M5c/M5d/M5e
-tamam** — full-data'da doğrulanmış objective_value henüz yok (kapanış planının
-ana hedefi); veri v2 entegre (Elapsed-türevli K_od/R_o, VARSAYIM-14/15).
-**M5f kapanışı sürüyor** (`docs/CLOSING_PLAN.md`, Kapı-0…6). **Kapı-0/1
-tamam**: KARAR-0 (E1 koşullu aktivasyon, VARSAYIM-16) ve KARAR-0b (E2
-statik-imkânsız muafiyet, VARSAYIM-17) uygulandı (model+elastik+validator+
-sertifikalar+witness hizalandı); fixture değeri HER İKİ modda da
-668.75 (değişmedi). Kapı-2 (full-data yeniden ölçüm) sırada.
+tamam** — full-data'da doğrulanmış objective_value henüz yok; veri v2 entegre
+(Elapsed-türevli K_od/R_o, VARSAYIM-14/15). **M5f kapanışı (`docs/CLOSING_PLAN.md`,
+Kapı-0…6) — Kapı-0…5 TAMAM**: KARAR-0 (E1 koşullu aktivasyon, VARSAYIM-16) +
+KARAR-0b (E2 statik-imkânsız muafiyet, VARSAYIM-17) uygulandı, fixture HER
+İKİ modda da 668.75 (değişmedi); Kapı-2 full-data'da ölçtü (baseline E1
+690→296); Kapı-3 kampanyası (elastik+warm-start → LNS → çoklu-bileşen LNS)
+TÜKENDİ, **Branch B kesinleşti** (full-data'da doğrulanmış objective_value
+YOK — sekiz bağımsız kanıt yönü, `ASSUMPTIONS.md` VARSAYIM-12 GÜNCELLEME 5);
+Kapı-4 (yalnız Branch A) uygulanamaz, atlandı; Kapı-5 üretim merdiveni
+(`main.py --full-data`, ihlalli tarife ASLA yazmama garantisi) GERÇEK
+full-data'da uçtan uca doğrulandı (`docs/STATUS.md`). Kapı-6 (teslimat)
+sürüyor — bkz. `docs/report.md`, `docs/traceability.md`.
 
 ---
 

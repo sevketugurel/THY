@@ -2,7 +2,9 @@
 
 TEKNOFEST "Yapay Zeka Destekli Havayolu Optimizasyonu" yarışması için Pyomo/HiGHS MIP.
 Detaylı durum ve mimari kararlar için `CLAUDE.md`, matematiksel model için
-`docs/model.md`, veri-kalitesi varsayımları için `ASSUMPTIONS.md`.
+`docs/model.md`, veri-kalitesi varsayımları için `ASSUMPTIONS.md`, teknik
+rapor için `docs/report.md`, kod↔model izlenebilirliği için
+`docs/traceability.md`.
 
 ## Veri
 
