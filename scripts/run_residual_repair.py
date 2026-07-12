@@ -90,15 +90,19 @@ def _run_elastic_step(directions_file, campaign_dir, n_round):
     Returns kalıcı kopyanın yolu (campaign_dir/roundN_elastic_output.json)
     ya da None (watchdog/çökme -- taze çıktı üretilmedi)."""
     out_log = campaign_dir / f"round{n_round}_elastic_console.log"
+    # Gece-3 ayarı (2026-07-13): 506/491 kill probe'ları dual~0 + SIFIR
+    # incumbent imzasıyla tıkandı (çözüm LP'de var, primal arama bulamıyor)
+    # -- effort 0.3->0.5 (M5h deactivation scriptinin default'u) + 900->1200s.
     cmd = [PY, "-u", "scripts/warm_start_elastic.py",
            "--deactivation-file", str(directions_file),
-           "--time-limit-sec", "900", "--max-improving-sols", "1"]
+           "--time-limit-sec", "1200", "--max-improving-sols", "1",
+           "--mip-heuristic-effort", "0.5"]
     print(f"[campaign] elastik: {' '.join(cmd)}", flush=True)
     t_start = time.time()
     try:
         with open(out_log, "w") as fh:
             subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT,
-                           timeout=2100, check=False)
+                           timeout=2700, check=False)
     except subprocess.TimeoutExpired:
         print("[campaign] elastik adım dış zaman aşımı", flush=True)
         return None
@@ -279,7 +283,7 @@ def main():
             mechanics.append((False, False))
             if mode == "B":
                 mode = "A"  # B'nin tam-cover elastiği tıkandı -- A'ya dön (level07 kliği)
-            k = max(10, k // 2)
+            k = max(1, k // 2)  # gece-3: floor 10->1, kliği ince tarayabilsin
             round_rec.update({"status": "elastic-failed",
                               "next_repair_decision": f"revert+K->{k}",
                               "validator_status": "not-run",
