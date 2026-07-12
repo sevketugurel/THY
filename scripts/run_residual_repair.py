@@ -12,6 +12,7 @@ Kullanım:
 """
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -75,6 +76,38 @@ def _run_lns_round(reference, directions_file, wall_sec, out_prefix, seed):
     if summary_path is None:
         return None, log_path
     return json.loads(summary_path.read_text()), log_path
+
+
+def _run_elastic_step(directions_file, campaign_dir, n_round):
+    """M5i gece-2 düzeltmesi (docs/decisions.md 2026-07-13): kill'ler yalnız
+    TAM serbestlikte gerçekleşebiliyor -- G gün-kümesi + A rotasyon zarfı,
+    per-component LNS'te donuk komşular pencere-dışına itişe izin vermiyor
+    (round-1/2 otopsisi: opportunistic fix'e rağmen 20/20 infeasible; kanıt
+    runs/residual_repair_campaign_20260712T205104Z/round1_lns_console.log).
+    Proven M5h deseni tur-içine alındı: her tur önce mini-elastik (tüm ağ
+    serbest, kill'leri gerçekleştirir), sonra LNS o noktadan cilalar.
+
+    Returns kalıcı kopyanın yolu (campaign_dir/roundN_elastic_output.json)
+    ya da None (watchdog/çökme -- taze çıktı üretilmedi)."""
+    out_log = campaign_dir / f"round{n_round}_elastic_console.log"
+    cmd = [PY, "-u", "scripts/warm_start_elastic.py",
+           "--deactivation-file", str(directions_file),
+           "--time-limit-sec", "900", "--max-improving-sols", "1"]
+    print(f"[campaign] elastik: {' '.join(cmd)}", flush=True)
+    t_start = time.time()
+    try:
+        with open(out_log, "w") as fh:
+            subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT,
+                           timeout=2100, check=False)
+    except subprocess.TimeoutExpired:
+        print("[campaign] elastik adım dış zaman aşımı", flush=True)
+        return None
+    wse_out = Path("runs/warm_start_elastic_output.json")
+    if not (wse_out.exists() and wse_out.stat().st_mtime > t_start):
+        return None  # taze çıktı yok (watchdog_killed, sıfır incumbent)
+    dst = campaign_dir / f"round{n_round}_elastic_output.json"
+    shutil.copy2(wse_out, dst)  # sonraki turun overwrite'ından koru
+    return dst
 
 
 def _strict_validate(partial_path, config):
@@ -192,9 +225,23 @@ def main():
     n_round = 0
     mechanics = []  # her tur: (kill_uygulandi: bool, iter_kostu: bool)
 
+    def _escalation_check():
+        """Spec §4.5: 2 tamamlanmış A-turu sonunda üç dallı karar.
+        Returns 'stop' | 'switch-B' | None."""
+        mech_sound = all(m[0] for m in mechanics) and any(m[1] for m in mechanics)
+        decision = escalation_decision(sigma_campaign_start, best_sigma, mech_sound)
+        print(f"[campaign] eskalasyon (2 tur sonu): {decision} "
+              f"(Sigma {sigma_campaign_start:.2f}->{best_sigma:.2f}, "
+              f"mekanik={'sağlam' if mech_sound else 'bozuk'})", flush=True)
+        if decision == "early-stop":
+            return "stop"
+        if decision == "switch-B":
+            return "switch-B"
+        return None
+
     while True:
         remaining = deadline - time.time()
-        if remaining < args.round_wall_sec + 300:
+        if remaining < 2100 + args.round_wall_sec + 300:
             _final_report("budget_exhausted")
             return
 
@@ -221,37 +268,62 @@ def main():
             return
 
         out_prefix = campaign_dir / f"round{n_round}"
-
-        if mode == "B":
-            # B modu: önce warm_start_elastic (900s), watchdog'a takılırsa atla (spec §4.6)
-            wse_cmd = [PY, "-u", "scripts/warm_start_elastic.py",
-                       "--deactivation-file", str(directions_file),
-                       "--time-limit-sec", "900", "--max-improving-sols", "1"]
-            print(f"[campaign] B: {' '.join(wse_cmd)}", flush=True)
-            t_wse = time.time()
-            try:
-                with open(campaign_dir / "B_wse_console.log", "w") as fh:
-                    subprocess.run(wse_cmd, stdout=fh, stderr=subprocess.STDOUT,
-                                   timeout=900 + 120 + 900 + 300, check=False)
-            except subprocess.TimeoutExpired:
-                print("[campaign] B: warm_start_elastic dış zaman aşımı -- atlanıyor", flush=True)
-            wse_out = Path("runs/warm_start_elastic_output.json")
-            if wse_out.exists() and wse_out.stat().st_mtime > t_wse:
-                _, s_wse, _, _ = _measure(candidates, journey_constants, wse_out,
-                                          L, U, alpha, gamma, gamma_inf)
-                print(f"[campaign] B: elastik nokta Sigma={s_wse:.2f}", flush=True)
-                if s_wse < best_sigma - 1e-9:
-                    best_partial, best_sigma, best_killed = str(wse_out), s_wse, round_killed
-            lns_wall = max(600.0, deadline - time.time() - 600)
-        else:
-            lns_wall = args.round_wall_sec
-
-        summary, _console = _run_lns_round(best_partial, directions_file,
-                                           lns_wall, out_prefix, args.seed)
-
         round_rec = {"round": n_round, "mode": mode, "k": round_k if mode == "A" else "ALL",
                      "kills_added": len(kills), "equalization_only": len(eq_only),
                      "sigma_before": sigma_before}
+
+        # HER turda önce mini-elastik: kill'leri tam serbestlikte gerçekleştir
+        # (gece-2 düzeltmesi -- gerekçe _run_elastic_step docstring'inde).
+        elastic_path = _run_elastic_step(directions_file, campaign_dir, n_round)
+        if elastic_path is None:
+            mechanics.append((False, False))
+            if mode == "B":
+                mode = "A"  # B'nin tam-cover elastiği tıkandı -- A'ya dön (level07 kliği)
+            k = max(10, k // 2)
+            round_rec.update({"status": "elastic-failed",
+                              "next_repair_decision": f"revert+K->{k}",
+                              "validator_status": "not-run",
+                              "wall_sec": round(time.time() - t0, 1)})
+            print(f"[campaign] round {n_round}: elastik adım BAŞARISIZ -- "
+                  f"kill'ler geri alındı, K={k}", flush=True)
+            (campaign_dir / f"round_{n_round}.json").write_text(
+                json.dumps(round_rec, indent=2, ensure_ascii=False))
+            campaign_log["rounds"].append(round_rec)
+            _persist_log()
+            if n_round == 2 and mode == "A":
+                verdict = _escalation_check()
+                if verdict == "stop":
+                    _final_report("early_stop_mechanics")
+                    return
+                if verdict == "switch-B":
+                    mode = "B"
+            continue
+
+        _, s_el, _, _ = _measure(candidates, journey_constants, elastic_path,
+                                 L, U, alpha, gamma, gamma_inf)
+        round_rec["sigma_after_elastic"] = s_el
+        print(f"[campaign] round {n_round}: elastik nokta Sigma={s_el:.2f} "
+              f"(best={best_sigma:.2f})", flush=True)
+        if s_el < best_sigma - 1e-9:
+            best_partial, best_sigma, best_killed = str(elastic_path), s_el, round_killed
+            if best_sigma <= SIGMA_ZERO_EPS:
+                v = _strict_validate(best_partial, config)
+                round_rec["validator_status"] = f"strict:{'valid' if v.is_valid else 'INVALID'}"
+                campaign_log["rounds"].append(round_rec)
+                (campaign_dir / f"round_{n_round}.json").write_text(
+                    json.dumps(round_rec, indent=2, ensure_ascii=False))
+                if v.is_valid:
+                    _final_report("SIGMA_ZERO_VALID -- outputs/ YAZILMADI, kullanıcı onayı bekleniyor")
+                else:
+                    for viol in v.violations[:15]:
+                        print(f"  [violation] {viol}", flush=True)
+                    _final_report("SIGMA_ZERO_BUT_INVALID -- anomali, insan incelemesi gerekli")
+                return
+
+        lns_wall = args.round_wall_sec if mode == "A" else max(600.0, deadline - time.time() - 900)
+        # LNS referansı HER ZAMAN bu turun elastik noktası: kill-tutarlı tek nokta o
+        summary, _console = _run_lns_round(elastic_path, directions_file,
+                                           lns_wall, out_prefix, args.seed)
         if summary is None:
             mechanics.append((len(kills) > 0, False))
             round_rec.update({"status": "failed", "next_repair_decision": "revert+continue",
@@ -334,15 +406,11 @@ def main():
 
         # Spec §4.5: ilk 2 tur sonunda üç dallı karar (yalnız A modunda)
         if mode == "A" and n_round == 2:
-            mech_sound = all(m[0] for m in mechanics) and any(m[1] for m in mechanics)
-            decision = escalation_decision(sigma_campaign_start, best_sigma, mech_sound)
-            print(f"[campaign] eskalasyon (2 tur sonu): {decision} "
-                  f"(Sigma {sigma_campaign_start:.2f}->{best_sigma:.2f}, "
-                  f"mekanik={'sağlam' if mech_sound else 'bozuk'})", flush=True)
-            if decision == "early-stop":
+            verdict = _escalation_check()
+            if verdict == "stop":
                 _final_report("early_stop_mechanics")
                 return
-            if decision == "switch-B":
+            if verdict == "switch-B":
                 mode = "B"
 
 
