@@ -1,0 +1,84 @@
+{
+  "data_provenance": {
+    "FULL_OD": {
+      "path": "/Users/sevketugurel/Desktop/THY/data_raw/O&D Rakip Ba\u011flant\u0131 Tablosu.xlsx",
+      "sha256": "fec548202bd59c56ac7fbfda02169184e85e2fb840ea11c6fcf9a035aac858b4",
+      "size_bytes": 5553508
+    }
+  },
+  "decision": {
+    "fallback_tier": null,
+    "gamma_star": null,
+    "rationale": "independent-pair lower bound (c) never reaches 0 within the swept range (45, 60, 90, 120, 150, 180) -- \u0393*>180. Per Kap\u0131-B instructions: do NOT run the Kap\u0131-C campaign, report this finding, proceed to Kap\u0131-D.",
+    "run_campaign": false
+  },
+  "gamma_sweep": [
+    45,
+    60,
+    90,
+    120,
+    150,
+    180
+  ],
+  "n_candidates": 18147,
+  "n_pairs_with_both_directions": 3258,
+  "official_gamma": 30,
+  "rows": [
+    {
+      "baseline_e2_violation_count": 1222,
+      "baseline_e2_violation_mass_min": 70072.5,
+      "gamma": 30,
+      "independent_pair_lower_bound_min": 5055.0,
+      "is_official": true,
+      "static_infeasible_pairs": 63
+    },
+    {
+      "baseline_e2_violation_count": 926,
+      "baseline_e2_violation_mass_min": 53245.0,
+      "gamma": 45,
+      "independent_pair_lower_bound_min": 4200.0,
+      "is_official": false,
+      "static_infeasible_pairs": 49
+    },
+    {
+      "baseline_e2_violation_count": 710,
+      "baseline_e2_violation_mass_min": 40712.5,
+      "gamma": 60,
+      "independent_pair_lower_bound_min": 3552.5,
+      "is_official": false,
+      "static_infeasible_pairs": 38
+    },
+    {
+      "baseline_e2_violation_count": 333,
+      "baseline_e2_violation_mass_min": 25325.0,
+      "gamma": 90,
+      "independent_pair_lower_bound_min": 2502.5,
+      "is_official": false,
+      "static_infeasible_pairs": 29
+    },
+    {
+      "baseline_e2_violation_count": 215,
+      "baseline_e2_violation_mass_min": 17032.5,
+      "gamma": 120,
+      "independent_pair_lower_bound_min": 1632.5,
+      "is_official": false,
+      "static_infeasible_pairs": 29
+    },
+    {
+      "baseline_e2_violation_count": 136,
+      "baseline_e2_violation_mass_min": 11427.5,
+      "gamma": 150,
+      "independent_pair_lower_bound_min": 1047.5,
+      "is_official": false,
+      "static_infeasible_pairs": 11
+    },
+    {
+      "baseline_e2_violation_count": 92,
+      "baseline_e2_violation_mass_min": 8165.0,
+      "gamma": 180,
+      "independent_pair_lower_bound_min": 717.5,
+      "is_official": false,
+      "static_infeasible_pairs": 7
+    }
+  ]
+}

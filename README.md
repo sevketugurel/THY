@@ -49,6 +49,14 @@ BAŞINA yeterli değildir. Not: adım 2, `scripts/run_lns.py`'nin çok-iterasyon
 (dakikalarca süren) LNS kampanyasının yerine geçmez — o, ayrı ve daha uzun
 soluklu bir keşif/teşhis aracı olarak kalır (bkz. `docs/STATUS.md` Kapı-3).
 
+## Paketlenmiş çıktılar (`outputs/`)
+
+Komutları yeniden koşmadan sonuçları incelemek için: `outputs/fixture_output.json`
+(sentetik demo referansı) ve `outputs/full_data_output.json` (**resmî
+full-data teslim çıktısı, Γ=30** — gerçek ölçülmüş koşu, şema-uyumlu teşhis,
+`objective_value: null`, ihlalli tarife YOK). `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json`
+raporun bir EKİDİR, resmî sonucu değiştirmez — ayrıntı `KURULUM.md` §4b.
+
 ## Determinizm
 
 Aynı girdi + aynı seed için `objective_value` ve tüm liste alanları

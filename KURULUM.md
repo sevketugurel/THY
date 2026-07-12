@@ -108,6 +108,23 @@ merdiveninin kendi garantisidir ve gizli test senaryolarında da geçerlidir.
 | `2` | Komut satırı argüman hatası (ör. `--fixture` ve `--full-data` ikisi birden veya hiçbiri verilmemiş, ya da `--config` eksik) — argparse standardı. |
 | (traceback) | `data_raw/` dosyaları eksik/yanlış adlı ya da `--config` dosyası bulunamıyor → Python `FileNotFoundError` ile anlamlı bir hata mesajıyla durur (şema hatası gizli-test'te de aynı şekilde davranır, bkz. loader'ların şema-doğrulaması). |
 
+## 4b · Paketlenmiş çıktı dosyaları (`outputs/`)
+
+Bu paket, yukarıdaki komutları yeniden koşmadan sonuçları incelemek
+isteyenler için önceden üretilmiş çıktıları `outputs/` altında içerir:
+
+| Dosya | İçerik | Resmî mi? |
+|---|---|---|
+| `outputs/fixture_output.json` | `--fixture` komutunun çıktısı (668.75/optimal/valid=True) | Evet — sentetik demo referansı |
+| `outputs/full_data_output.json` | `--full-data`'nın GERÇEK ölçülmüş koşusu (44dk22s, Kapı-10) — şema-uyumlu teşhis çıktısı, **objective_value=null, ihlalli tarife YOK** | **Evet — resmî full-data teslim çıktısı (Γ=30)** |
+| `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json` | Kapı-B'nin solver-free Γ ön-tarama sonucu (Γ ∈ {30,45,...,180}) — EK, resmî değil | Hayır — yalnızca rapor eki, resmî konfigürasyon Γ=30'da KALIR |
+
+`outputs/full_data_output.json`'ın `objective_value: null` olması bir hata
+DEĞİLDİR — üretim merdiveninin üç adımının hiçbiri doğrulanmış bir sonuç
+üretemediğinde bilinçli olarak yazılan şema-uyumlu teşhis çıktısıdır (bkz.
+§3c ve `docs/report.md` §5). `Γ` duyarlılık taraması, resmî sonucu
+DEĞİŞTİRMEZ — yalnızca raporun bir eki olarak sunulur.
+
 ## 5 · Sorun giderme
 
 - **`ModuleNotFoundError: No module named 'src'`** → `.venv`'i aktive

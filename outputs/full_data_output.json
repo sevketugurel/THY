@@ -1,0 +1,11 @@
+{
+  "adjusted_flight_times": [],
+  "k_od_sources": [],
+  "objective_value": null,
+  "ranking_results": [],
+  "selected_connections": [],
+  "solver_metrics": {
+    "solve_time_sec": 0.0,
+    "status": "no_feasible_solution_found"
+  }
+}

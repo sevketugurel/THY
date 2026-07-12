@@ -1,0 +1,318 @@
+{
+  "adjusted_flight_times": [
+    {
+      "flno": 9101,
+      "gun": 1,
+      "role": "IB",
+      "time_min": 670
+    },
+    {
+      "flno": 9101,
+      "gun": 2,
+      "role": "IB",
+      "time_min": 2110
+    },
+    {
+      "flno": 9102,
+      "gun": 1,
+      "role": "IB",
+      "time_min": 450
+    },
+    {
+      "flno": 9102,
+      "gun": 2,
+      "role": "IB",
+      "time_min": 1903
+    },
+    {
+      "flno": 9201,
+      "gun": 1,
+      "role": "IB",
+      "time_min": 704
+    },
+    {
+      "flno": 9201,
+      "gun": 2,
+      "role": "IB",
+      "time_min": 2129
+    },
+    {
+      "flno": 9202,
+      "gun": 1,
+      "role": "IB",
+      "time_min": 320
+    },
+    {
+      "flno": 9202,
+      "gun": 2,
+      "role": "IB",
+      "time_min": 1760
+    },
+    {
+      "flno": 9301,
+      "gun": 1,
+      "role": "IB",
+      "time_min": 690
+    },
+    {
+      "flno": 9301,
+      "gun": 2,
+      "role": "IB",
+      "time_min": 2140
+    },
+    {
+      "flno": 9401,
+      "gun": 1,
+      "role": "IB",
+      "time_min": 549
+    },
+    {
+      "flno": 9401,
+      "gun": 2,
+      "role": "IB",
+      "time_min": 1989
+    },
+    {
+      "flno": 9111,
+      "gun": 1,
+      "role": "OB",
+      "time_min": 511
+    },
+    {
+      "flno": 9111,
+      "gun": 2,
+      "role": "OB",
+      "time_min": 1966
+    },
+    {
+      "flno": 9112,
+      "gun": 1,
+      "role": "OB",
+      "time_min": 750
+    },
+    {
+      "flno": 9112,
+      "gun": 2,
+      "role": "OB",
+      "time_min": 2203
+    },
+    {
+      "flno": 9211,
+      "gun": 1,
+      "role": "OB",
+      "time_min": 620
+    },
+    {
+      "flno": 9211,
+      "gun": 2,
+      "role": "OB",
+      "time_min": 2060
+    },
+    {
+      "flno": 9212,
+      "gun": 1,
+      "role": "OB",
+      "time_min": 830
+    },
+    {
+      "flno": 9212,
+      "gun": 2,
+      "role": "OB",
+      "time_min": 2282
+    },
+    {
+      "flno": 9311,
+      "gun": 1,
+      "role": "OB",
+      "time_min": 380
+    },
+    {
+      "flno": 9311,
+      "gun": 2,
+      "role": "OB",
+      "time_min": 1820
+    },
+    {
+      "flno": 9411,
+      "gun": 1,
+      "role": "OB",
+      "time_min": 175
+    },
+    {
+      "flno": 9411,
+      "gun": 2,
+      "role": "OB",
+      "time_min": 1630
+    }
+  ],
+  "k_od_sources": [],
+  "objective_value": 668.75,
+  "ranking_results": [
+    {
+      "beaten_rivals": [
+        "R1"
+      ],
+      "d": "ZZB",
+      "gun": 1,
+      "o": "ZZA",
+      "rank": 1
+    },
+    {
+      "beaten_rivals": [],
+      "d": "ZZB",
+      "gun": 2,
+      "o": "ZZA",
+      "rank": 0
+    },
+    {
+      "beaten_rivals": [
+        "R3",
+        "R4",
+        "R5"
+      ],
+      "d": "ZZA",
+      "gun": 1,
+      "o": "ZZB",
+      "rank": 1
+    },
+    {
+      "beaten_rivals": [],
+      "d": "ZZA",
+      "gun": 2,
+      "o": "ZZB",
+      "rank": 0
+    }
+  ],
+  "selected_connections": [
+    {
+      "flno1": 9101,
+      "flno2": 9112,
+      "gap_min": 80,
+      "gun": 1,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9101,
+      "flno2": 9112,
+      "gap_min": 93,
+      "gun": 2,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9102,
+      "flno2": 9111,
+      "gap_min": 61,
+      "gun": 1,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9102,
+      "flno2": 9111,
+      "gap_min": 63,
+      "gun": 2,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9102,
+      "flno2": 9112,
+      "gap_min": 300,
+      "gun": 1,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9102,
+      "flno2": 9112,
+      "gap_min": 300,
+      "gun": 2,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9301,
+      "flno2": 9112,
+      "gap_min": 60,
+      "gun": 1,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9301,
+      "flno2": 9112,
+      "gap_min": 63,
+      "gun": 2,
+      "od": "ZZA-ZZB"
+    },
+    {
+      "flno1": 9201,
+      "flno2": 9212,
+      "gap_min": 126,
+      "gun": 1,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9201,
+      "flno2": 9212,
+      "gap_min": 153,
+      "gun": 2,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9202,
+      "flno2": 9211,
+      "gap_min": 300,
+      "gun": 1,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9202,
+      "flno2": 9211,
+      "gap_min": 300,
+      "gun": 2,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9202,
+      "flno2": 9311,
+      "gap_min": 60,
+      "gun": 1,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9202,
+      "flno2": 9311,
+      "gap_min": 60,
+      "gun": 2,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9401,
+      "flno2": 9211,
+      "gap_min": 71,
+      "gun": 1,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9401,
+      "flno2": 9211,
+      "gap_min": 71,
+      "gun": 2,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9401,
+      "flno2": 9212,
+      "gap_min": 281,
+      "gun": 1,
+      "od": "ZZB-ZZA"
+    },
+    {
+      "flno1": 9401,
+      "flno2": 9212,
+      "gap_min": 293,
+      "gun": 2,
+      "od": "ZZB-ZZA"
+    }
+  ],
+  "solver_metrics": {
+    "solve_time_sec": 0.17796015739440918,
+    "status": "optimal"
+  }
+}
