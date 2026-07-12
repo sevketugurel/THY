@@ -22,6 +22,7 @@ from src.model.build import build_model_m4
 from src.config.paths import FULL_CR, FULL_FP, FULL_OD, FULL_YV
 from src.output.writer import write_output
 from src.solve.runner import solve
+from src.solve.warm_pipeline import solve_full_data_warm
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
 
 FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
@@ -36,6 +37,8 @@ def main(argv=None) -> int:
     parser.add_argument("--fixture", action="store_true", help="use tests/fixtures synthetic data")
     parser.add_argument("--full-data", action="store_true", help="use data_raw/ full competition data")
     parser.add_argument("--output", default="runs/output.json")
+    parser.add_argument("--no-warm-start", action="store_true",
+                        help="full-data only: skip warm-start pipeline, use direct solve (slow, often hangs)")
     args = parser.parse_args(argv)
 
     if args.fixture == args.full_data:
@@ -121,15 +124,34 @@ def main(argv=None) -> int:
         except KeyError:
             continue  # VARSAYIM: rotasyon verisi olmayan istasyon icin A atlanir
 
-    model = build_model_m4(
-        candidates, rho, journey_constants, rival_data, b_od_data, ranking_table,
-        pairs_df, r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
-        epoch_anchor=anchor, alpha=config["alpha"], gamma=config["gamma"],
-        tk_rows=tk, bucket_size_min=config["bucket_size_min"],
-        capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
-        L=L, U=U, monotonic=monotonic,
-    )
-    result = solve(model, solver=config["solver"], time_limit_sec=config["time_limit_sec"], seed=config["seed"])
+    warm_log = None
+    if args.full_data and not args.no_warm_start:
+        log_dir = Path(args.output).parent / "warm_highs_logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        print("[main] full-data: using warm-start pipeline (A+G+F -> elastic -> reward)", flush=True)
+        result, warm_log = solve_full_data_warm(
+            candidates=candidates, rho=rho, journey_constants=journey_constants,
+            rival_data=rival_data, b_od_data=b_od_data, ranking_table=ranking_table,
+            pairs_df=pairs_df, r_o_lookup=r_o_lookup, tk_rows=tk, anchor=anchor,
+            config=config, log_dir=log_dir,
+            core_time_limit_sec=min(600.0, config["time_limit_sec"]),
+            elastic_time_limit_sec=min(600.0, config["time_limit_sec"]),
+            reward_time_limit_sec=min(600.0, config["time_limit_sec"]),
+            watchdog_margin_sec=120.0,
+            reward_watchdog_margin_sec=300.0,
+        )
+        if warm_log:
+            print(f"[main] warm pipeline steps: {warm_log}", flush=True)
+    else:
+        model = build_model_m4(
+            candidates, rho, journey_constants, rival_data, b_od_data, ranking_table,
+            pairs_df, r_o_lookup, tau=config["tau"], x_dev=config["X_dev"],
+            epoch_anchor=anchor, alpha=config["alpha"], gamma=config["gamma"],
+            tk_rows=tk, bucket_size_min=config["bucket_size_min"],
+            capacity_departure=config["capacity_departure"], capacity_arrival=config["capacity_arrival"],
+            L=L, U=U, monotonic=monotonic,
+        )
+        result = solve(model, solver=config["solver"], time_limit_sec=config["time_limit_sec"], seed=config["seed"])
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

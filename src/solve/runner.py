@@ -69,7 +69,7 @@ class SolveResult:
 def solve(
     model: pyo.ConcreteModel, solver: str, time_limit_sec: float, seed: int,
     mip_gap: float = None, log_file=None, mip_heuristic_effort: float = None,
-    extra_highs_options: dict = None, warmstart: bool = False,
+    extra_highs_options: dict = None, warmstart: bool = False, stream_solver: bool = None,
 ) -> SolveResult:
     pyomo_solver_name = _SOLVER_NAMES[solver]
     opt = pyo.SolverFactory(pyomo_solver_name)
@@ -93,13 +93,10 @@ def solve(
             # artifact (mip_detect_symmetry) rather than a size artifact.
             highs_options.update(extra_highs_options)
         if log_file is not None:
-            # Stream to terminal (visible under nohup/tee) AND persist to a
-            # parseable per-step file -- M5's observability requirement
-            # (previously solve_with_ladder ran completely silently).
-            opt.config.stream_solver = True
             highs_options["log_file"] = str(log_file)
-        else:
-            opt.config.stream_solver = False
+        if stream_solver is None:
+            stream_solver = log_file is None
+        opt.config.stream_solver = stream_solver
         opt.highs_options = highs_options
 
     # load_solutions=False: an infeasible/unbounded model has no solution to

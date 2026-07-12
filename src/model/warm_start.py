@@ -23,25 +23,24 @@ from collections import defaultdict
 from src.model.constraints_operations import _day_offsets
 
 
-def derive_and_set_warm_start(
-    model, candidates, journey_constants: dict, arr_times: dict, dep_times: dict,
-    L: int, U: int, alpha: float, gamma: int, bucket_size_min: int, epoch_anchor=None,
-) -> dict:
-    """Sets .value on every Var in an already-built elastic model. Returns a
-    small summary dict (total_s_e1, total_s_e2) for logging."""
+def _derive_x_gap(arr_times, dep_times, candidates, L, U):
+    """B's deterministic reification: gap from times, x from gap interval."""
+    gap_of, x_of = {}, {}
+    for i, c in enumerate(candidates):
+        gap = dep_times[c.r2_id] - arr_times[c.r1_id]
+        gap_of[i] = gap
+        x_of[i] = 1 if L <= gap <= U else 0
+    return gap_of, x_of
+
+
+def _set_agf_and_bef_vars(model, candidates, journey_constants, arr_times, dep_times, gap_of, x_of,
+                          L, U, bucket_size_min, epoch_anchor, alpha, gamma, include_elastic_slack):
+    """Shared warm-start assignment for t/x/gap/F/G/E1/E2 vars."""
     for r in model.ARR_INSTANCES:
         model.t_arr[r].value = arr_times[r]
     for r in model.DEP_INSTANCES:
         model.t_dep[r].value = dep_times[r]
 
-    # G's T_ref (cluster reference time, constraints_operations.py): each
-    # cluster's constraint is T_ref <= t-day_offset <= T_ref+x_dev for every
-    # gun in the cluster -- since the SOURCE point (arr_times/dep_times)
-    # already satisfies G (it came from a solved A+G+F model), the min over
-    # the cluster's own (t-day_offset) values is a valid T_ref: it satisfies
-    # g_lower exactly for the minimizing gun and by construction for the
-    # rest, and g_upper holds for all because max-min<=x_dev already (G was
-    # genuinely satisfied at the source).
     if hasattr(model, "T_ref"):
         day_offset = _day_offsets(candidates, epoch_anchor)
         cluster_guns = defaultdict(list)
@@ -68,23 +67,14 @@ def derive_and_set_warm_start(
     # partition.x_const/gap_const), so indexing model.x[i] for one would
     # raise a KeyError.
     model_candidates = set(model.CANDIDATES)
-    gap_of, x_of = {}, {}
     for i, c in enumerate(candidates):
-        gap = dep_times[c.r2_id] - arr_times[c.r1_id]
-        gap_of[i] = gap
-        x_of[i] = 1 if L <= gap <= U else 0
+        gap, x = gap_of[i], x_of[i]
         if i not in model_candidates:
             continue
-        model.x[i].value = x_of[i]
+        model.x[i].value = x
         model.gap[i].value = gap
-        # y only matters when x=0 (B's backward-reification switch selects
-        # which side of [L,U] gap sits on to relax the correct half of the
-        # backward pair) -- see constraints_selection.py's backward_below/
-        # backward_above rules for the derivation.
-        model.y[i].value = 1 if (x_of[i] == 0 and gap > U) else 0
+        model.y[i].value = 1 if (x == 0 and gap > U) else 0
 
-    # F: bucket assignment is an EXACT decomposition of t (matches the
-    # row-explosion-fix equality t = bucket_start*z + offset).
     for (role, flno, gun, b) in model.DEP_Z_INDEX:
         t = dep_times[(role, flno, gun)]
         model.z_dep[role, flno, gun, b].value = 1 if b == t // bucket_size_min else 0
@@ -98,20 +88,20 @@ def derive_and_set_warm_start(
         t = arr_times[r]
         model.arr_offset[r].value = t - (t // bucket_size_min) * bucket_size_min
 
-    # E2's a_dir/w (only the real backing vars for multi-candidate
-    # directions -- singleton markets are folded Expressions, no .value).
-    for (o, d, gun) in model.A_DIR_MARKETS:
-        offered = [i for i in groups[(o, d, gun)] if x_of[i] == 1]
-        model._a_dir_var[o, d, gun].value = 1 if offered else 0
-    for i in model.W_CANDIDATES:
-        o, d, gun = candidates[i].o, candidates[i].d, candidates[i].gun
-        offered = [j for j in groups[(o, d, gun)] if x_of[j] == 1]
-        if not offered:
-            model._w_var[i].value = 0
-            continue
-        j_of = {j: journey_constants[(o, d)] + gap_of[j] for j in offered}
-        argmin_j = min(offered, key=lambda j: j_of[j])
-        model._w_var[i].value = 1 if i == argmin_j else 0
+    if hasattr(model, "A_DIR_MARKETS"):
+        for (o, d, gun) in model.A_DIR_MARKETS:
+            offered = [i for i in groups[(o, d, gun)] if x_of[i] == 1]
+            model._a_dir_var[o, d, gun].value = 1 if offered else 0
+    if hasattr(model, "W_CANDIDATES"):
+        for i in model.W_CANDIDATES:
+            o, d, gun = candidates[i].o, candidates[i].d, candidates[i].gun
+            offered = [j for j in groups[(o, d, gun)] if x_of[j] == 1]
+            if not offered:
+                model._w_var[i].value = 0
+                continue
+            j_of = {j: journey_constants[(o, d)] + gap_of[j] for j in offered}
+            argmin_j = min(offered, key=lambda j: j_of[j])
+            model._w_var[i].value = 1 if i == argmin_j else 0
 
     market_j_bounds = {}
     for (o, d, gun), idxs in groups.items():
@@ -120,42 +110,31 @@ def derive_and_set_warm_start(
         market_j_bounds[(o, d, gun)] = (min(j_los), max(j_his))
 
     jbest_of = {}
-    for (o, d, gun) in model.E2_MARKETS:
-        offered = [i for i in groups[(o, d, gun)] if x_of[i] == 1]
-        # If nobody's offered, Jbest is non-binding (every jbest_le relaxes
-        # via Big-M since x=0 everywhere in the group) -- any value in its
-        # own declared bounds is valid; jd_lo is as good as any.
-        jbest = min(journey_constants[(o, d)] + gap_of[i] for i in offered) if offered \
-            else market_j_bounds[(o, d, gun)][0]
-        jbest_of[(o, d, gun)] = jbest
-        model.Jbest[o, d, gun].value = jbest
+    if hasattr(model, "E2_MARKETS"):
+        for (o, d, gun) in model.E2_MARKETS:
+            offered = [i for i in groups[(o, d, gun)] if x_of[i] == 1]
+            jbest = min(journey_constants[(o, d)] + gap_of[i] for i in offered) if offered \
+                else market_j_bounds[(o, d, gun)][0]
+            jbest_of[(o, d, gun)] = jbest
+            model.Jbest[o, d, gun].value = jbest
 
-    # s_e1: EXACT (E1 has no Big-M term at all).
     total_s_e1 = 0.0
-    for (o, d, gun) in model.E1_PAIRS:
-        n_fwd = sum(x_of[i] for i in groups[(o, d, gun)])
-        n_bwd = sum(x_of[i] for i in groups[(d, o, gun)])
-        s = max(0.0, abs(n_fwd - n_bwd) - alpha * (n_fwd + n_bwd))
-        model.s_e1[o, d, gun].value = s
-        total_s_e1 += s
+    if include_elastic_slack and hasattr(model, "s_e1"):
+        for (o, d, gun) in model.E1_PAIRS:
+            n_fwd = sum(x_of[i] for i in groups[(o, d, gun)])
+            n_bwd = sum(x_of[i] for i in groups[(d, o, gun)])
+            s = max(0.0, abs(n_fwd - n_bwd) - alpha * (n_fwd + n_bwd))
+            model.s_e1[o, d, gun].value = s
+            total_s_e1 += s
 
-    # s_e2: a safe conservative OVERESTIMATE -- ignores the Big-M relaxation
-    # term (2-a_fwd-a_bwd), which only ever makes the TRUE required slack
-    # SMALLER, never larger, so this is always sufficient for feasibility
-    # even if not perfectly tight.
     total_s_e2 = 0.0
-    for (o, d, gun) in model.E2_PAIRS:
-        j_fwd, j_bwd = jbest_of[(o, d, gun)], jbest_of[(d, o, gun)]
-        s = max(0.0, abs(j_fwd - j_bwd) - gamma)
-        model.s_e2[o, d, gun].value = s
-        total_s_e2 += s
+    if include_elastic_slack and hasattr(model, "s_e2"):
+        for (o, d, gun) in model.E2_PAIRS:
+            j_fwd, j_bwd = jbest_of[(o, d, gun)], jbest_of[(d, o, gun)]
+            s = max(0.0, abs(j_fwd - j_bwd) - gamma)
+            model.s_e2[o, d, gun].value = s
+            total_s_e2 += s
 
-    # Deviation-tracking vars (add_elastic_feasibility_objective's own
-    # add_deviation_tracking call) -- ONLY exist if that's already run
-    # before this function (required call order: build -> add objective ->
-    # derive_and_set_warm_start). EXACT: dev_plus/dev_minus is the standard
-    # absolute-value linearization of t-baseline, baseline is already fixed
-    # by add_deviation_tracking (window midpoint).
     if hasattr(model, "arr_dev_plus"):
         for r in model.ARR_INSTANCES:
             delta = arr_times[r] - model._arr_baseline[r]
@@ -166,4 +145,83 @@ def derive_and_set_warm_start(
             model.dep_dev_plus[r].value = max(0, delta)
             model.dep_dev_minus[r].value = max(0, -delta)
 
-    return {"total_s_e1": total_s_e1, "total_s_e2": total_s_e2}
+    return groups, jbest_of, {"total_s_e1": total_s_e1, "total_s_e2": total_s_e2}
+
+
+def derive_and_set_warm_start(
+    model, candidates, journey_constants: dict, arr_times: dict, dep_times: dict,
+    L: int, U: int, alpha: float, gamma: int, bucket_size_min: int, epoch_anchor=None,
+) -> dict:
+    gap_of, x_of = _derive_x_gap(arr_times, dep_times, candidates, L, U)
+    _, _, summary = _set_agf_and_bef_vars(
+        model, candidates, journey_constants, arr_times, dep_times, gap_of, x_of,
+        L, U, bucket_size_min, epoch_anchor, alpha, gamma, include_elastic_slack=True,
+    )
+    return summary
+
+
+def derive_and_set_warm_start_full(
+    model, candidates, journey_constants: dict, rival_data: dict,
+    arr_times: dict, dep_times: dict, L: int, U: int, gamma: int, bucket_size_min: int,
+    epoch_anchor=None, alpha: float = 0.0,
+) -> dict:
+    """Warm-start for build_model_m4: A-G operational vars + C slots + D rank."""
+    gap_of, x_of = _derive_x_gap(arr_times, dep_times, candidates, L, U)
+    groups, _, summary = _set_agf_and_bef_vars(
+        model, candidates, journey_constants, arr_times, dep_times, gap_of, x_of,
+        L, U, bucket_size_min, epoch_anchor, alpha, gamma, include_elastic_slack=False,
+    )
+
+    for (o, d, gun), idxs in groups.items():
+        n_offered = sum(x_of[i] for i in idxs)
+        j_max = len(idxs)
+        for j in range(1, j_max + 1):
+            model.s[o, d, gun, j].value = 1.0 if j <= n_offered else 0.0
+
+    always_beats, never_beats = set(), set()
+    for (o, d, gun) in model.MARKETS:
+        rivals = rival_data.get((o, d, gun), {})
+        for i in groups[(o, d, gun)]:
+            c = candidates[i]
+            for k in rivals:
+                t_comp = rivals[k]
+                j_lo = journey_constants[(c.o, c.d)] + c.gap_lo
+                j_hi = journey_constants[(c.o, c.d)] + c.gap_hi
+                if j_hi <= t_comp:
+                    always_beats.add((i, k))
+                elif j_lo > t_comp:
+                    never_beats.add((i, k))
+
+    if hasattr(model, "BEAT_PAIRS"):
+        for (i, k) in model.BEAT_PAIRS:
+            c = candidates[i]
+            j_pi = journey_constants[(c.o, c.d)] + gap_of[i]
+            t_comp = rival_data[(c.o, c.d, c.gun)][k]
+            model.beat[i, k].value = 1 if x_of[i] == 1 and j_pi <= t_comp else 0
+
+    if hasattr(model, "MARKET_RIVALS"):
+        for (o, d, gun, k) in model.MARKET_RIVALS:
+            beaten = 0
+            for i in groups[(o, d, gun)]:
+                if (i, k) in never_beats:
+                    continue
+                if (i, k) in always_beats:
+                    if x_of[i] == 1:
+                        beaten = 1
+                        break
+                elif (i, k) in model.BEAT_PAIRS and int(model.beat[i, k].value) == 1:
+                    beaten = 1
+                    break
+            model.beaten[o, d, gun, k].value = beaten
+
+    if hasattr(model, "ACTIVE_RANK_MARKETS"):
+        for (o, d, gun) in model.ACTIVE_RANK_MARKETS:
+            rivals = rival_data.get((o, d, gun), {})
+            n = len(rivals)
+            beaten_count = sum(int(model.beaten[o, d, gun, k].value) for k in rivals)
+            r = max(1, n - beaten_count) if n > 0 else 0
+            for rr in range(1, n + 1):
+                model.rank_onehot[o, d, gun, rr].value = 1 if rr == r else 0
+
+    summary["n_offered"] = sum(x_of.values())
+    return summary
