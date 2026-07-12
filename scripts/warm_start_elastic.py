@@ -56,6 +56,11 @@ def main():
                               "tier states no limit): overrides config's adjustable_window_min for this "
                               "run only (candidate generation AND the validator's own window check). "
                               "Omit to use src/config/standard.yaml's value unchanged.")
+    parser.add_argument("--deactivation-file", default=None,
+                         help="D6 (Plan B, conflict-deactivation campaign, this session): path to a JSON "
+                              "list of [o, d, gun] market-directions to fix x=0 for (src.model.deactivation). "
+                              "Applied AFTER warm-start derivation so .fix(0) is the final word. Omit for "
+                              "the original (no-deactivation) behavior.")
     args = parser.parse_args()
 
     t0 = time.time()
@@ -154,11 +159,18 @@ def main():
     if args.max_improving_sols is not None:
         elastic_solve_kwargs["extra_highs_options"] = {"mip_max_improving_sols": args.max_improving_sols}
 
+    directions_to_kill = []
+    if args.deactivation_file:
+        directions_to_kill = [tuple(d) for d in json.loads(Path(args.deactivation_file).read_text())]
+        print(f"[warm_start_elastic] Plan B: {len(directions_to_kill)} market-direction(s) "
+              f"deactivated from {args.deactivation_file}", flush=True)
+
     print(f"[warm_start_elastic] solving WITH warmstart=True (time_limit={args.time_limit_sec}s, "
           f"highs_log={highs_log_file})...", flush=True)
     t2 = time.time()
     result, build_time_sec = solve_step_with_watchdog(
-        {"model_kwargs": elastic_build_kwargs, "warm_start_kwargs": warm_start_kwargs},
+        {"model_kwargs": elastic_build_kwargs, "warm_start_kwargs": warm_start_kwargs,
+         "directions_to_kill": directions_to_kill},
         elastic_solve_kwargs, time_limit_sec=args.time_limit_sec,
         watchdog_margin_sec=args.watchdog_margin_sec, step_name="warm_start_elastic",
         worker_script=WARM_START_WORKER,

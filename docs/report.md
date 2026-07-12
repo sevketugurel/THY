@@ -179,6 +179,32 @@ Ham veri: `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json`, ayrıntı
 `docs/STATUS.md` "Kapı-B" bölümü, `ASSUMPTIONS.md` VARSAYIM-12
 GÜNCELLEME 6.
 
+**DÜZELTME (2026-07-12, sonraki turun K0 denetimi)**: yukarıdaki
+"bağımsız-çift alt sınır" sütunu, modelin kendi KARAR-0b/VARSAYIM-17
+muafiyet mekanizmasını (E2, `compute_gamma_infeasible_pairs`'ın statik
+kanıtladığı çiftlerden AYNI Γ'da MUAF tutulur, `constraints_balance.py::add_e2_constraints`)
+hesaba KATMIYORDU. Denetim doğrudan kanıtladı: bir çiftin bu alt sınıra
+pozitif katkısı olması ($g_{best}>\Gamma$) ile modelin o çifti AYNI Γ'da
+muaf tutması TAM AYNI koşuldur — yani tabloda raporlanan alt sınırın
+TAMAMI, modelin zaten muaf tutacağı çiftlerin kütlesinden ibaret. Muaf
+çiftler dışlanarak yeniden hesaplandığında, alt sınır **swept aralığın
+HER noktasında (Γ=30 dahil) tam olarak 0.0** çıkıyor (63/49/38/29/29/11/7
+muaf çift her Γ'da tek başına dışlanınca geriye kalan hiçbir çift
+pozitif katkı yapmıyor — bkz. denetim scripti, `runs/`'a commit
+edilmedi, sayılar bu notta). **Sonuç: "Γ*>180" bulgusu muafiyet-öncesi
+kütleyi içeriyordu; muaf-dışı tekil (bağımsız-çift) alt sınır 0 —
+asıl engel Γ'nın darlığı değil, çift-BAĞLAŞIMI (aynı bacakları paylaşan
+farklı pazar-çiftlerinin birbirini kilitlemesi).** Bu, Kapı-B'nin
+"Γ*>180 → kampanya koşulmadı" kararını GEÇERSİZ KILMAZ (gerçek bir solve
+hâlâ bacak-paylaşım kuplajı yüzünden Σs_e2=0'a ulaşamayabilir — bağımsız
+tahmin per-tanım kuplajı yok sayar), ama gerekçesini keskinleştirir: tek
+başına Γ gevşetmenin işe yaramayacağını gösteren dokuzuncu kanıt aslında
+YANLIŞ bir hesaba dayanıyordu; DOĞRU hesap (post-muafiyet) zaten
+sıfırdı, yani darboğazın Γ değil ağ-çapı kuplaj olduğu sonucu aynı
+kalıyor, sadece kanıt zinciri düzeltiliyor. Bu düzeltme aynı zamanda bu
+oturumun "kontrollü market-direction kapatma" stratejisinin (kuplajı
+KIRMAK için) gerekçesini güçlendiriyor — bkz. §7 (varsa) / `docs/STATUS.md`.
+
 **Üretim merdiveni garantisi** (Kriter 3 + dayanıklılık): `main.py --full-data`
 tek komutla 3 adımlı bir merdiven koşar — (1) tam model bütçeli solve, (2)
 başarısızsa TEK bir bekçili elastik solve denemesi (Σslack≈0 ise

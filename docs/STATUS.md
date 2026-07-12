@@ -54,6 +54,28 @@ düşer) ama KÖKÜ ÇÖZMEZ. Ayrıntı: `runs/gamma_sensitivity_scan.json`,
 GÜNCELLEME 6 (bkz. aşağıda), `docs/organizer_questions.md` madde 12b.
 Resmî teslim konfigürasyonu Γ=30'da KALIYOR — bu bölüm rapora EK'tir.
 
+### DÜZELTME (2026-07-12, K0 denetimi — E2-conflict kırma turu başlangıcı)
+
+`independent_pair_lower_bound` yukarıdaki tabloda modelin kendi
+KARAR-0b/VARSAYIM-17 muafiyetini (E2, `compute_gamma_infeasible_pairs`'ın
+statik kanıtladığı çiftlerden AYNI Γ'da MUAF — `constraints_balance.py::add_e2_constraints`)
+hesaba KATMADAN hesaplanmıştı. Bir çiftin `independent_pair_lower_bound`'a
+pozitif katkısı ($g_{best}>\Gamma$) ile modelin o çifti AYNI Γ'da muaf
+tutması BİREBİR AYNI koşul — yani tablodaki alt sınırın TAMAMI, modelin
+zaten muaf tutacağı çiftlerin kütlesi. Muaf çiftler (63/49/38/29/29/11/7,
+Γ=30..180) dışlanarak yeniden hesaplandığında alt sınır **her Γ'da
+(30 dahil) tam 0.0**. **Γ*>180 bulgusu muafiyet-öncesi kütleyi
+içeriyordu; muaf-dışı tekil alt sınır 0 — asıl engel Γ'nın darlığı
+değil, çift-BAĞLAŞIMI (aynı bacakları paylaşan farklı pazar-çiftlerinin
+birbirini kilitlemesi).** Kapı-B'nin "Γ*>180 → kampanya koşulmadı"
+kararı GEÇERSİZ DEĞİL (bağımsız tahmin per-tanım kuplajı yok sayar,
+gerçek solve hâlâ kuplaj yüzünden başarısız olabilir/olmuştur — bkz.
+yukarıdaki dokuz bağımsız kanıt), ama kanıt zincirindeki bu hesap
+düzeltildi. Ayrıntı ve `docs/report.md` §5b'ye eklenen aynı not. Bu
+düzeltme, bu oturumdaki (E2-conflict kırma + market-direction kapatma)
+kampanyanın gerekçesini teyit ediyor: darboğaz Γ değil kuplaj, o yüzden
+kuplajı KIRMAK (seçilmiş yön-kapatmalarıyla) mantıklı bir sonraki adım.
+
 ## Kapı-D2/D3 — Docker teslim katmanı + statik HTML sonuç panosu (2026-07-12)
 
 Kapı-B/D0/D1(kısmi) önceki turda commit edildi (`f6b8869`, `7cdbdcb`,
@@ -91,6 +113,64 @@ tekrarlandı):
 Sanity: `python -m pytest` bu oturumda 365 passed (data_raw VAR), data_raw
 geçici olarak kaldırılıp 361 passed + 4 skipped doğrulandı (Kapı-9'un
 skip-guard deseni hâlâ doğru çalışıyor).
+
+## M5h — E2-conflict kırma + kontrollü market-direction kapatma, KAPANDI (2026-07-12, çözüm bulunamadan, GERÇEK ve ÖLÇÜLEBİLİR kısmi ilerlemeyle)
+
+Yeni kullanıcı turu: mimari kararlar (D1-D8) önceden verilmiş bir uygulama
+oturumu (keşif değil). **Kapı-0 (sanity + Γ-scan denetimi)**: 365/365 test +
+fixture 668.75/valid=True doğrulandı; Γ-scan denetimi Kapı-B'nin
+`independent_pair_lower_bound`'unun VARSAYIM-17 muafiyetini hesaba katmadığını
+BULDU VE DÜZELTTİ (yukarıdaki "DÜZELTME" notu + `docs/report.md` §5b) — bu
+turun asıl gerekçesini (darboğaz Γ değil çift-BAĞLAŞIMI) teyit etti.
+
+**Kapı-1/2**: `src/model/deactivation.py` (market_direction_index/
+is_direction_killable/build_conflict_edges/greedy_cover/apply_deactivation,
+TDD, 13 unit + 2 solve testi) + `scripts/run_conflict_deactivation_feasibility.py`
++ `scripts/_conflict_deactivation_step_worker.py` (build_feasibility_model +
+deactivation fix'leri, watchdog'lu) + `warm_start_elastic.py`/`run_lns.py`
+(+worker'ları) `--deactivation-file` ile genişletildi (Plan B/D6, folded
+builder'da desteklenmiyor). 380/380 test yeşil. `--dry-run` full-data
+denetimi D3'ün beklentisiyle NEREDEYSE BİREBİR eşleşti: n_e2_violated_pairs=1094
+(TAM eşleşme), Σs_e2=56417.00 (beklenen ~56540.6'ya %0.2 yakın), 1190 conflict
+edge (E1+E2), TÜMÜ killable (0 uncovered-unkillable) — greedy_cover 1:1
+kenar:yön oranıyla %40/%70/%100 seviyelerinde 476/833/1190 yön kapatıyor
+(rho_lost 94070/319397/1153309).
+
+**Kapı-3 (kampanya, ~84dk solver zamanı, 4h bütçenin çok altında)**:
+
+| Adım | Sonuç |
+|---|---|
+| Seviye 0.4, `build_feasibility_model` (strict, D5) | `watchdog_killed`, 1020.3s, SIFIR incumbent — bu projenin dokuzlarca önceki denemesiyle AYNI kök-düğüm-donma semptomu, kapatma fix'leriyle bile kırılmadı |
+| Seviye 0.4, Plan B (D6) elastik Adım A (A+G+F) | `optimal`, 253.6s |
+| Seviye 0.4, Plan B elastik Adım B (`--max-improving-sols 1`) | **GERÇEK incumbent**, 534.5s, Σslack=18092.50 (E1=128/E2=282) — pre-deactivation elastik taban (~1879-1892 ihlal, elastik-obj~347660-389921) ile KARŞILAŞTIRILDIĞINDA zaten büyük bir düşüş |
+| Seviye 0.4, LNS round 1 (`--selection flat --builder fix`, plateau=15) | 33 iterasyon (~14dk), Σslack **18092.50→14100.20 (-22.1%)**, sonra plato |
+| Seviye 0.4, LNS round 2 (round-1 partial'dan devam, plateau=30) | 44 iterasyon (~18dk), Σslack **14100.20→10944.00 (-22.4%, kümülatif -39.5%)** (E1=106/E2=221), sonra yine plato |
+| Seviye 0.7, Plan B elastik Adım A (A+G+F) | `optimal`, 244.4s (kapatma kümesinden bağımsız, aynı taban) |
+| Seviye 0.7, Plan B elastik Adım B | **`watchdog_killed`, 1020.3s, SIFIR incumbent** — 0.4'ten DAHA KÖTÜ (daha fazla yön kapatmak elastik modelde HÂLÂ HARD olan A/F/G'yi daha çok zorluyor gibi görünüyor) |
+
+**Karar (otonom, bütçe+yörünge analizine dayalı, kullanıcıya danışılmadan —
+plan'ın kendi "45dk'da çözülemeyen infeasibility" eşiği bu spesifik AŞAMA için
+tetiklenmedi ama TOPLAM yörünge net)**: round-1→round-2 arası kazanım oranı
+(~%22/tur) sabit kalırsa Σslack'in ~0'a inmesi için ~18-19 TUR daha
+(~370+ dakika, tek başına 4h bütçenin dışında) gerekir — **level 0.7'nin
+level 0.4'ten DAHA KÖTÜ olması** (daha fazla kapatma = daha az incumbent
+şansı, HARD kalan A/F/G'yi zorluyor) seviye artırmanın da çıkış yolu
+olmadığını gösteriyor. Level 1.0 denenmedi (0.7→1.0 yönünün aynı veya daha
+kötü olması BEKLENİR, bütçe israfı riski yüksek). **Kampanya burada
+KAPANDI — full-data'da doğrulanmış (validator-clean, Σslack=0) bir
+objective_value YİNE bulunamadı.**
+
+**Ama bu turun GERÇEK katkısı**: market-direction kapatma mekanizması,
+projenin TÜM önceki turlarında (M5/M5c/M5d/M5e/M5f, salt LNS/warm-start/
+local-branching/K-subset) hiç görülmemiş bir HIZ ve BÜYÜKLÜKTE bir Σslack
+düşüşü üretti (~40 dakikada -%39.5, önceki en iyi saf-LNS turları 85-100
+dakikada -%27-29 civarındaydı) — kuplajı MEKANİK olarak KIRMANIN (yönleri
+kapatarak) gerçekten işe yaradığının somut kanıtı, sadece full-data'nın
+toplam ölçeğinde SIFIRA ulaşacak kadar değil. `runs/conflict_deactivation_*`,
+`runs/warm_start_elastic_level0{4,7}.log`, `runs/lns_level04*.log` ayrıntı
+için. Kapı-4/teslim entegrasyonu YAPILMADI (D7 hiç sağlanmadı) —
+`outputs/full_data_output.json`, tag'ler, `docs/report.md` DEĞİŞMEDİ,
+**v1.2-submission teslim paketi olarak geçerliliğini KORUYOR**.
 
 ## Kapı-5 — üretim merdiveni, GERÇEK full-data'da uçtan uca doğrulandı (M5f, 2026-07-11)
 
@@ -486,22 +566,22 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-11T19:44:08.405904+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-12T15:19:57.901094+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 10 | infeasible | 56540.60 | 56540.60 | 598 | 184 | 2.7s |
-| 11 | infeasible | 56540.60 | 56540.60 | 576 | 186 | 2.6s |
-| 12 | infeasible | 56540.60 | 56540.60 | 576 | 186 | 2.6s |
-| 13 | infeasible | 56540.60 | 56540.60 | 611 | 186 | 2.7s |
-| 14 | infeasible | 56540.60 | 56540.60 | 611 | 186 | 2.7s |
-| 15 | infeasible | 56540.60 | 56540.60 | 579 | 187 | 2.6s |
-| 16 | infeasible | 56540.60 | 56540.60 | 579 | 187 | 2.6s |
-| 17 | infeasible | 56540.60 | 56540.60 | 600 | 195 | 2.7s |
-| 18 | infeasible | 56540.60 | 56540.60 | 600 | 195 | 2.7s |
-| 19 | time_limit | 56540.60 | 56540.60 | 246 | 70 | 2.9s |
-| 20 | infeasible | 56540.60 | 56540.60 | 557 | 182 | 2.6s |
-| 21 | infeasible | 56540.60 | 56540.60 | 598 | 184 | 2.6s |
-| 22 | infeasible | 56540.60 | 56540.60 | 576 | 186 | 2.6s |
-| 23 | infeasible | 56540.60 | 56540.60 | 611 | 186 | 2.7s |
-| 24 | infeasible | 56540.60 | 56540.60 | 579 | 187 | 2.6s |
+| 30 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
+| 31 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.5s |
+| 32 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 33 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
+| 34 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
+| 35 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.9s |
+| 36 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
+| 37 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.8s |
+| 38 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 39 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 40 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
+| 41 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 42 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 43 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 44 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |

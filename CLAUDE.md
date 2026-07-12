@@ -321,6 +321,27 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   `test_dashboard.py` testi), `data_raw/` yokken 361 passed + 4 skipped
   (Kapı-9 skip-guard deseni hâlâ doğru). Push YOK, v1.0/v1.1 tag'lerine
   DOKUNULMADI, teslim kullanıcıda.
+- **M5h KAPANDI (2026-07-12), çözüm bulunamadan — GERÇEK kısmi ilerlemeyle**.
+  Yeni tur: "E2-conflict kırma + kontrollü market-direction kapatma"
+  (mimari D1-D8 önceden verildi). Kapı-0: Γ-scan denetimi Kapı-B'nin
+  `independent_pair_lower_bound`'unun VARSAYIM-17 muafiyetini hesaba
+  katmadığını buldu ve düzeltti (`docs/STATUS.md`/`docs/report.md` §5b
+  DÜZELTME notu — darboğazın Γ değil çift-bağlaşım olduğu sonucu
+  DEĞİŞMEDİ, kanıt zinciri düzeltildi). Kapı-1/2: `src/model/deactivation.py`
+  + `scripts/run_conflict_deactivation_feasibility.py` (+worker, TDD,
+  380/380 test yeşil), `warm_start_elastic.py`/`run_lns.py`
+  `--deactivation-file` ile genişletildi (Plan B). Kapı-3 kampanyası
+  (~84dk solver, 4h bütçenin çok altında): seviye 0.4'ün strict denemesi
+  yine `watchdog_killed` (dokuzuncu+ kez aynı kök-düğüm semptomu) → Plan B
+  (elastik+LNS) GERÇEK incumbent buldu ve Σslack'i 18092.50→10944.00'e
+  indirdi (**-%39.5, ~32dk'da — projenin TÜM önceki turlarından hızlı/büyük
+  bir düşüş**) → tur-başı kazanım oranı sabit kalırsa sıfıra inmek 4h
+  bütçenin dışında kalan bir süre gerektirir → seviye 0.7 elastik'te SIFIR
+  incumbent (0.4'ten DAHA KÖTÜ) → seviye 1.0 denenmedi, kampanya kapandı.
+  Full-data'da doğrulanmış (validator-clean) objective_value YİNE YOK —
+  Kapı-4 (teslim entegrasyonu) YAPILMADI, **v1.2-submission DEĞİŞMEDEN
+  teslim paketi olarak geçerli**. Ayrıntı: `docs/STATUS.md` "M5h" bölümü,
+  `docs/decisions.md` 2026-07-12 girdisi.
 
 ## Kilit Kararlar
 

@@ -205,7 +205,16 @@ def main(argv=None):
                               "tier states no limit): overrides config's adjustable_window_min for this "
                               "run only (candidate generation AND the validator's own window check). "
                               "Omit to use src/config/standard.yaml's value unchanged.")
+    parser.add_argument("--deactivation-file", default=None,
+                         help="D6 (Plan B, conflict-deactivation campaign, this session): path to a JSON "
+                              "list of [o, d, gun] market-directions to fix x=0 for every LNS iteration "
+                              "(src.model.deactivation). Only supported with --builder fix -- the folded "
+                              "builder excludes frozen candidates from having a real x Var at all, so a "
+                              "killed direction whose instances are frozen this iteration cannot be "
+                              "re-fixed there (raises if combined with --builder folded).")
     args = parser.parse_args(argv)
+    if args.deactivation_file and args.builder == "folded":
+        raise ValueError("--deactivation-file is only supported with --builder fix (see help text)")
     random.seed(args.seed)
 
     script_t0 = time.time()
@@ -298,6 +307,12 @@ def main(argv=None):
     # including even one stalled every sub-solve in smoke-testing.
     gamma_infeasible = compute_gamma_infeasible_pairs(candidates, journey_constants, L, U, gamma)
     print(f"[run_lns] gamma-infeasible pairs (excluded from targeting): {len(gamma_infeasible)}", flush=True)
+
+    directions_to_kill = []
+    if args.deactivation_file:
+        directions_to_kill = [tuple(d) for d in json.loads(Path(args.deactivation_file).read_text())]
+        print(f"[run_lns] Plan B: {len(directions_to_kill)} market-direction(s) deactivated "
+              f"from {args.deactivation_file}", flush=True)
 
     model_kwargs_base = dict(
         candidates=candidates, journey_constants=journey_constants, pairs_df=pairs_df,
@@ -398,6 +413,7 @@ def main(argv=None):
                     "reference_arr": reference_arr, "reference_dep": reference_dep,
                     "free_arr": free_arr, "free_dep": free_dep,
                 },
+                "directions_to_kill": directions_to_kill,
             }
             worker_script = LNS_WORKER
         iter_solve_kwargs = dict(solve_kwargs, log_file=highs_log_dir / f"iter{it}.highs.log")
