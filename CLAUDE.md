@@ -273,6 +273,26 @@ saatlerini optimize eder. Teslim: 2026-07-16 17:00. Plan: `.claude/plans/1-rol-v
   Kapı-4 (yalnız Branch A) uygulanamaz, atlandı. Sırada: Kapı-5 (üretim
   merdiveni, main.py --full-data'nın ihlalli tarife ASLA yazmama garantisi)
   → Kapı-6 (teslimat, Branch B paketi: teşhis çıktısı + fixture kanıtı).
+- **M5f Kapı-5/6 tamam (worktree-m5f-closing, tag `v1.0-submission`,
+  2026-07-12), sonra main'e birleştirildi + Kapı-7..11 ile tamamlandı (tag
+  `v1.1-submission`)**. Kapı-5: `main.py --full-data` üretim merdiveni
+  (ihlalli tarife ASLA yazmaz) GERÇEK full-data'da uçtan uca doğrulandı.
+  Kapı-6: `docs/report.md` (6 sayfa) + `docs/traceability.md` (9 satır,
+  sıfır sapma) + `scripts/package_submission.py`. **Kapı-7**: worktree
+  main'e ff-only merge edildi (348 test + fixture 668.75/valid=True
+  yeniden doğrulandı), worktree kaldırıldı. **Kapı-8**: `docs/model.pdf` +
+  `docs/report.pdf` (pandoc+headless-Chrome/MathJax), görsel denetlendi.
+  **Kapı-9**: `KURULUM.md` + `run.sh` + GERÇEK temiz-klon provası (zip→
+  sıfırdan venv→install→test→demo) — prova bir test-hijyeni bug'ı buldu ve
+  düzeltti (`data_raw/` yokken bir "unit" testi FAIL yerine artık skip
+  ediyor, `tests/unit/test_ranking.py`). **Kapı-10**:
+  `docs/TESLIM_BEKLENTILERI.md` (gerçek komut/süre ölçümleri + güncel
+  rubrik tahmini + organizatör soru↔config haritası); `--full-data` TAM
+  bütçeyle canlı ölçüldü (44dk22s, iki adım watchdog_killed, şema-uyumlu
+  teşhis — dokuzuncu bağımsız doğrulama, Branch B DEĞİŞMEDİ). **Kapı-11**:
+  `.gitignore` düzeltmesi (`runs/*.json`→`runs/*`, alt-dizin/zip kapsam
+  dışıydı), final paket (159 dosya) + tag `v1.1-submission`. Push YOK,
+  teslim kullanıcıda.
 
 ## Kilit Kararlar
 
