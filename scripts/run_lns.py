@@ -65,6 +65,7 @@ from src.validate.independent_validator import finalize_reported_objective, reco
 
 from src.config.paths import FULL_OD, FULL_YV, FULL_CR, FULL_FP
 from src.data.provenance import file_provenance
+from src.repair.reference import load_reference_point, resolve_reference_path
 LNS_WORKER = Path(__file__).resolve().parent / "_lns_step_worker.py"
 LNS_WORKER_FOLDED = Path(__file__).resolve().parent / "_lns_step_worker_folded.py"
 PROGRESS_LOG = Path("runs/lns_progress.log")
@@ -72,24 +73,6 @@ STATUS_MD = Path("docs/STATUS.md")
 STARTING_INCUMBENT = Path("runs/warm_start_elastic_output.json")
 
 SLACK_EPS = 1e-3
-
-
-def _load_starting_reference(candidates):
-    data = json.loads(STARTING_INCUMBENT.read_text())
-    arr_times, dep_times = {}, {}
-    for e in data["adjusted_flight_times"]:
-        key = (e["role"], e["flno"], e["gun"])
-        if e["role"] == "IB":
-            arr_times[key] = e["time_min"]
-        else:
-            dep_times[key] = e["time_min"]
-    arr_ids = {c.r1_id for c in candidates}
-    dep_ids = {c.r2_id for c in candidates}
-    missing_arr = arr_ids - set(arr_times)
-    missing_dep = dep_ids - set(dep_times)
-    assert not missing_arr, f"starting incumbent missing arr instances: {sorted(missing_arr)[:5]}"
-    assert not missing_dep, f"starting incumbent missing dep instances: {sorted(missing_dep)[:5]}"
-    return arr_times, dep_times
 
 
 def _tune_m(pair_slack, candidates, target_low, target_high, m_base, exclude, max_tries=12):
@@ -212,6 +195,10 @@ def main(argv=None):
                               "builder excludes frozen candidates from having a real x Var at all, so a "
                               "killed direction whose instances are frozen this iteration cannot be "
                               "re-fixed there (raises if combined with --builder folded).")
+    parser.add_argument("--reference", default=None,
+                         help="M5i RCR Engine (spec 2026-07-12-residual-repair-design.md §3.3): output-şemalı "
+                              "JSON'dan başlangıç referansı yükle; verilmezse eski davranış "
+                              "(runs/warm_start_elastic_output.json) bire bir korunur.")
     args = parser.parse_args(argv)
     if args.deactivation_file and args.builder == "folded":
         raise ValueError("--deactivation-file is only supported with --builder fix (see help text)")
@@ -278,7 +265,9 @@ def main(argv=None):
         )
         print(f"[run_lns] true_out_of_scope_baselines: {len(true_out_of_scope_baselines)} instances", flush=True)
 
-    reference_arr, reference_dep = _load_starting_reference(candidates)
+    reference_path = resolve_reference_path(args.reference, STARTING_INCUMBENT)
+    print(f"[run_lns] starting reference: {reference_path}", flush=True)
+    reference_arr, reference_dep = load_reference_point(reference_path, candidates)
     # M5d LNS redesign (adım 10 fix): --builder folded's result.selected/
     # gap_values only cover model.CANDIDATES for the CURRENT iteration's
     # free subset (unlike fix's, which always covers every candidate) --
