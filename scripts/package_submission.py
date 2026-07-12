@@ -7,9 +7,10 @@ son, mekanik kapısı.
 
 Paketlenen içerik (kaynak kodu + dokümantasyon, YARIŞMA VERİSİ HARİÇ --
 data_raw/ ve runs/*.json zaten .gitignore'da, bu script AYRICA dışlar):
-main.py, requirements.txt, README.md, CLAUDE.md, ASSUMPTIONS.md, pytest.ini,
-conftest.py, src/, tests/, scripts/, docs/, tests/fixtures/ (sentetik veri,
-paylaşılabilir).
+main.py, requirements.txt, README.md, CLAUDE.md, ASSUMPTIONS.md, KURULUM.md,
+run.sh, pytest.ini, conftest.py, src/, tests/, scripts/, docs/ (model.pdf +
+report.pdf + TESLIM_BEKLENTILERI.md dahil, docs/ altında oldukları için
+otomatik), tests/fixtures/ (sentetik veri, paylaşılabilir).
 
 Kullanım: .venv/bin/python3 -u scripts/package_submission.py [--skip-tests]
 (--skip-tests yalnızca hızlı yerel deneme için -- gerçek bir v1.0-submission
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 INCLUDE_PATHS = [
     "main.py", "requirements.txt", "README.md", "CLAUDE.md", "ASSUMPTIONS.md",
+    "KURULUM.md", "run.sh",
     "pytest.ini", "conftest.py",
     "src", "tests", "scripts", "docs",
 ]

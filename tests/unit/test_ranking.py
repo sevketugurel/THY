@@ -36,7 +36,10 @@ pytestmark = pytest.mark.unit
 def test_real_change_ranking_table_is_monotonic():
     # Confirmed by inspection: 0 violations across all 820 (N,b) groups in the
     # real competition file -- single-directional forcing is safe to use.
-    df = load_change_ranking(FIXDIR.parent.parent / "data_raw" / "change_ranking_input.xlsx")
+    real_path = FIXDIR.parent.parent / "data_raw" / "change_ranking_input.xlsx"
+    if not real_path.exists():
+        pytest.skip("data_raw/ full dataset not present")
+    df = load_change_ranking(real_path)
     assert is_ranking_monotonic(df)
 
 

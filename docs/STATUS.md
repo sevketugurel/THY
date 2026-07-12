@@ -59,6 +59,15 @@ olarak kalıyor.
 
 340+ test yeşil (348 unit+solve, tam suite).
 
+**TAM bütçeyle dokuzuncu bağımsız doğrulama (Kapı-9/10, 2026-07-12, main
+birleştirme sonrası)**: yukarıdaki smoke test AZALTILMIŞ bütçeyle
+(60s+60s) yapılmıştı; bu turda checked-in `standard.yaml`'ın TAM bütçesiyle
+(1800s+60s / 600s+120s) `runs/rehearsal/full_data_kapi10.*` GERÇEK
+full-data'da koşuldu — AYNI sonuç: adım1 `watchdog_killed` (1860.3s), adım2
+`watchdog_killed` (720.2s), adım3 şema-uyumlu teşhis (`objective_value:
+null`, boş tarife), exit=1. Toplam duvar-saati 44dk 22s. Ayrıntı ve
+komut-bazlı süre tablosu `docs/TESLIM_BEKLENTILERI.md` §1b.
+
 ## Kapı-3 — kampanya: ilk doğrulanmış değer arayışı, TÜKENDİ (Branch B kesinleşti, M5f, 2026-07-11)
 
 Koşullu E1 (Kapı-1) altında üç adımlı kampanya (plan §Kapı-3, hepsi dış
