@@ -133,6 +133,10 @@ def main():
     parser.add_argument("--budget-sec", type=float, default=14400.0)
     parser.add_argument("--round-wall-sec", type=float, default=2400.0)
     parser.add_argument("--k", type=int, default=30)
+    parser.add_argument("--kill-ordering", choices=["cheapest", "worst-slack"], default="cheapest",
+                         help="gece-4 (2026-07-13): worst-first 4 probe'da primal aramayı kırdı "
+                              "(dual~0.009 + sıfır incumbent) -- default artık cheapest "
+                              "(reward_loss ASC, slack DESC; src.repair.campaign.order_residual_kill_candidates)")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--dry-run", action="store_true",
                          help="Solver yok: tur-1 kill planı + bütçe aritmetiği yazdırılır, çıkılır.")
@@ -255,7 +259,8 @@ def main():
 
         round_k = k if mode == "A" else 10**9  # B modu: tüm killable-coverable (spec §4.6)
         kills, eq_only = pick_round_kills(pair_slack, direction_index, candidates,
-                                          contributions, best_killed, round_k, L, U)
+                                          contributions, best_killed, round_k, L, U,
+                                          ordering=args.kill_ordering)
 
         round_killed = best_killed | set(kills)
         directions_file = Path(f"runs/residual_repair_round{n_round}_directions.json")

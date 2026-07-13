@@ -105,3 +105,40 @@ def test_newest_file_since(tmp_path):
     os.utime(new, (t + 100, t + 100))
     assert newest_file_since(tmp_path, "lns_summary_*.log.json", t) == new
     assert newest_file_since(tmp_path, "lns_summary_*.log.json", t + 200) is None
+
+
+# --- order_residual_kill_candidates + cheapest-first (gece-4 probe modu) ---
+
+def test_order_residual_kill_candidates_cheapest_first():
+    cands, index, ps, contrib = _ctx()
+    # contrib: ZZG->ZZH=10 (ucuz taraf), ZZH->ZZG=999; ZZK/ZZL yönleri contributions'ta yok -> 0.0
+    from src.repair.campaign import order_residual_kill_candidates
+    ordered = order_residual_kill_candidates(ps, index, cands, contrib,
+                                             already_killed=set(), L=L, U=U)
+    # En ucuz taraf katkısı: ZZK-ZZL çifti (0.0) < ZZG-ZZH çifti (10.0);
+    # both-unkillable ZZI-ZZJ listede YOK.
+    assert [e["direction"] for e in ordered] == [("ZZK", "ZZL", 1), ("ZZG", "ZZH", 1)]
+    assert ordered[0]["pair"] == ("ZZK", "ZZL", 1)
+    assert ordered[0]["reward_loss"] == 0.0
+    assert ordered[0]["pair_slack"] == 100.0
+    assert ordered[1]["reward_loss"] == 10.0
+
+
+def test_order_residual_slack_breaks_reward_ties():
+    from src.repair.campaign import order_residual_kill_candidates
+    cands, index, ps, contrib = _ctx()
+    # İki çift de 0 katkılı olsun -> yüksek slack önce
+    ordered = order_residual_kill_candidates(ps, index, cands, {},
+                                             already_killed=set(), L=L, U=U)
+    assert ordered[0]["pair"] == ("ZZG", "ZZH", 1)   # slack 300 > 100
+    assert ordered[1]["pair"] == ("ZZK", "ZZL", 1)
+
+
+def test_pick_round_kills_cheapest_ordering():
+    cands, index, ps, contrib = _ctx()
+    kills, eq = pick_round_kills(ps, index, cands, contrib, already_killed=set(),
+                                 k=1, L=L, U=U, ordering="cheapest")
+    assert kills == [("ZZK", "ZZL", 1)]  # worst-slack değil, en ucuz taraf önce
+    kills_w, _ = pick_round_kills(ps, index, cands, contrib, already_killed=set(),
+                                  k=1, L=L, U=U, ordering="worst-slack")
+    assert kills_w == [("ZZG", "ZZH", 1)]  # eski davranış korunuyor
