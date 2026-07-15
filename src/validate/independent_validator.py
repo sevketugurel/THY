@@ -784,3 +784,102 @@ def finalize_reported_objective(
     data["objective_value"] = recompute_total
     Path(output_path).write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
     return True, "ok"
+
+
+_FAMILY_PREFIXES = [
+    ("rotation ", "A"),
+    ("connection ", "B"),
+    ("ranking_results ", "D"),
+    ("E1 ", "E1"),
+    ("E2 ", "E2"),
+    ("F kova", "F"),
+    ("regularity (x_dev)", "G"),
+    ("adjusted_flight_times entry", "window"),
+]
+
+
+def summarize_violation_families(violations: list) -> dict:
+    """Return family counts and up to ten raw examples per family."""
+    counts = {}
+    examples = {}
+    for violation in violations:
+        family = next((fam for prefix, fam in _FAMILY_PREFIXES if violation.startswith(prefix)), "other")
+        counts[family] = counts.get(family, 0) + 1
+        bucket = examples.setdefault(family, [])
+        if len(bucket) < 10:
+            bucket.append(violation)
+    return {"counts": counts, "examples": examples}
+
+
+def validate_claim_completeness(
+    output_path: Path,
+    od_table_path: Path,
+    yolcu_path: Path,
+    L: int,
+    U: int,
+    strict: bool = True,
+) -> dict:
+    """Check claim-completeness by equality, not subset inclusion.
+
+    The derived feasible connection set from the output's own times must equal
+    the listed selected_connections set. Missing claims and extra claims are
+    both reported because extra unsupported claims can inflate recompute output.
+    This intentionally re-implements the claim scan here instead of importing
+    benchmark production code.
+    """
+    data = json.loads(Path(output_path).read_text())
+    od_table = load_od_table(od_table_path)
+    tk = od_table[od_table.cr1 == "TK"]
+    yolcu = load_yolcu_verisi(yolcu_path, strict=strict)
+    provider = BlockTimeProvider(tk, L=L, U=U)
+
+    scorable = set()
+    for row in yolcu.itertuples():
+        o, d = row.orig, row.dest
+        try:
+            provider.get_journey_constant(o, d)
+        except KeyError:
+            try:
+                provider.get_journey_constant_estimate(o, d)
+            except KeyError:
+                continue
+        scorable.add((o, d))
+
+    reported_times = {
+        (entry["role"], entry["flno"], entry["gun"]): entry["time_min"]
+        for entry in data.get("adjusted_flight_times", [])
+    }
+
+    derived = set()
+    for gun in sorted(int(g) for g in tk["gun"].unique()):
+        day = tk[tk["gun"] == gun]
+        inbound_by_o = {}
+        outbound_by_d = {}
+        for row in day.itertuples():
+            inbound_by_o.setdefault(row.dep1, set()).add(int(row.flno1))
+            outbound_by_d.setdefault(row.arr2, set()).add(int(row.flno2))
+        for o, d in scorable:
+            for f1 in inbound_by_o.get(o, ()):
+                t_arr = reported_times.get(("IB", f1, gun))
+                if t_arr is None:
+                    continue
+                for f2 in outbound_by_d.get(d, ()):
+                    t_dep = reported_times.get(("OB", f2, gun))
+                    if t_dep is None:
+                        continue
+                    if L <= t_dep - t_arr <= U:
+                        derived.add((f"{o}-{d}", f1, f2, gun))
+
+    listed = {
+        (conn["od"], conn["flno1"], conn["flno2"], conn["gun"])
+        for conn in data.get("selected_connections", [])
+    }
+    missing = sorted(derived - listed)
+    extra = sorted(listed - derived)
+    return {
+        "missing": [list(item) for item in missing],
+        "extra": [list(item) for item in extra],
+        "missing_claims": len(missing),
+        "extra_claims": len(extra),
+        "claim_complete": not missing and not extra,
+    }
