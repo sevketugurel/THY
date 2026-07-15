@@ -37,3 +37,10 @@ e1_activation: conditional   # conditional | unconditional
 
 enabled_constraints: [A, B, C, D, E1, E2, F, G]
 max_slots_per_market: 20
+
+# Benchmark-safe production path: default --full-data behavior. exit 0 means
+# file-production only; the official strict gate remains available via
+# --strict-gate.
+benchmark_time_budget_sec: 600
+benchmark_improve_enabled: true
+seed_deltas_path: data_seed/full_data_best_deltas.json

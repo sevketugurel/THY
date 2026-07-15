@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from src.candidates.generate import compute_epoch_anchor, generate_candidates
+from src.benchmark.pipeline import run_benchmark_pipeline
 from src.data.block_times import BlockTimeProvider
 from src.data.competitors import derive_rival_best_times
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
@@ -31,12 +32,33 @@ FIXTURE_CR = "tests/fixtures/synthetic_change_ranking_input.xlsx"
 FIXTURE_FP = "tests/fixtures/synthetic_flight_pairs.xlsx"
 
 
+def resolve_mode(fixture: bool, full_data: bool, strict_gate: bool) -> str:
+    """Resolve CLI mode without touching data or solver state."""
+    if fixture:
+        return "fixture_strict"
+    return "full_data_strict" if strict_gate else "full_data_benchmark"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     parser.add_argument("--fixture", action="store_true", help="use tests/fixtures synthetic data")
     parser.add_argument("--full-data", action="store_true", help="use data_raw/ full competition data")
     parser.add_argument("--output", default="runs/output.json")
+    parser.add_argument(
+        "--strict-gate",
+        action="store_true",
+        help=(
+            "resmi strict feasibility kapısı: eski davranış; ihlalli tarife yazılmaz, "
+            "bulunamazsa null teşhis + exit 1"
+        ),
+    )
+    parser.add_argument(
+        "--time-budget-sec",
+        type=float,
+        default=None,
+        help="benchmark yolunun toplam süre bütçesi",
+    )
     args = parser.parse_args(argv)
 
     if args.fixture == args.full_data:
@@ -128,6 +150,38 @@ def main(argv=None) -> int:
     e1_activation = config.get("e1_activation", "conditional")
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if resolve_mode(args.fixture, args.full_data, args.strict_gate) == "full_data_benchmark":
+        budget = (
+            args.time_budget_sec
+            if args.time_budget_sec is not None
+            else config.get("benchmark_time_budget_sec", 600)
+        )
+        return run_benchmark_pipeline(
+            output_path=output_path,
+            od_path=od_path,
+            yv_path=yv_path,
+            cr_path=cr_path,
+            fp_path=fp_path,
+            config=config,
+            od_table=od_table,
+            tk=tk,
+            provider=provider,
+            rho=rho,
+            anchor=anchor,
+            candidates=candidates,
+            journey_constants=journey_constants,
+            rival_data=rival_data,
+            b_od_data=b_od_data,
+            ranking_table=ranking_table,
+            pairs_df=pairs_df,
+            r_o_lookup=r_o_lookup,
+            monotonic=monotonic,
+            seed_deltas_path=Path(config.get("seed_deltas_path", "data_seed/full_data_best_deltas.json")),
+            time_budget_sec=budget,
+            improve_enabled=config.get("benchmark_improve_enabled", True),
+            yolcu_strict=not args.full_data,
+        )
 
     # M5f Kapı-5 (docs/CLOSING_PLAN.md, "gizli test dayanıklılığı"): the
     # ladder's own incumbent check ("has a MIP status") is NOT sufficient to
