@@ -160,6 +160,7 @@ Mevcut alanlar aynen (şema-uyumluluk). EK `diagnostics` bloğu:
   "strict_feasible": false,
   "constraint_interpretation": "strict_A_G_checked; E1_E2_reported_as_diagnostics",
   "claim_complete": true,
+  "claim_check": {"missing_claims": 0, "extra_claims": 0},
   "seed": {"file": "data_seed/full_data_best_deltas.json",
             "applied": "<n>", "skipped_missing_flight": "<n>",
             "fallback_window_exceeded": "<n>"},
@@ -203,8 +204,13 @@ etmeme kuralı aynen):
 - **`strict=True`** (mevcut davranış, değişmez): tüm kısıt aileleri kontrol,
   herhangi bir ihlal = geçmez. `--strict-gate` ve mevcut test suite bunu kullanır.
 - **`claim_complete=True`** (YENİ): output'taki saatlerden bağımsızca türetilen
-  uygun-bağlantı kümesi ⊆ listelenen küme mi? Eksik bağlantı = ihlal.
-  (C1-tarzı underclaim artık bizim validator'ımızdan da geçemez — bilinçli.)
+  uygun-bağlantı kümesi listelenen kümeye **EŞİT mi**
+  (`derived_feasible_connections == listed_connections`)? Eksik bağlantı
+  (underclaim) DA fazla/uygunsuz bağlantı (overclaim) DA ihlaldir — overclaim
+  kritiktir çünkü `recompute_objective` listelenen kümeden beslenir; fazladan
+  bağlantı objective'i ŞİŞİRİR ve strict yalnız raporlandığı için başka hiçbir
+  kapı bunu yakalamaz. (C1-tarzı underclaim de, şişirilmiş overclaim de artık
+  bizim validator'ımızdan geçemez — bilinçli.)
 
 Benchmark pipeline HER İKİSİNİ de koşar:
 - `claim_complete` → üretim KAPISI (bizim yazdığımız listeyi bizim bağımsız
@@ -236,7 +242,10 @@ mevcut violation listesinden türetilen saf özet fonksiyonu.
 Unit:
 - delta uygulama: eşleşme / eksik-uçuş / pencere-aşımı / dosya-yok / bozuk-json
 - claim-completion: fixture eşdeğerlik (model x'leri == saatlerden türetilen küme);
-  kasıtlı-eksik-liste `claim_complete=True` modunda yakalanıyor
+  kasıtlı-eksik-liste (underclaim) `claim_complete=True` modunda yakalanıyor;
+  **kasıtlı-overclaim** (saatlerin desteklemediği fazladan bağlantı eklenmiş liste)
+  da yakalanıyor VE şişirilmiş listenin recompute'u kabul edilmeden önce
+  `extra_claims > 0` ile bloklanıyor
 - diagnostics üretimi: aile sayaçları + örnekler + `strict_feasible` bayrağı doğru
 - writer: diagnostics'li çıktı şema-uyumlu + deterministik (byte-özdeşlik,
   `solve_time_sec` hariç)
