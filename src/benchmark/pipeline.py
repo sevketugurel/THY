@@ -1,8 +1,8 @@
 """Benchmark-safe production pipeline.
 
-FLOOR writes a schema-compliant, claim-complete output immediately. SEED can
-promote a recomputed improvement. IMPROVE can promote only a strict-clean,
-claim-complete, higher-recompute incumbent.
+FLOOR writes a schema-compliant, claim-complete output immediately, but remains
+an emergency fallback. Production selection prefers claim-complete candidates
+with cleaner hard-family diagnostics before comparing objective values.
 """
 
 import json
@@ -28,6 +28,8 @@ _BASE_NOTE = (
     "E1/E2 strict okuması altında yayınlanan baseline tarifesi de ihlallidir; "
     "bkz. docs/report.md"
 )
+_HARD_FAMILIES = ("A", "B", "D", "F", "G")
+_E_FAMILIES = ("E1", "E2")
 
 
 @dataclass
@@ -39,6 +41,16 @@ class Assessment:
     strict_feasible: bool
     claim: dict
     families: dict
+
+    @property
+    def hard_family_violations(self) -> int:
+        counts = self.families["counts"]
+        return sum(counts.get(family, 0) for family in _HARD_FAMILIES)
+
+    @property
+    def e1_e2_violations(self) -> int:
+        counts = self.families["counts"]
+        return sum(counts.get(family, 0) for family in _E_FAMILIES)
 
 
 @dataclass
@@ -60,6 +72,21 @@ def _status_for(stage: str, n_violations: int) -> str:
     if n_violations == 0:
         return "baseline_floor" if stage == "baseline_floor" else "strict_feasible_incumbent"
     return f"{stage}_with_strict_violations"
+
+
+def _selection_key(assessment: Assessment):
+    if not assessment.claim["claim_complete"]:
+        return (1, float("inf"), float("inf"), float("-inf"))
+    return (
+        0,
+        assessment.hard_family_violations,
+        assessment.e1_e2_violations,
+        -assessment.objective,
+    )
+
+
+def _is_better(candidate: Assessment, incumbent: Assessment) -> bool:
+    return _selection_key(candidate) < _selection_key(incumbent)
 
 
 def _validate_strict(ctx: _Ctx, path):
@@ -136,6 +163,11 @@ def _assess_and_write(ctx: _Ctx, path, times, stage, seed_block, baseline_refere
             "total_pairs": n_violations,
             "by_family": families["counts"],
             "examples": families["examples"],
+        },
+        "selection_priority": {
+            "hard_family_violations": sum(families["counts"].get(f, 0) for f in _HARD_FAMILIES),
+            "e1_e2_violations": sum(families["counts"].get(f, 0) for f in _E_FAMILIES),
+            "objective": total,
         },
         "dropped_markets_no_k_od": len(ctx.dropped),
         "baseline_reference": baseline_reference,
@@ -219,7 +251,13 @@ def run_benchmark_pipeline(
         baseline_reference=None,
         elapsed_sec=now_fn() - t0,
     )
-    best_ref = {"objective": floor.objective, "strict_violations_total": floor.n_strict_violations}
+    best_ref = {
+        "objective": floor.objective,
+        "strict_violations_total": floor.n_strict_violations,
+        "hard_family_violations": floor.hard_family_violations,
+        "e1_e2_violations": floor.e1_e2_violations,
+        "selection_note": "floor is emergency fallback; final selection minimizes hard-family violations first",
+    }
     patch_json_field(output_path, ["diagnostics", "baseline_reference"], best_ref)
     best = floor
     print(
@@ -247,18 +285,21 @@ def run_benchmark_pipeline(
                 baseline_reference=best_ref,
                 elapsed_sec=now_fn() - t0,
             )
-            if attempt.claim["claim_complete"] and attempt.objective > best.objective:
+            if _is_better(attempt, best):
                 output_path.write_text(tmp_seed.read_text())
                 best = attempt
                 print(
                     f"[benchmark] seed kabul: objective={attempt.objective} "
-                    f"strict_violations={attempt.n_strict_violations} applied={stats['applied']}",
+                    f"hard_violations={attempt.hard_family_violations} "
+                    f"e1_e2_violations={attempt.e1_e2_violations} applied={stats['applied']}",
                     flush=True,
                 )
             else:
                 print(
                     f"[benchmark] seed reddedildi (claim_complete={attempt.claim['claim_complete']}, "
-                    f"objective={attempt.objective} <= incumbent {best.objective})",
+                    f"hard={attempt.hard_family_violations}, e1_e2={attempt.e1_e2_violations}, "
+                    f"objective={attempt.objective}; incumbent hard={best.hard_family_violations}, "
+                    f"e1_e2={best.e1_e2_violations}, objective={best.objective})",
                     flush=True,
                 )
         else:
@@ -341,7 +382,16 @@ def run_benchmark_pipeline(
                     U=cfg["U"],
                     strict=yolcu_strict,
                 )
-                if claim_i["claim_complete"] and data_i["objective_value"] > best.objective:
+                improve_assessment = Assessment(
+                    "improved_incumbent",
+                    "strict_feasible_incumbent",
+                    data_i["objective_value"],
+                    0,
+                    True,
+                    claim_i,
+                    {"counts": {}, "examples": {}},
+                )
+                if _is_better(improve_assessment, best):
                     data_i["solver_metrics"]["status"] = "strict_feasible_incumbent"
                     data_i["diagnostics"] = {
                         "mode": "benchmark_full_claim",
@@ -358,20 +408,17 @@ def run_benchmark_pipeline(
                             "by_family": {},
                             "examples": {},
                         },
+                        "selection_priority": {
+                            "hard_family_violations": 0,
+                            "e1_e2_violations": 0,
+                            "objective": data_i["objective_value"],
+                        },
                         "dropped_markets_no_k_od": len(dropped),
                         "baseline_reference": best_ref,
                         "note": _BASE_NOTE,
                     }
                     output_path.write_text(json.dumps(data_i, indent=2, sort_keys=True) + "\n")
-                    best = Assessment(
-                        "improved_incumbent",
-                        "strict_feasible_incumbent",
-                        data_i["objective_value"],
-                        0,
-                        True,
-                        claim_i,
-                        {"counts": {}, "examples": {}},
-                    )
+                    best = improve_assessment
                     print(
                         f"[benchmark] improve kabul: strict_feasible_incumbent objective={best.objective}",
                         flush=True,

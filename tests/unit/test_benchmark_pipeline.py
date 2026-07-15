@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from src.benchmark.pipeline import run_benchmark_pipeline
+from src.benchmark.pipeline import Assessment, _is_better, run_benchmark_pipeline
 from src.candidates.generate import compute_epoch_anchor
 from src.data.block_times import BlockTimeProvider
 from src.data.loaders import load_change_ranking, load_flight_pairs, load_od_table, load_yolcu_verisi
@@ -116,3 +116,25 @@ def test_improve_crash_keeps_best_and_exit_zero(tmp_path):
     assert rc == 0
     data = json.loads((tmp_path / "output.json").read_text())
     assert data["objective_value"] is not None
+
+
+def test_selection_prefers_cleaner_hard_family_profile_over_objective():
+    floor = Assessment(
+        stage="baseline_floor",
+        status="baseline_floor_with_strict_violations",
+        objective=2_983_669.09,
+        n_strict_violations=1710,
+        strict_feasible=False,
+        claim={"claim_complete": True},
+        families={"counts": {"A": 109, "D": 22, "E1": 296, "E2": 1199, "F": 31, "G": 53}, "examples": {}},
+    )
+    seed = Assessment(
+        stage="heuristic_incumbent",
+        status="heuristic_incumbent_with_strict_violations",
+        objective=1_488_074.81,
+        n_strict_violations=327,
+        strict_feasible=False,
+        claim={"claim_complete": True},
+        families={"counts": {"E1": 106, "E2": 221}, "examples": {}},
+    )
+    assert _is_better(seed, floor)

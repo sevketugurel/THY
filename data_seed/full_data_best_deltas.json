@@ -5132,6 +5132,24 @@
       "role": "IB"
     },
     {
+      "delta_min": 10,
+      "flno": 2845,
+      "gun": 3,
+      "role": "IB"
+    },
+    {
+      "delta_min": 10,
+      "flno": 2845,
+      "gun": 5,
+      "role": "IB"
+    },
+    {
+      "delta_min": 10,
+      "flno": 2845,
+      "gun": 7,
+      "role": "IB"
+    },
+    {
       "delta_min": -11,
       "flno": 2847,
       "gun": 1,
@@ -12830,9 +12848,38 @@
       "role": "OB"
     }
   ],
-  "generated_utc": "2026-07-15T21:01:08.776304+00:00",
+  "generated_utc": "2026-07-15T21:14:49.974810+00:00",
+  "manual_repairs": [
+    {
+      "after_time_min": 4170,
+      "before_time_min": 4160,
+      "delta_min": 10,
+      "flno": 2845,
+      "gun": 3,
+      "reason": "A micro-repair: TK2844 -> TK2845 rotation was 10 minutes short",
+      "role": "IB"
+    },
+    {
+      "after_time_min": 7050,
+      "before_time_min": 7040,
+      "delta_min": 10,
+      "flno": 2845,
+      "gun": 5,
+      "reason": "A micro-repair: TK2844 -> TK2845 rotation was 10 minutes short",
+      "role": "IB"
+    },
+    {
+      "after_time_min": 9930,
+      "before_time_min": 9920,
+      "delta_min": 10,
+      "flno": 2845,
+      "gun": 7,
+      "reason": "A micro-repair: TK2844 -> TK2845 rotation was 10 minutes short",
+      "role": "IB"
+    }
+  ],
   "max_abs_delta_min": 180,
-  "n_deltas": 2137,
+  "n_deltas": 2140,
   "n_source_entries_not_in_baseline": 0,
   "source_campaign": "M5h/M5i elastik+LNS en iyi noktas\u0131 (Sigma slack=10944)",
   "source_run": "runs/lns_best_partial_20260712T150223Z.json"

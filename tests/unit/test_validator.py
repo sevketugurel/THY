@@ -10,8 +10,11 @@ times against a legal window independently re-derived from raw data. See plan
 marker: unit (solver-free, pure logic).
 """
 import json
+from datetime import time
 from pathlib import Path
 
+import pandas as pd
+import openpyxl
 import pytest
 
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
@@ -159,6 +162,81 @@ def test_validate_passes_correctly_reported_beaten_rivals_and_rank(tmp_path):
     )
     result = validate_output(output_path, FIXDIR / "synthetic_od_table.xlsx", L=L, U=U)
     assert result.is_valid, result.violations
+
+
+def test_validate_ranking_uses_estimated_k_od_fallback(tmp_path):
+    """D-check must match recompute/claim K_od fallback, not direct-only K_od."""
+    od_path = tmp_path / "od.xlsx"
+    base = pd.Timestamp(2026, 3, 1)
+    rows = [
+        # Valid support row for T_IB_AAA.
+        {
+            "Cr1": "TK", "Carrier Name": "TK", "Dep1": "AAA", "Arr1": "IST",
+            "FlNo1": 10, "Arr Time": base + pd.Timedelta(hours=10),
+            "Cr2": "TK", "Dep2": "IST", "Arr2": "XXX", "FlNo2": 20,
+            "Dep Time": base + pd.Timedelta(hours=12),
+            "Gate-to-Gate Uçuş Süresi": time(5, 20),
+            "O&D": "AAA-XXX", "Gün": 1,
+        },
+        # Valid support row for T_OB_BBB.
+        {
+            "Cr1": "TK", "Carrier Name": "TK", "Dep1": "YYY", "Arr1": "IST",
+            "FlNo1": 11, "Arr Time": base + pd.Timedelta(hours=10),
+            "Cr2": "TK", "Dep2": "IST", "Arr2": "BBB", "FlNo2": 21,
+            "Dep Time": base + pd.Timedelta(hours=12),
+            "Gate-to-Gate Uçuş Süresi": time(5, 20),
+            "O&D": "YYY-BBB", "Gün": 1,
+        },
+        # Exact AAA-BBB TK row has invalid baseline gap, so direct K_od is absent.
+        {
+            "Cr1": "TK", "Carrier Name": "TK", "Dep1": "AAA", "Arr1": "IST",
+            "FlNo1": 100, "Arr Time": base + pd.Timedelta(hours=10),
+            "Cr2": "TK", "Dep2": "IST", "Arr2": "BBB", "FlNo2": 200,
+            "Dep Time": base + pd.Timedelta(hours=20),
+            "Gate-to-Gate Uçuş Süresi": time(13, 20),
+            "O&D": "AAA-BBB", "Gün": 1,
+        },
+        # Rival for D-check; estimated K_od plus adjusted gap beats it.
+        {
+            "Cr1": "R1", "Carrier Name": "R1", "Dep1": "AAA", "Arr1": "IST",
+            "FlNo1": 300, "Arr Time": base + pd.Timedelta(hours=9),
+            "Cr2": "R1", "Dep2": "IST", "Arr2": "BBB", "FlNo2": 301,
+            "Dep Time": base + pd.Timedelta(hours=13),
+            "Gate-to-Gate Uçuş Süresi": time(6, 40),
+            "O&D": "AAA-BBB", "Gün": 1,
+        },
+    ]
+    header = [
+        "Cr1", "Carrier Name", "Dep1", "Arr1", "FlNo1", "Arr Time",
+        "Cr2", "Dep2", "Arr2", "FlNo2", "Dep Time",
+        "Gate-to-Gate Uçuş Süresi", "O&D", "Gün",
+    ]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.append(header)
+    for row in rows:
+        ws.append([row[column] for column in header])
+    wb.save(od_path)
+    output_path = _write_output_with_ranking(
+        tmp_path,
+        connections=[{"od": "AAA-BBB", "flno1": 100, "flno2": 200, "gun": 1, "gap_min": 120}],
+        adjusted_times=[
+            {"role": "IB", "flno": 100, "gun": 1, "time_min": 600},
+            {"role": "OB", "flno": 200, "gun": 1, "time_min": 720},
+        ],
+        ranking_results=[{"o": "AAA", "d": "BBB", "gun": 1, "rank": 1, "beaten_rivals": ["R1"]}],
+    )
+
+    result = validate_output(
+        output_path,
+        od_path,
+        L=L,
+        U=U,
+        adjustable_window_min=1000,
+        adjustable_set="all",
+    )
+    ranking_violations = [v for v in result.violations if v.startswith("ranking_results")]
+    assert ranking_violations == []
 
 
 def test_validate_catches_fabricated_beaten_rival(tmp_path):

@@ -595,9 +595,13 @@ def validate_output(
                 continue
             gap = reported_times[dep_key] - reported_times[arr_key]
             try:
-                journey = provider.get_journey_constant(o, d) + gap
+                journey_const = provider.get_journey_constant(o, d)
             except KeyError:
-                continue
+                try:
+                    journey_const = provider.get_journey_constant_estimate(o, d)
+                except KeyError:
+                    continue
+            journey = journey_const + gap
             offered_by_market.setdefault((o, d, conn["gun"]), []).append(journey)
 
         for entry in ranking_results:
