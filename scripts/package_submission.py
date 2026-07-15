@@ -9,7 +9,7 @@ Paketlenen içerik (kaynak kodu + dokümantasyon, YARIŞMA VERİSİ HARİÇ --
 data_raw/ ve runs/*.json zaten .gitignore'da, bu script AYRICA dışlar):
 main.py, requirements.txt, README.md, CLAUDE.md, ASSUMPTIONS.md, KURULUM.md,
 run.sh, Dockerfile, docker-compose.yml, .dockerignore, pytest.ini,
-conftest.py, src/, tests/, scripts/, docs/ (model.pdf + report.pdf +
+conftest.py, src/, tests/, scripts/, data_seed/, docs/ (model.pdf + report.pdf +
 TESLIM_BEKLENTILERI.md dahil, docs/ altında oldukları için otomatik),
 tests/fixtures/ (sentetik veri, paylaşılabilir), outputs/ (Kapı-D0/D3:
 fixture_output.json + full_data_output.json + GAMMA_SENSITIVITY_STATIC_SCAN.json
@@ -34,7 +34,7 @@ INCLUDE_PATHS = [
     "KURULUM.md", "run.sh",
     "Dockerfile", "docker-compose.yml", ".dockerignore",
     "pytest.ini", "conftest.py",
-    "src", "tests", "scripts", "docs", "outputs",
+    "src", "tests", "scripts", "data_seed", "docs", "outputs",
 ]
 
 EXCLUDE_SUFFIXES = (".pyc",)
