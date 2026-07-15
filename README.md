@@ -13,7 +13,7 @@
 | Veri kapsamı | O&D bağlantı tablosu, yolcu/pazar önem ağırlıkları, sıralama ağırlıkları ve uçuş çiftleri |
 | Güvenilir demo | Sentetik fixture üzerinde uçtan uca model kurma, çözme, çıktı üretme ve bağımsız doğrulama |
 | Gerçek veri durumu | Model ve deney altyapısı çalışır; ancak 11 Temmuz 2026 tarihli son kayıt itibarıyla tüm A–G kısıtlarını sağlayan ve bağımsız validator'dan geçen bir full-data amaç değeri henüz elde edilmemiştir |
-| Kalite durumu | 13 Temmuz 2026 yerel doğrulaması: **321 test geçti, 3 test atlandı** |
+| Kalite durumu | 15 Temmuz 2026 yerel doğrulaması: **380 test geçti** |
 | Ana giriş noktası | `main.py` |
 | Varsayılan yapılandırma | `src/config/standard.yaml` |
 | Sonuç formatı | Deterministik sıralanmış JSON |
@@ -337,8 +337,7 @@ Kod tabanı yalnızca tek bir `solve()` çağrısı değil, full-data ölçeğin
 | Strateji | Model / akış | Amaç | Durum |
 |---|---|---|---|
 | Doğrudan fixture çözümü | Tam A–G model | Uçtan uca doğruluk ve regresyon | Aktif ve güvenilir |
-| Doğrudan full-data | Tam A–G model | Tek adımda ödül enbüyükleme | `--no-warm-start` ile mümkün; büyük modelde kök düğümde uzun süre kalabildiği için önerilmez |
-| Warm pipeline | A+G+F → elastik E1/E2 → tam ödül modeli | Önce fiziksel olarak tutarlı zaman, sonra slack azaltma, sonra ödül | `main.py --full-data` varsayılanı |
+| Doğrudan full-data (`main.py --full-data`) | Tam A–G model → süre/watchdog aşımında elastik yedek (2-adımlı ladder) | Uçtan uca üretim merdiveni; ihlalli tarife asla yazılmaz | `main.py --full-data` varsayılanı |
 | Dış watchdog | Çözümü ayrı süreçte çalıştırır | HiGHS iç zaman limitinin kök kesme turlarını zamanında durduramadığı durumlarda duvar saatini korur | Full-data araçlarında aktif |
 | Solve ladder | Full adjustable → eski K-subset denemeleri → teşhis | Kademeli küçültme | K-subset yapısal olarak etkisiz bulundu; varsayılan kapalı, karşılaştırma için korunuyor |
 | Core feasibility | Yalnız A+G+F | Fiziksel alt modelin çözülebilirliğini sınamak ve seed üretmek | Aktif teşhis aracı |
@@ -407,22 +406,10 @@ Beklenen süreç:
 .venv/bin/python3 -u main.py \
   --config src/config/standard.yaml \
   --full-data \
-  --output runs/full_data_warm_output.json
+  --output runs/full_data_output.json
 ```
 
-`-u`, uzun koşularda logların tamponda beklememesi için önerilir. Varsayılan full-data akışı üç aşamalı warm pipeline kullanır ve HiGHS loglarını çıktı dizini altında `warm_highs_logs/` klasörüne yazar.
-
-### 3. Doğrudan full-data çözümü
-
-```bash
-.venv/bin/python3 -u main.py \
-  --config src/config/standard.yaml \
-  --full-data \
-  --no-warm-start \
-  --output runs/full_data_direct_output.json
-```
-
-Bu yol araştırma/karşılaştırma içindir. Büyük modelde incumbent bulunmadan uzun kök-düğüm kesme turlarına girebildiği için warm-start hattına göre daha risklidir.
+`-u`, uzun koşularda logların tamponda beklememesi için önerilir. Varsayılan full-data akışı 2-adımlı ladder'dır: Adım 1 tam A–G modeli (~30dk, watchdog sınırlı), Adım 2 elastik yedek (~12dk, watchdog sınırlı). İhlalli tarife asla yazılmaz; çözüm bulunamazsa şema-uyumlu tanı çıktısı üretilir.
 
 ### Ana CLI seçenekleri
 
@@ -432,7 +419,6 @@ Bu yol araştırma/karşılaştırma içindir. Büyük modelde incumbent bulunma
 | `--fixture` | İkisinden tam biri | Sentetik veriyi kullanır |
 | `--full-data` | İkisinden tam biri | `data_raw/` altındaki gerçek veriyi kullanır |
 | `--output PATH` | Hayır | Varsayılan `runs/output.json` |
-| `--no-warm-start` | Hayır | Yalnız full-data'da üç aşamalı warm pipeline'ı atlar |
 
 `--fixture` ve `--full-data` birlikte verilemez; ikisinden biri mutlaka seçilmelidir.
 
@@ -542,7 +528,7 @@ Bu ayrım, modeldeki bir formülasyon hatasının validator tarafından aynı ko
 
 | Tarih | Komut | Sonuç |
 |---|---|---|
-| 2026-07-13 | `.venv/bin/pytest -q` | **321 passed, 3 skipped, 31.72s** |
+| 2026-07-15 | `.venv/bin/pytest -q` | **380 passed, 21.44s** |
 
 Atlanan testler başarısızlık değildir; pytest tarafından mevcut koşul/işaretleyici nedeniyle çalıştırılmayan testlerdir. Yeni ortamda kesin sayı bağımlılık ve veri mevcudiyetine göre yeniden kontrol edilmelidir.
 
