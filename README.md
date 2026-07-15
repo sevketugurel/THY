@@ -100,14 +100,19 @@ flowchart LR
     J --> K
 ```
 
-<<<<<<< HEAD
 ### Uçtan uca veri akışı
 
 | Aşama | Girdi | İşlem | Çıktı | İlgili modül |
 |---|---|---|---|---|
 | 1. Okuma | Dört Excel dosyası | Kolon adlarını normalize eder, şema ve alan kurallarını kontrol eder | Pandas tabloları | `src/data/loaders.py` |
 | 2. Süre düzeltme | Elapsed ve zaman damgası alanları | 24 saat üzeri Excel wrap sorununu düzeltir | Güvenli dakika süreleri | `src/data/elapsed_parser.py` |
-| 3. Sabit türetme | TK satırları | `K_od`, `R_o`, rakip en iyi 
+| 3. Sabit türetme | TK satırları | `K_od`, `R_o`, rakip en iyi süreleri ve başlangıç sıralamasını türetir | Model parametreleri | `src/data/block_times.py`, `competitors.py`, `ranking.py` |
+| 4. Aday üretimi | TK inbound/outbound örnekleri | Aynı gün çapraz çarpım kurar, ulaşılabilir boşluk aralığıyla budar | `Candidate[]` | `src/candidates/generate.py` |
+| 5. Model kurma | Adaylar ve parametreler | Karar değişkenleri, A-G kısıtları ve amaç fonksiyonunu kurar | `ConcreteModel` | `src/model/build.py` |
+| 6. Çözme | Pyomo modeli | HiGHS ayarları, warm-start, zaman limiti ve gerektiğinde dış watchdog uygular | `SolveResult` | `src/solve/` |
+| 7. Yazma | `SolveResult` | Doğal anahtarlarla sıralanmış JSON üretir | `runs/*.json` | `src/output/writer.py` |
+| 8. Doğrulama | JSON ve ham veriler | Model paketinden bağımsız olarak A-G kurallarını ve amacı yeniden hesaplar | `ValidationResult` | `src/validate/independent_validator.py` |
+
 ## Üretim davranışı (`--full-data`): benchmark-safe dürüst incumbent
 
 `main.py --full-data` varsayılan yolu her koşulda **şema-uyumlu,
@@ -133,12 +138,13 @@ için seed-derived incumbent'tır: `objective=1,488,074.8064039326`,
 
 **exit 0 yalnız DOSYA-ÜRETİM garantisidir, fizibilite garantisi değildir.**
 Strict-clean olmayan benchmark çıktısı fizibilite iddiası olarak
-adlandırılmaz; `solver_metrics.status =
-heuristic_incumbent_with_strict_violations` ve `diagnostics` bloğu kalan
+adlandırılmaz; `solver_metrics.status = heuristic_incumbent_with_strict_violations`
+ve `diagnostics` bloğu kalan
 strict E1/E2 teşhisini açıkça taşır. Resmî strict feasibility kapısı
 `--strict-gate` bayrağında korunur: eski davranış, strict-clean olmayan
 tarifeyi yazmaz; bulunamazsa null-teşhis + exit 1.
->>>>>>> 76a5502 (Benchmark Task9: sync docs and final benchmark output)
+
+## Proje dizinleri
 
 | Yol | Sorumluluk | Önemli içerik |
 |---|---|---|
@@ -165,7 +171,8 @@ full-data teslim çıktısı**: seed-derived, tam-iddia, bağımsız-recompute
 `objective_value=1488074.8064039326`, açık E1/E2 strict teşhisi ekli —
 strict-clean iddiası değil). `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json`
 raporun bir EKİDİR, resmî sonucu değiştirmez — ayrıntı `KURULUM.md` §4b.
->>>>>>> 76a5502 (Benchmark Task9: sync docs and final benchmark output)
+
+## Teknoloji yığını
 
 | Teknoloji | Rol | Sürüm politikası |
 |---|---|---|
