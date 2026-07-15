@@ -7,8 +7,10 @@ organizatöre soruldu, cevap gelmedi, M1'de makul bir JSON varsayıldı; bkz.
 `src/output/writer.py` docstring). Bu dosya, o varsayılan şemanın brief'in 4
 gereksinimini eksiksiz karşıladığını gösteren tek-tek eşleme tablosudur.
 
-Üretici: `src/output/writer.py::write_output`. Tüketici: `src/validate/independent_validator.py`
-(kendi bağımsız yeniden-hesaplamasıyla bu dosyayı doğrular).
+Üreticiler: strict yol için `src/output/writer.py::write_output`, benchmark
+yolu için `src/benchmark/writer.py::write_benchmark_output`. Tüketici:
+`src/validate/independent_validator.py` (kendi bağımsız yeniden-hesaplamasıyla
+bu dosyayı doğrular).
 
 ## Brief madde 7 ↔ şema alanı eşlemesi
 
@@ -25,6 +27,20 @@ gereksinimini eksiksiz karşıladığını gösteren tek-tek eşleme tablosudur.
 |---|---|
 | `k_od_sources[]` — `{o, d, source}` | M5: her pazarın $K_{od}$'unun doğrudan gözlemden mi (`"direct"`) yoksa LS-tahmininden mi (`"estimated"`) geldiğini raporlar (VARSAYIM-8) — bir rapor okuyucusunun hangi sayıların daha ince veriye dayandığını görmesini sağlar. |
 | `solver_metrics` — `{status, solve_time_sec}` | Çözüm durumu (optimal/time_limit) + süre — §6 kriter 3 "Hesaplama Performansı" için kanıt. Kapı-5 (M5f): `status` ayrıca `"no_feasible_solution_found"` da olabilir — üretim merdiveninin (`main.py --full-data`) HİÇBİR adımı bağımsız validator'dan geçen bir nokta bulamadığında yazılan teşhis çıktısı; bu durumda `objective_value: null` ve `selected_connections`/`adjusted_flight_times`/`ranking_results` HEPSİ boş liste — hiçbir ihlalli tarife dosyaya yazılmaz (bkz. `docs/STATUS.md` Kapı-5). |
+| `diagnostics` | Benchmark-safe `--full-data` yolunda eklenir: `mode`, `strict_feasible`, `claim_complete`, `claim_check.{missing_claims,extra_claims}`, `strict_violations.{total,total_pairs,by_family,examples}`, `selection_priority`, `seed`, `baseline_reference`, `constraint_interpretation`. Strict-clean olmayan benchmark çıktısı bu alanla açık teşhis taşır; exit 0 fizibilite garantisi değildir. |
+
+## Benchmark status sözlüğü
+
+| `solver_metrics.status` | Anlamı |
+|---|---|
+| `baseline_floor_with_strict_violations` | Floor emniyet çıktısı; final ancak seed/improve yoksa fallback olarak kalır. |
+| `heuristic_incumbent_with_strict_violations` | Beklenen full-data benchmark finali: claim-complete, recompute-objective'li, hard-family temiz seed-derived incumbent; strict E1/E2 ihlalleri diagnostics'te açıktır. |
+| `strict_feasible_incumbent` | Improve aşaması strict-clean bir incumbent bulup seçim sırasını iyileştirdi. |
+| `no_feasible_solution_found` | `--strict-gate` yolunun eski null-teşhis davranışı; benchmark varsayılanı değildir. |
+
+Terminoloji kuralı: strict-clean olmayan benchmark çıktısı fizibilite iddiası
+taşımaz. `valid=True` yalnız fixture/strict-gate gibi gerçekten strict-clean
+yollar için meşrudur.
 
 ## Determinizm
 

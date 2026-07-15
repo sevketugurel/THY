@@ -109,34 +109,43 @@ status=optimal objective=668.75 selected=18 valid=True
 Bu değer üç bağımsız yoldan doğrulanmıştır (CLI = `recompute_objective` =
 saf-Python brute-force oracle) — bkz. `docs/STATUS.md`.
 
-### (c) Gerçek veri — full-data (bütçeli merdiven, ~30-40 dk)
+### (c) Gerçek veri — full-data (benchmark-safe üretim yolu)
 
 ```bash
 python main.py --config src/config/standard.yaml --full-data
 ```
 
-Bu komut TEK ÇAĞRIDA bir üretim merdiveni koşar (`src/solve/ladder.py`):
-1. tam model (A-G), 1800s bütçeli solve;
-2. başarısızsa tek bir elastik (slack-relaxed) solve denemesi, 600s bütçeli;
-3. ikisi de geçerli/doğrulanmış bir sonuç vermezse **hiçbir ihlalli tarife
-   dosyaya yazılmaz** — şema-uyumlu bir **teşhis çıktısı** yazılır
-   (`objective_value: null`, `solver_metrics.status:
-   "no_feasible_solution_found"`, boş tarife listesi) ve komut sıfır-olmayan
-   bir çıkış koduyla döner.
+Bu komut varsayılan olarak benchmark-safe yolu çalıştırır:
 
-**Bu projenin mevcut durumunda (bkz. `docs/report.md` §5), full-data'da adım
-(3)'e düşülmesi BEKLENEN ve NORMAL bir davranıştır** — kapsamlı, çok-açılı
-bir teşhis kampanyasından sonra bu instance'ın full ölçekte doğrulanmış bir
-objective_value vermediği sonucuna varılmıştır (Branch B, bkz. rapor). Aracın
-kendisi **hiçbir zaman ihlalli/geçersiz bir tarife yazmaz** — bu, üretim
-merdiveninin kendi garantisidir ve gizli test senaryolarında da geçerlidir.
+1. **FLOOR** hızlıca yazılır; bu yalnızca null'a düşmeme emniyetidir.
+2. **SEED** (`data_seed/full_data_best_deltas.json`) uygulanır; output'taki
+   bağlantılar nihai saatlerden tam-iddia olarak yeniden türetilir.
+3. **IMPROVE** kalan bütçede strict tam-MIP dener; strict-clean bir incumbent
+   bulursa terfi edebilir.
+
+Final seçim sırası objective-first değildir: `claim_complete=True`, sonra
+hard-family ihlalleri (`A+B+D+F+G`) minimum, sonra `E1+E2` minimum, en son
+objective maksimum. Ölçülen final çıktı seed-derived:
+`objective_value=1488074.8064039326`, `claim_complete=True`,
+`A/B/D/F/G=0`, `E1=106`, `E2=221`,
+`solver_metrics.status="heuristic_incumbent_with_strict_violations"`.
+
+**exit 0 yalnız dosya-üretim garantisidir, fizibilite garantisi değildir.**
+Strict feasibility kapısını özellikle çalıştırmak için:
+
+```bash
+python main.py --config src/config/standard.yaml --full-data --strict-gate
+```
+
+Bu bayrak eski davranışı korur: strict-clean olmayan tarife yazılmaz;
+bulunamazsa null-teşhis + exit 1.
 
 ## 4 · Çıkış kodları
 
 | Kod | Anlamı |
 |---|---|
-| `0` | Doğrulanmış (validator sıfır ihlal + recompute tutarlı) bir tarife `runs/output.json`'a yazıldı. |
-| `1` | Merdivenin hiçbir adımı doğrulanmış bir sonuç üretemedi — şema-uyumlu teşhis çıktısı yazıldı (ihlalli tarife YOK). Full-data'da bu instance için **beklenen** sonuç. |
+| `0` | Benchmark yolunda şema-uyumlu, claim-complete, recompute-objective'li dosya yazıldı. Bu fizibilite garantisi değildir; diagnostics kontrol edilmelidir. Fixture/strict-clean yolda strict-clean tarife yazıldı. |
+| `1` | `--strict-gate` yolunda hiçbir strict-clean sonuç üretilemedi — şema-uyumlu null-teşhis yazıldı. |
 | `2` | Komut satırı argüman hatası (ör. `--fixture` ve `--full-data` ikisi birden veya hiçbiri verilmemiş, ya da `--config` eksik) — argparse standardı. |
 | (traceback) | `data_raw/` dosyaları eksik/yanlış adlı ya da `--config` dosyası bulunamıyor → Python `FileNotFoundError` ile anlamlı bir hata mesajıyla durur (şema hatası gizli-test'te de aynı şekilde davranır, bkz. loader'ların şema-doğrulaması). |
 
@@ -148,14 +157,14 @@ isteyenler için önceden üretilmiş çıktıları `outputs/` altında içerir:
 | Dosya | İçerik | Resmî mi? |
 |---|---|---|
 | `outputs/fixture_output.json` | `--fixture` komutunun çıktısı (668.75/optimal/valid=True) | Evet — sentetik demo referansı |
-| `outputs/full_data_output.json` | `--full-data`'nın GERÇEK ölçülmüş koşusu (44dk22s, Kapı-10) — şema-uyumlu teşhis çıktısı, **objective_value=null, ihlalli tarife YOK** | **Evet — resmî full-data teslim çıktısı (Γ=30)** |
+| `outputs/full_data_output.json` | `--full-data`'nın GERÇEK ölçülmüş benchmark-safe koşusu — seed-derived, tam-iddia, `objective_value=1488074.8064039326`, `A/B/D/F/G=0`, `E1=106`, `E2=221`, `strict_feasible=false` | **Evet — resmî full-data teslim çıktısı (Γ=30)** |
 | `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json` | Kapı-B'nin solver-free Γ ön-tarama sonucu (Γ ∈ {30,45,...,180}) — EK, resmî değil | Hayır — yalnızca rapor eki, resmî konfigürasyon Γ=30'da KALIR |
 
-`outputs/full_data_output.json`'ın `objective_value: null` olması bir hata
-DEĞİLDİR — üretim merdiveninin üç adımının hiçbiri doğrulanmış bir sonuç
-üretemediğinde bilinçli olarak yazılan şema-uyumlu teşhis çıktısıdır (bkz.
-§3c ve `docs/report.md` §5). `Γ` duyarlılık taraması, resmî sonucu
-DEĞİŞTİRMEZ — yalnızca raporun bir eki olarak sunulur.
+`outputs/full_data_output.json` strict-clean iddiası taşımaz.
+Floor referansı `objective=2983669.094729737` olsa da hard-family profili
+(`A+B+D+F+G=193`) nedeniyle final incumbent seçilmedi; seed-derived çıktı
+hard-family temiz olduğu için tercih edildi. `Γ` duyarlılık taraması, resmî
+sonucu DEĞİŞTİRMEZ — yalnızca raporun bir eki olarak sunulur.
 
 ## 5 · Sorun giderme
 

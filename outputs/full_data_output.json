@@ -32866,16 +32866,16 @@
       },
       "examples": {
         "E1": [
-          "E1 VCE-EBL G\u00fcn=6: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 VCE-GZT G\u00fcn=6: |n_fwd(3)-n_bwd(5)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 PEK-AYT G\u00fcn=4: |n_fwd(4)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 CAI-AGP G\u00fcn=6: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 BKK-VCE G\u00fcn=4: |n_fwd(2)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 OGU-VCE G\u00fcn=6: |n_fwd(2)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 VCE-DIY G\u00fcn=6: |n_fwd(1)-n_bwd(3)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 VCE-ATH G\u00fcn=2: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 DAR-VCE G\u00fcn=7: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
-          "E1 VCE-TZX G\u00fcn=5: |n_fwd(3)-n_bwd(5)| exceeds alpha(0.2)*(n_fwd+n_bwd)"
+          "E1 ADB-AGP G\u00fcn=1: |n_fwd(2)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 ADB-AGP G\u00fcn=3: |n_fwd(2)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 ADB-AGP G\u00fcn=4: |n_fwd(3)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 ADB-AGP G\u00fcn=6: |n_fwd(3)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 ADB-AGP G\u00fcn=7: |n_fwd(2)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 AGP-AYT G\u00fcn=1: |n_fwd(1)-n_bwd(3)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 AGP-BJV G\u00fcn=3: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 AGP-BJV G\u00fcn=6: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 AGP-CAI G\u00fcn=1: |n_fwd(1)-n_bwd(2)| exceeds alpha(0.2)*(n_fwd+n_bwd)",
+          "E1 AGP-CAI G\u00fcn=6: |n_fwd(2)-n_bwd(1)| exceeds alpha(0.2)*(n_fwd+n_bwd)"
         ],
         "E2": [
           "E2 ACC-VCE G\u00fcn=1: |Jbest_fwd(807.0)-Jbest_bwd(674.0)| exceeds Gamma(30)",
@@ -74192,7 +74192,7 @@
     }
   ],
   "solver_metrics": {
-    "solve_time_sec": 124.74917078018188,
+    "solve_time_sec": 125.59238290786743,
     "status": "heuristic_incumbent_with_strict_violations"
   }
 }

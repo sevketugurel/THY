@@ -205,16 +205,42 @@ kalıyor, sadece kanıt zinciri düzeltiliyor. Bu düzeltme aynı zamanda bu
 oturumun "kontrollü market-direction kapatma" stratejisinin (kuplajı
 KIRMAK için) gerekçesini güçlendiriyor — bkz. §7 (varsa) / `docs/STATUS.md`.
 
-**Üretim merdiveni garantisi** (Kriter 3 + dayanıklılık): `main.py --full-data`
-tek komutla 3 adımlı bir merdiven koşar — (1) tam model bütçeli solve, (2)
-başarısızsa TEK bir bekçili elastik solve denemesi (Σslack≈0 ise
-strict-feasible), (3) ikisi de olmazsa şema-uyumlu bir teşhis çıktısı
-(`objective_value: null`, `solver_metrics.status: "no_feasible_solution_found"`)
-— **hiçbir adım, dosyaya yazılmadan önce bağımsız validator'dan sıfır
-ihlalle geçmeden kabul edilmez**. Bu garanti GERÇEK full-data'da uçtan uca
-doğrulandı (`docs/STATUS.md` Kapı-5): adım1+adım2 watchdog_killed, adım3
-devreye girdi, yazılan çıktı tam şema-uyumlu ve boş tarife, hiçbir ihlalli
-tarife dosyaya yazılmadı.
+### 5c · Benchmark-Safe Üretim Yolu: Dürüst Tam-İddia Incumbent + Açık Teşhis
+
+Organizatör değerlendirmeyi kendi ortamında aynı veriyle kodu çalıştırarak
+yapacağını duyurdu. Strict feasibility kapısı (`--strict-gate`) kanıt
+disiplini açısından korunur; ancak full-data benchmark varsayılanında null
+çıktı otomatik değerlendirme için "çözüm yok" anlamına gelir. Bu nedenle
+`main.py --full-data` artık her koşuda şema-uyumlu, tam-iddia
+(claim-complete), recompute-objective'li bir incumbent yazar ve kalan strict
+ihlalleri saklamadan teşhis eder.
+
+Seçim politikası objective-first değildir: `claim_complete=True`, sonra
+hard-family ihlalleri (`A+B+D+F+G`) minimum, sonra `E1+E2` minimum, en son
+objective maksimum. Ölçülen sonuç:
+
+- Final incumbent: seed-derived, `objective_value=1488074.8064039326`,
+  `solver_metrics.status=heuristic_incumbent_with_strict_violations`.
+- Tam-iddia kontrolü: `missing_claims=0`, `extra_claims=0`,
+  `claim_complete=true`.
+- Hard-family strict teşhisi: `A/B/D/F/G=0`. Kalan teşhis yalnız
+  `E1=106`, `E2=221`; `strict_feasible=false`.
+- Floor referansı: `objective=2983669.094729737`, fakat hard-family profili
+  `A+B+D+F+G=193` ve toplam `strict_violations_total=1688` olduğu için final
+  incumbent seçilmedi. Floor yalnız null'a düşmeme emniyeti olarak kaldı.
+
+Bu strict-clean iddiası değildir. Çıktı `diagnostics` bloğunda
+`constraint_interpretation`, aile-bazlı sayımlar, ilk örnekler,
+`baseline_reference` ve seed uygulama sayaçlarını taşır. Under-claim ve
+over-claim ayrı ayrı `validate_claim_completeness` ile yakalanır; objective
+her zaman `recompute_objective` ile yazılır, solver'ın kendi sayısı headline
+değer olmaz.
+
+Seed mekanizması uzun LNS/elastik kampanyada bulunan noktanın baseline-delta
+kaydını taşır. 2026-07-16'da üç izlenebilir micro-repair eklendi
+(`IB 2845`, gün 3/5/7, +10dk) ve D-check'teki `K_od` direct-only false
+positive'i direct→estimate fallback ile düzeltildi. Böylece final hard-family
+profili sıfırlandı; yalnız E1/E2 strict okuması teşhis olarak kaldı.
 
 ## 6 · Kod Kalitesi Referansı + Sonuç Tartışması
 

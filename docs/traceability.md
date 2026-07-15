@@ -26,3 +26,9 @@ KARAR-0/KARAR-0b sonrası formülleri hem `docs/model.md`'de hem kodda
 referanslı; validator'ın koşullu/statik-muafiyet mantığı model kodundan
 BAĞIMSIZ olarak (aynı mantığı KOPYALAYARAK, import ETMEDEN) ayrı ayrı
 uygulanmış durumda — bkz. her iki dosyanın kendi docstring'leri.
+
+**2026-07-16 benchmark-safe notu**: `src/benchmark/*` üretim-yolu
+orkestrasyonudur; `docs/model.md`'deki matematiksel modele dokunmaz. Improve
+aşaması hâlâ aynı strict `build_model_m4`/ladder hattını kullanır; varsayılan
+`--full-data` final seçimi ise `diagnostics` hard-family profiline göre
+seed-derived incumbent'ı yayınlar.

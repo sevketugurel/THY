@@ -566,22 +566,28 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-12T15:19:57.901094+00:00. Son 15 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-12T20:59:26.595602+00:00. Son 5 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 30 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
-| 31 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.5s |
-| 32 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
-| 33 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
-| 34 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
-| 35 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.9s |
-| 36 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
-| 37 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.8s |
-| 38 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
-| 39 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
-| 40 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.6s |
-| 41 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
-| 42 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
-| 43 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
-| 44 | time_limit | 10944.00 | 10944.00 | 1875 | 285 | 24.7s |
+| 1 | infeasible | 10944.00 | 10944.00 | 238 | 34 | 18.0s |
+| 2 | infeasible | 10944.00 | 10944.00 | 238 | 34 | 18.3s |
+| 3 | infeasible | 10944.00 | 10944.00 | 260 | 37 | 18.3s |
+| 4 | infeasible | 10944.00 | 10944.00 | 260 | 37 | 18.3s |
+| 5 | infeasible | 10944.00 | 10944.00 | 262 | 40 | 18.2s |
+
+## M5j Benchmark-Safe Final (2026-07-16)
+
+Kullanıcı kararından sonra policy bug + D validator bug + seed A micro-repair
+düzeltildi. Gerçek full-data T8 koşusu (`runs/benchmark_second_run.log`,
+`runs/output.json`) kapıları geçti:
+
+- Final çıktı seed-derived: `objective=1488074.8064039326`,
+  `status=heuristic_incumbent_with_strict_violations`.
+- `claim_complete=True`, `claim_check={missing_claims:0, extra_claims:0}`.
+- Hard-family profile temiz: `A/B/D/F/G=0`; kalan strict teşhis
+  `E1=106`, `E2=221`; `strict_feasible=false`.
+- Floor referansı final seçilmedi: `objective=2983669.094729737`,
+  `hard_family_violations=193`, `strict_violations_total=1688`.
+- Seed stats: `applied=2140`, `fallback_window_exceeded=0`,
+  `skipped_missing_flight=0`.

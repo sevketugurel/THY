@@ -1323,3 +1323,16 @@ kararlar için `ASSUMPTIONS.md`'ye bakınız (bu dosyadakiler daha küçük öl�
   Σslack=10944.0 değişmedi, keep-best referans korundu. Sabah seçenekleri
   chat raporunda; en umutlusu: kill sırasını worst-first yerine
   CHEAPEST/realizable-first'e çevirmek + K=1 ayrım probe'u.
+
+## 2026-07-16 — M5j benchmark-safe final policy
+
+- Floor objective yüksek (`2983669.094729737`) ama `A+B+D+F+G=193` hard-family
+  ihlali taşıdığı için final seçilmeyecek; yalnız null'a düşmeme emniyeti.
+- Final seçim sırası: claim-complete, hard-family minimum, E1/E2 minimum,
+  objective maksimum. Bu politika seed-derived incumbent'ı seçti.
+- Validator D-check bug'ı düzeltildi: ranking kontrolü `K_od` için
+  recompute ile aynı direct→estimate fallback'i kullanıyor.
+- Seed dosyası script üzerinden izlenebilir üç A micro-repair içeriyor:
+  `IB 2845` gün 3/5/7 `+10dk`. Son T8 kapısı:
+  `objective=1488074.8064039326`, `claim_complete=True`, `A/B/D/F/G=0`,
+  `E1=106`, `E2=221`.

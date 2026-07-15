@@ -316,7 +316,7 @@ def validate_output(
             candidate_pairs.add((o, d, gun))
             candidate_pairs.add((d, o, gun))
         checked = set()
-        for (o, d, gun) in list(candidate_pairs):
+        for (o, d, gun) in sorted(candidate_pairs):
             if (o, d, gun) in checked or (d, o, gun) in checked:
                 continue
             if e1_activation == "conditional":
@@ -373,7 +373,7 @@ def validate_output(
             journeys_by_market.setdefault((o, d, conn["gun"]), []).append(journey)
 
         checked_e2 = set()
-        for (o, d, gun) in list(journeys_by_market.keys()):
+        for (o, d, gun) in sorted(journeys_by_market):
             if (o, d, gun) in checked_e2 or (d, o, gun) not in journeys_by_market:
                 continue
             checked_e2.add((o, d, gun))
@@ -806,7 +806,7 @@ def summarize_violation_families(violations: list) -> dict:
     """Return family counts and up to ten raw examples per family."""
     counts = {}
     examples = {}
-    for violation in violations:
+    for violation in sorted(violations):
         family = next((fam for prefix, fam in _FAMILY_PREFIXES if violation.startswith(prefix)), "other")
         counts[family] = counts.get(family, 0) + 1
         bucket = examples.setdefault(family, [])

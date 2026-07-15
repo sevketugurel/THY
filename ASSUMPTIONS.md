@@ -957,3 +957,23 @@ genuine vs KARAR-0b-exempted E2 ihlallerini ayrı raporluyor.
 açık bir soru olarak `docs/organizer_questions.md` madde 12b'de kalıyor —
 bu karar yalnızca "mevcut Gamma altında provably imkânsız olan çiftleri
 ne yapalım" sorusunu cevaplıyor.
+
+## VARSAYIM-18: Benchmark üretim yolunda hard-family-first dürüst incumbent seçimi (2026-07-16)
+
+Organizatör benchmark'ı kendi ortamında çalıştıracağı için `--full-data`
+varsayılanı artık null-teşhis yerine şema-uyumlu, tam-iddia, recompute
+objective'li bir incumbent yazar. Bu bir strict feasibility iddiası değildir:
+`strict_feasible=false` ve aile-bazlı diagnostics açıkça dosyadadır.
+
+Final seçim sırası skor-etkileyen bir karardır: `claim_complete=True`, sonra
+hard-family ihlalleri (`A+B+D+F+G`) minimum, sonra `E1+E2` minimum, en son
+objective maksimum. Bu nedenle ham floor `objective=2983669.094729737`
+olmasına rağmen `A+B+D+F+G=193` taşıdığı için final seçilmedi. Final çıktı
+seed-derived: `objective=1488074.8064039326`, `A/B/D/F/G=0`, `E1=106`,
+`E2=221`, `claim_check={missing_claims:0, extra_claims:0}`.
+
+Gerekçe: A/B/D/F/G brief'in operasyonel ve raporlama hard aileleri olarak
+savunulabilir temiz kalmalıdır; E1/E2 strict okuması ise yayınlanan baseline
+tarifesinin kendisini de ihlalli hale getiriyor ve bu yüzden benchmark
+varsayılanında açık teşhis olarak raporlanır. Resmî strict feasibility kapısı
+`--strict-gate` bayrağında korunur ve strict-clean olmayan tarife yazmaz.

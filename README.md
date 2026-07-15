@@ -100,20 +100,45 @@ flowchart LR
     J --> K
 ```
 
+<<<<<<< HEAD
 ### Uçtan uca veri akışı
 
 | Aşama | Girdi | İşlem | Çıktı | İlgili modül |
 |---|---|---|---|---|
 | 1. Okuma | Dört Excel dosyası | Kolon adlarını normalize eder, şema ve alan kurallarını kontrol eder | Pandas tabloları | `src/data/loaders.py` |
 | 2. Süre düzeltme | Elapsed ve zaman damgası alanları | 24 saat üzeri Excel wrap sorununu düzeltir | Güvenli dakika süreleri | `src/data/elapsed_parser.py` |
-| 3. Sabit türetme | TK satırları | `K_od`, `R_o`, rakip en iyi süreleri ve başlangıç sıralamasını türetir | Model parametreleri | `src/data/block_times.py`, `competitors.py`, `ranking.py` |
-| 4. Aday üretimi | TK inbound/outbound örnekleri | Aynı gün çapraz çarpım kurar, ulaşılabilir boşluk aralığıyla budar | `Candidate[]` | `src/candidates/generate.py` |
-| 5. Model kurma | Adaylar ve parametreler | Karar değişkenleri, A–G kısıtları ve amaç fonksiyonunu kurar | `ConcreteModel` | `src/model/build.py` |
-| 6. Çözme | Pyomo modeli | HiGHS ayarları, warm-start, zaman limiti ve gerektiğinde dış watchdog uygular | `SolveResult` | `src/solve/` |
-| 7. Yazma | `SolveResult` | Doğal anahtarlarla sıralanmış JSON üretir | `runs/*.json` | `src/output/writer.py` |
-| 8. Doğrulama | JSON ve ham veriler | Model paketinden bağımsız olarak A–G kurallarını ve amacı yeniden hesaplar | `ValidationResult` | `src/validate/independent_validator.py` |
+| 3. Sabit türetme | TK satırları | `K_od`, `R_o`, rakip en iyi 
+## Üretim davranışı (`--full-data`): benchmark-safe dürüst incumbent
 
-## Proje dizinleri
+`main.py --full-data` varsayılan yolu her koşulda **şema-uyumlu,
+tam-iddia (claim-complete), recompute-objective'li bir incumbent** yazar ve
+exit 0 döner:
+
+1. **FLOOR** — ham baseline saatleri hemen yazılır. Bu yalnızca null'a
+   düşmeme emniyetidir; final seçimde hard-family ihlal profili kötüyse
+   objective'i yüksek olsa bile tercih edilmez.
+2. **SEED** — `data_seed/full_data_best_deltas.json` uygulanır, saatlerden
+   tüm uygun bağlantılar yeniden türetilir ve amaç değeri bağımsız
+   `recompute_objective` ile yazılır.
+3. **IMPROVE** — kalan bütçede strict tam-MIP denenir; yalnız claim-complete
+   ve strict-clean bir incumbent seçim sırasını iyileştirirse terfi eder.
+
+Final seçim sırası: `claim_complete=True`, sonra hard-family ihlalleri
+(`A+B+D+F+G`) minimum, sonra `E1+E2` minimum, en son objective maksimum.
+Bu yüzden ölçülen final `outputs/full_data_output.json`, floor'un
+`objective=2,983,669.09` değerinden düşük olsa da hard-family temiz olduğu
+için seed-derived incumbent'tır: `objective=1,488,074.8064039326`,
+`claim_complete=True`, `A/B/D/F/G=0`, `E1=106`, `E2=221`,
+`strict_feasible=False`.
+
+**exit 0 yalnız DOSYA-ÜRETİM garantisidir, fizibilite garantisi değildir.**
+Strict-clean olmayan benchmark çıktısı fizibilite iddiası olarak
+adlandırılmaz; `solver_metrics.status =
+heuristic_incumbent_with_strict_violations` ve `diagnostics` bloğu kalan
+strict E1/E2 teşhisini açıkça taşır. Resmî strict feasibility kapısı
+`--strict-gate` bayrağında korunur: eski davranış, strict-clean olmayan
+tarifeyi yazmaz; bulunamazsa null-teşhis + exit 1.
+>>>>>>> 76a5502 (Benchmark Task9: sync docs and final benchmark output)
 
 | Yol | Sorumluluk | Önemli içerik |
 |---|---|---|
@@ -134,7 +159,13 @@ flowchart LR
 | `data_raw/` | Yerel yarışma verileri | Git tarafından izlenmez; yeniden dağıtılmaz |
 | `runs/` | Üretilen çözüm ve loglar | JSON/HiGHS logları; çoğu Git tarafından izlenmez |
 
-## Teknoloji yığını
+Komutları yeniden koşmadan sonuçları incelemek için: `outputs/fixture_output.json`
+(sentetik demo referansı) ve `outputs/full_data_output.json` (**resmî
+full-data teslim çıktısı**: seed-derived, tam-iddia, bağımsız-recompute
+`objective_value=1488074.8064039326`, açık E1/E2 strict teşhisi ekli —
+strict-clean iddiası değil). `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json`
+raporun bir EKİDİR, resmî sonucu değiştirmez — ayrıntı `KURULUM.md` §4b.
+>>>>>>> 76a5502 (Benchmark Task9: sync docs and final benchmark output)
 
 | Teknoloji | Rol | Sürüm politikası |
 |---|---|---|

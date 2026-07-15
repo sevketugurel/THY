@@ -488,3 +488,15 @@ AYNEN geçerli. Bu turun EK özeti:
 Detaylı alt-maddeler (E1 formülü, E2 sandviç, F reachable-bucket, residual
 capacity, solve ladder eşikleri) kullanıcının bu turdaki mesajında birebir —
 context sıkışırsa o mesaj otorite kaynağıdır, bu özet sadece hatırlatma.
+
+## M5j Benchmark-Safe Kapanış (2026-07-16)
+
+- `main.py --full-data` varsayılanı artık benchmark-safe üretim yolu:
+  floor yalnız emergency fallback, final seçim sırası claim-complete →
+  `A+B+D+F+G` minimum → `E1+E2` minimum → objective maksimum.
+- Resmî full-data çıktı seed-derived:
+  `objective=1488074.8064039326`, `claim_complete=True`,
+  `A/B/D/F/G=0`, `E1=106`, `E2=221`,
+  `status=heuristic_incumbent_with_strict_violations`.
+- `--strict-gate` eski strict feasibility kapısı olarak korunur; fixture yolu
+  668.75/`valid=True` değişmedi.
