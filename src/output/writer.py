@@ -37,7 +37,10 @@ def write_output(path: Path, result: SolveResult, k_od_sources: dict = None) -> 
     adjusted_times = []
     for r_id, time_min in {**(result.arr_times or {}), **(result.dep_times or {})}.items():
         role, flno, gun = r_id
-        adjusted_times.append({"role": role, "flno": flno, "gun": gun, "time_min": time_min})
+        adjusted_times.append({
+            "role": role, "flno": flno, "gun": gun, "time_min": time_min,
+            "time_hhmm": f"{(time_min % 1440) // 60:02d}:{time_min % 60:02d}",
+        })
     adjusted_times.sort(key=lambda e: (e["role"], e["flno"], e["gun"]))
 
     ranking_results = []

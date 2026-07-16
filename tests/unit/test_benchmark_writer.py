@@ -43,7 +43,7 @@ def test_writer_is_deterministic_and_sorted(tmp_path):
     p2 = _write(tmp_path)
     assert content1 == p2.read_text()
     data = json.loads(content1)
-    assert data["adjusted_flight_times"][0] == {"role": "IB", "flno": 10, "gun": 1, "time_min": 600}
+    assert data["adjusted_flight_times"][0] == {"role": "IB", "flno": 10, "gun": 1, "time_min": 600, "time_hhmm": "10:00"}
     assert data["objective_value"] is None
 
 

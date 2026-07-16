@@ -24,3 +24,7 @@ CLAUDE.md
 
 # All docs -- kept local only, not part of the deliverable repo
 docs/
+
+# PDF files and LaTeX sources -- kept local only
+*.pdf
+*.tex

@@ -15,7 +15,10 @@ def write_benchmark_output(
     diagnostics: dict,
 ) -> None:
     adjusted = [
-        {"role": role, "flno": flno, "gun": gun, "time_min": time_min}
+        {
+            "role": role, "flno": flno, "gun": gun, "time_min": time_min,
+            "time_hhmm": f"{(time_min % 1440) // 60:02d}:{time_min % 60:02d}",
+        }
         for (role, flno, gun), time_min in times.items()
     ]
     adjusted.sort(key=lambda e: (e["role"], e["flno"], e["gun"]))
