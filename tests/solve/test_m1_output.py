@@ -64,7 +64,7 @@ def test_write_output_reports_adjusted_flight_times(tmp_path, solved_result):
     assert "adjusted_flight_times" in data
     assert len(data["adjusted_flight_times"]) > 0
     entry = data["adjusted_flight_times"][0]
-    assert set(entry.keys()) == {"role", "flno", "gun", "time_min"}
+    assert set(entry.keys()) == {"role", "flno", "gun", "time_min", "time_hhmm"}
 
     # selected_connections must report the ACTUAL solved gap, not a stale field
     assert all("gap_min" in c for c in data["selected_connections"])
