@@ -423,7 +423,7 @@ python main.py --config src/config/standard.yaml --full-data  # gerçek veri (AS
 pytest                    # tüm testler
 pytest -m unit            # solver'sız, <1sn
 pytest -m solve           # küçük HiGHS solve, <60sn
-```
+``
 
 ## Milestone Disiplini
 

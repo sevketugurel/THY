@@ -21,3 +21,6 @@ data_raw/
 
 # AI assistant context file -- not part of the project deliverable
 CLAUDE.md
+
+# Live experiment status -- updated frequently, not part of deliverable
+docs/STATUS.md

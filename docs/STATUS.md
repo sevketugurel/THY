@@ -566,12 +566,17 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
+<<<<<<< Updated upstream
 Son güncelleme: 2026-07-16T07:48:28.478722+00:00. Son 5 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+=======
+Son güncelleme: 2026-07-16T07:36:01.164097+00:00. Son 2 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+>>>>>>> Stashed changes
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
 | 1 | time_limit | 56.40 | 52.80 | 491 | 40 | 122.2s |
 | 2 | time_limit | 52.80 | 37.60 | 403 | 40 | 154.3s |
+<<<<<<< Updated upstream
 | 3 | time_limit | 37.60 | 42.80 | 665 | 80 | 248.2s |
 | 4 | time_limit | 37.60 | 42.80 | 665 | 80 | 253.8s |
 | 5 | time_limit | 37.60 | 42.80 | 665 | 80 | 245.0s |
@@ -591,3 +596,5 @@ düzeltildi. Gerçek full-data T8 koşusu (`runs/benchmark_second_run.log`,
   `hard_family_violations=193`, `strict_violations_total=1688`.
 - Seed stats: `applied=2140`, `fallback_window_exceeded=0`,
   `skipped_missing_flight=0`.
+=======
+>>>>>>> Stashed changes
