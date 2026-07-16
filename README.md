@@ -447,6 +447,10 @@ Gerçek veri gerektirmez ve yeni bir kurulumun ilk doğrulaması olarak önerili
 
 Beklenen çıktı: `status=optimal`, `objective=668.75`, `valid=True`, `selected=18`.
 
+Komut tamamlandığında `outputs/` klasöründe iki dosya otomatik üretilir:
+- `outputs/fixture_output.json` — makine-okunabilir JSON sonuç
+- `outputs/dashboard.html` — tarayıcıda açılabilen görsel rapor
+
 ### 2. Full-data benchmark-safe çalıştırması
 
 Önce [beklenen dört dosyayı](#beklenen-full-data-dosyaları) `data_raw/` içine yerleştirin.
@@ -459,6 +463,10 @@ Beklenen çıktı: `status=optimal`, `objective=668.75`, `valid=True`, `selected
 ```
 
 `-u`, uzun koşularda logların tamponda beklememesi için önerilir. Pipeline FLOOR → SEED → IMPROVE adımlarını sırayla çalıştırır; ihlalli tarife asla yazılmaz.
+
+Komut tamamlandığında `outputs/` klasöründe iki dosya otomatik üretilir:
+- `outputs/full_data_output.json` — makine-okunabilir JSON sonuç
+- `outputs/dashboard.html` — tarayıcıda açılabilen görsel rapor
 
 ### Ana CLI seçenekleri
 
