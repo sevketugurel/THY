@@ -566,20 +566,20 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-<<<<<<< Updated upstream
-Son güncelleme: 2026-07-16T07:48:28.478722+00:00. Son 5 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
-=======
-Son güncelleme: 2026-07-16T07:36:01.164097+00:00. Son 2 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
->>>>>>> Stashed changes
+Son güncelleme: 2026-07-16T08:12:08.741122+00:00. Son 10 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
 | 1 | time_limit | 56.40 | 52.80 | 491 | 40 | 122.2s |
 | 2 | time_limit | 52.80 | 37.60 | 403 | 40 | 154.3s |
-<<<<<<< Updated upstream
 | 3 | time_limit | 37.60 | 42.80 | 665 | 80 | 248.2s |
 | 4 | time_limit | 37.60 | 42.80 | 665 | 80 | 253.8s |
 | 5 | time_limit | 37.60 | 42.80 | 665 | 80 | 245.0s |
+| 6 | time_limit | 37.60 | 42.80 | 665 | 80 | 239.9s |
+| 7 | time_limit | 37.60 | 52.00 | 661 | 80 | 289.7s |
+| 8 | time_limit | 37.60 | 100.00 | 665 | 80 | 293.6s |
+| 9 | time_limit | 37.60 | 63.20 | 660 | 80 | 275.0s |
+| 10 | time_limit | 37.60 | 76.40 | 669 | 80 | 321.5s |
 
 ## M5j Benchmark-Safe Final (2026-07-16)
 
