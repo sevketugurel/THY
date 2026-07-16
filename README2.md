@@ -152,7 +152,6 @@ Final seçim sırası: `claim_complete=True`, sonra hard-family ihlalleri (`A+B+
 | `tests/solve/` | Küçük HiGHS entegrasyon testleri | A–G kısıtları, model kurucular, warm-start ve CLI |
 | `tests/slow/` | Yavaş veya geniş kapsamlı testler | Brute-force oracle ve full-data odaklı kontroller |
 | `tests/fixtures/` | Paylaşılabilir sentetik Excel verileri | Dört sentetik girdi ve fixture üreticisi |
-| `docs/` | Teknik raporlar ve karar kayıtları | Matematiksel model, varsayımlar, çıktı formatı ve deney raporları |
 | `outputs/` | Teslim çıktı dosyaları | `fixture_output.json`, `full_data_output.json`, `dashboard.html`, `GAMMA_SENSITIVITY_STATIC_SCAN.json` |
 | `data_raw/` | Yerel yarışma verileri | Git tarafından izlenmez; yeniden dağıtılmaz |
 | `runs/` | Üretilen çözüm ve loglar | JSON/HiGHS logları; çoğu Git tarafından izlenmez |
@@ -239,7 +238,7 @@ Bu budama, çözüm uzayındaki geçerli bir noktayı kaldırmaz; yalnızca hiç
 
 ## Matematiksel model özeti
 
-Ayrıntılı formülasyon için [`docs/model.md`](docs/model.md) okunmalıdır.
+Ayrıntılı formülasyon aşağıda özetlenmektedir.
 
 ### Temel kümeler
 
@@ -332,6 +331,68 @@ Kod tabanı yalnızca tek bir `solve()` çağrısı değil, full-data ölçeğin
 | Elastic feasibility | A+G+F+B + slack'li E1/E2 | Katı fizibiliteye uzaklığı `Σslack` ile ölçmek | Aktif araştırma aracı |
 | Solve ladder | Full adjustable → elastik yedek → teşhis | Kademeli küçültme | Full-data varsayılan akışında yerleşik |
 | Local branching | Referans etrafında `k` değişikliklik trust region | Yakın fizibilite arama | Denendi; full-data kök-düğüm davranışını çözmedi |
+
+### LNS (Large Neighborhood Search) algoritması
+
+Fix-and-Optimize döngüsü: her iterasyonda E1/E2 ihlali en yüksek pazar çiftlerini seçer, o çiftlere bağlı uçuş sürelerini serbest bırakır, geri kalanı sabit tutar ve küçük bir alt-MIP çözer.
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    LNS DÖNGÜSÜ                          │
+│                                                         │
+│  Başlangıç noktası                                      │
+│  (elastik warm-start çözümü, Σslack = başlangıç)       │
+│            │                                            │
+│            ▼                                            │
+│  ┌─────────────────────┐                               │
+│  │  En kötü m çift seç │  ← E1+E2 slack'i en yüksek   │
+│  │  (seed ile rastgele │    market pair'lar             │
+│  │   çeşitlendirme)    │                               │
+│  └─────────┬───────────┘                               │
+│            │                                            │
+│            ▼                                            │
+│  ┌─────────────────────┐                               │
+│  │  Seçili uçuşları    │  ← Diğer tüm t_arr/t_dep     │
+│  │  serbest bırak,     │    .fix() ile sabitlenir      │
+│  │  gerisini kilitle   │                               │
+│  └─────────┬───────────┘                               │
+│            │                                            │
+│            ▼                                            │
+│  ┌─────────────────────┐                               │
+│  │  HiGHS ile alt-MIP  │  ← iter_time_limit_sec        │
+│  │  çöz (elastik amaç) │    watchdog korumalı          │
+│  └─────────┬───────────┘                               │
+│            │                                            │
+│            ▼                                            │
+│  ┌─────────────────────┐   Σslack azaldı?              │
+│  │  Kabul / Ret         ├──────────────────┐           │
+│  │  (greedy accept)    │  Evet             │ Hayır     │
+│  └─────────┬───────────┘   ↓               ↓          │
+│            │            güncelle        mevcut          │
+│            │            referansı       referansta       │
+│            │                            kal             │
+│            ▼                                            │
+│  Plato (plateau_iters) veya Σslack=0 → DUR             │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Σslack yolculuğu** (tam-data, Γ=360 dk, E1/E2 hedefi sıfır):
+
+```
+  Σslack
+  851 ──▶ 128 ──▶ 90 ──▶ 57 ──▶ ... ──▶ 0 (hedef)
+  │        │        │      │
+  elastik  iter     iter   iter
+  warm-    13       ~20    devam
+  start    E2 temiz
+```
+
+| Terim | Açıklama |
+|---|---|
+| `Σslack` | Tüm pazar çiftlerindeki E1 + E2 ihlallerinin toplamı (dakika) |
+| `m` | Her iterasyonda serbest bırakılan uçuş örneği sayısı |
+| Plato | `plateau_iters` iterasyon boyunca iyileşme olmadığında durdurma |
+| Σslack = 0 | E1 ve E2 tamamen temiz → strict `valid=True` adayı |
 
 ## Kurulum
 
@@ -583,7 +644,7 @@ Full-data araştırma komutları dakikalar veya saatler sürebilir ve yüksek be
 
 ## Varsayımlar, riskler ve sınırlamalar
 
-Tüm ayrıntılı varsayımlar [`ASSUMPTIONS.md`](ASSUMPTIONS.md), kronolojik kararlar [`docs/decisions.md`](docs/decisions.md) içindedir.
+Tüm ayrıntılı varsayımlar [`ASSUMPTIONS.md`](ASSUMPTIONS.md) içindedir.
 
 | Konu | Uygulanan karar | Risk / açık nokta |
 |---|---|---|
@@ -628,17 +689,7 @@ Sınırlama: zaman limitli ve paralel MIP araması, aynı seed ile bile alternat
 |---|---|
 | [`README.md`](README.md) | Projeye giriş, kurulum, mimari ve genel durum |
 | [`ASSUMPTIONS.md`](ASSUMPTIONS.md) | Veri/model yorumları ve organizatöre bağlı açık varsayımlar |
-| [`KURULUM.md`](KURULUM.md) | Adım adım kurulum, docker ve teslim paketi çalıştırma talimatları |
-| [`docs/model.md`](docs/model.md) | Kümeler, değişkenler, amaç ve A–G matematiksel formülasyonu |
-| [`docs/decisions.md`](docs/decisions.md) | Kronolojik karar ve deney kanıt zinciri |
-| [`docs/output_format.md`](docs/output_format.md) | JSON şeması, brief eşlemesi ve determinizm |
-| [`docs/block_time_cross_validation.md`](docs/block_time_cross_validation.md) | v2 elapsed süreleri ve eski LS kestirimlerinin karşılaştırması |
-| [`docs/lp_anatomy.md`](docs/lp_anatomy.md) | LP gevşemesi, model boyutu ve fractionality analizi |
-| [`docs/feasibility_certificates.md`](docs/feasibility_certificates.md) | Çözücüsüz E1/E2 gerekli koşul kontrolleri |
-| [`docs/baseline_autopsy.md`](docs/baseline_autopsy.md) | Baseline tarifenin ihlal analizi |
-| [`docs/organizer_questions.md`](docs/organizer_questions.md) | Organizatöre yöneltilmesi gereken veri/model soruları |
-| [`docs/report.md`](docs/report.md) | Nihai teknik rapor (6 sayfa, PDF olarak da mevcut) |
-| [`docs/TESLIM_BEKLENTILERI.md`](docs/TESLIM_BEKLENTILERI.md) | Rubrik tahmini, çalışma süreleri ve organizatör soru haritası |
+| [`KURULUM.md`](KURULUM.md) | Adım adım kurulum, Docker ve teslim paketi çalıştırma talimatları |
 
 ## Geliştirme rehberi
 
@@ -648,7 +699,7 @@ Sınırlama: zaman limitli ve paralel MIP araması, aynı seed ile bile alternat
 |---:|---|
 | 1 | Değişikliğin hangi veri, model veya doğrulama varsayımını etkilediğini belirleyin |
 | 2 | Önce küçük unit/solve testiyle beklenen davranışı tanımlayın |
-| 3 | Model değişikliği varsa `docs/model.md`; varsayım değişikliği varsa `ASSUMPTIONS.md` ve `docs/decisions.md`yi aynı değişiklikte güncelleyin |
+| 3 | Varsayım değişikliği varsa `ASSUMPTIONS.md` aynı değişiklikte güncelleyin |
 | 4 | İlgili dar testleri, ardından tüm test paketini çalıştırın |
 | 5 | Fixture CLI'yi uçtan uca çalıştırıp `valid=True` sonucunu kontrol edin |
 | 6 | Full-data koşusu gerekiyorsa önce boyut bütçesi çıkarın ve watchdog kullanın |
@@ -663,7 +714,7 @@ Sınırlama: zaman limitli ve paralel MIP araması, aynı seed ile bile alternat
 | A–G kısıtı | Pozitif/negatif/adversarial küçük solve testleri ve bağımsız validator eşlemesi |
 | Amaç fonksiyonu | Solver sonucu ile bağımsız recompute karşılaştırması |
 | Benchmark pipeline | FLOOR/SEED/IMPROVE sırası, claim-completeness, hard-family seçim sırası |
-| Çıktı şeması | Writer determinismi, validator tüketimi ve `docs/output_format.md` |
+| Çıktı şeması | Writer determinismi ve validator tüketimi |
 
 ### Hızlı sorun giderme
 
