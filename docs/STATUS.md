@@ -566,15 +566,15 @@ stratejisine OTONOM geçilmiyor).
 
 ## LNS İlerleme (M5d)
 
-Son güncelleme: 2026-07-12T20:59:26.595602+00:00. Son 5 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
+Son güncelleme: 2026-07-16T07:48:28.478722+00:00. Son 5 iterasyon (tam log: `runs/lns_progress.log`, gitignored):
 
 | iter | status | Σslack (önce) | Σslack (sonra) | serbest örnek | m | süre |
 |---|---|---|---|---|---|---|
-| 1 | infeasible | 10944.00 | 10944.00 | 238 | 34 | 18.0s |
-| 2 | infeasible | 10944.00 | 10944.00 | 238 | 34 | 18.3s |
-| 3 | infeasible | 10944.00 | 10944.00 | 260 | 37 | 18.3s |
-| 4 | infeasible | 10944.00 | 10944.00 | 260 | 37 | 18.3s |
-| 5 | infeasible | 10944.00 | 10944.00 | 262 | 40 | 18.2s |
+| 1 | time_limit | 56.40 | 52.80 | 491 | 40 | 122.2s |
+| 2 | time_limit | 52.80 | 37.60 | 403 | 40 | 154.3s |
+| 3 | time_limit | 37.60 | 42.80 | 665 | 80 | 248.2s |
+| 4 | time_limit | 37.60 | 42.80 | 665 | 80 | 253.8s |
+| 5 | time_limit | 37.60 | 42.80 | 665 | 80 | 245.0s |
 
 ## M5j Benchmark-Safe Final (2026-07-16)
 

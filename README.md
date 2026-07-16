@@ -12,13 +12,13 @@
 | Karar kapsamı | IST varış/kalkış zamanları, sunulan bağlantılar, yön dengesi, seyahat süresi dengesi, rotasyon, kapasite ve düzenlilik |
 | Veri kapsamı | O&D bağlantı tablosu, yolcu/pazar önem ağırlıkları, sıralama ağırlıkları ve uçuş çiftleri |
 | Güvenilir demo | Sentetik fixture üzerinde uçtan uca model kurma, çözme, çıktı üretme ve bağımsız doğrulama |
-| Gerçek veri durumu | Model ve deney altyapısı çalışır; ancak 11 Temmuz 2026 tarihli son kayıt itibarıyla tüm A–G kısıtlarını sağlayan ve bağımsız validator'dan geçen bir full-data amaç değeri henüz elde edilmemiştir |
-| Kalite durumu | 15 Temmuz 2026 yerel doğrulaması: **380 test geçti** |
+| Gerçek veri durumu | Benchmark-safe pipeline ile seed-türevli tam-iddia çıktı üretildi: `objective=1,488,074.81`, `claim_complete=True`, `A/B/D/F/G=0`, `E1=106`, `E2=221`, `strict_feasible=False` — strict-clean iddiası yoktur |
+| Kalite durumu | 16 Temmuz 2026 yerel doğrulaması: **433 test geçti** |
 | Ana giriş noktası | `main.py` |
 | Varsayılan yapılandırma | `src/config/standard.yaml` |
 | Sonuç formatı | Deterministik sıralanmış JSON |
 
-> **Durum uyarısı:** Fixture sonucu, modelin küçük ve kontrol edilebilir bir veri kümesinde doğru çalıştığını kanıtlar. Full-data üzerinde bulunan elastik çözümler ve kısmi LNS iyileştirmeleri, bütün katı kısıtları sağlamadıkları sürece teslim edilebilir çözüm sayılmaz. Güncel deney kaydı için [`docs/STATUS.md`](docs/STATUS.md) esas alınmalıdır.
+> **Durum uyarısı:** `main.py --full-data` her koşulda şema-uyumlu, tam-iddia (`claim_complete=True`), bağımsız-recompute'lu bir JSON yazar (`status=heuristic_incumbent_with_strict_violations`). Mevcut çıktı `outputs/full_data_output.json`: `objective=1,488,074.81`, hard-family kısıtları temiz (`A/B/D/F/G=0`), E1/E2 strict ihlalleri diagnostics bloğunda dürüstçe raporlanıyor (`E1=106`, `E2=221`), `strict_feasible=False`. Strict feasibility iddiası yoktur. Fixture (`--fixture`) için: `status=optimal`, `objective=668.75`, `valid=True`, `selected=18`. Güncel deney kaydı için [`docs/STATUS.md`](docs/STATUS.md) esas alınmalıdır.
 
 ## İçindekiler
 
@@ -155,8 +155,10 @@ tarifeyi yazmaz; bulunamazsa null-teşhis + exit 1.
 | `src/model/` | Matematiksel model | Amaç, A–G kısıtları, Big-M, elastik model, LNS ve warm-start yardımcıları |
 | `src/solve/` | Çözücü soyutlaması ve orkestrasyon | Runner, warm pipeline, ladder ve subprocess watchdog |
 | `src/output/` | Sonuç serileştirme | Deterministik JSON yazıcı |
-| `src/validate/` | Modelden bağımsız doğrulama | Kısıt ve amaç yeniden hesabı |
-| `scripts/` | Full-data deney, fizibilite ve teşhis komutları | Warm-start, LNS, LP anatomisi, sertifikalar ve worker süreçleri |
+| `src/validate/` | Modelden bağımsız doğrulama | Kısıt ve amaç yeniden hesabı, claim-completeness kontrolü |
+| `src/benchmark/` | Benchmark-safe pipeline | `times.py`, `claim.py`, `pipeline.py`, `writer.py` — seed-delta üzerinden tam-iddia incumbent üretimi |
+| `data_seed/` | Seed delta dosyaları | `full_data_best_deltas.json` — baseline saatlere uygulanacak delta vektörü |
+| `scripts/` | Full-data deney, fizibilite ve teşhis komutları | Warm-start, LNS, E1/E2 onarım, delta üretici ve worker süreçleri |
 | `tests/unit/` | Hızlı, çözücüsüz mantık testleri | Loader, aday, Big-M, validator ve yardımcı algoritmalar |
 | `tests/solve/` | Küçük HiGHS entegrasyon testleri | A–G kısıtları, model kurucular, warm-start ve CLI |
 | `tests/slow/` | Yavaş veya geniş kapsamlı testler | Brute-force oracle ve full-data odaklı kontroller |
@@ -168,9 +170,14 @@ tarifeyi yazmaz; bulunamazsa null-teşhis + exit 1.
 Komutları yeniden koşmadan sonuçları incelemek için: `outputs/fixture_output.json`
 (sentetik demo referansı) ve `outputs/full_data_output.json` (**resmî
 full-data teslim çıktısı**: seed-derived, tam-iddia, bağımsız-recompute
-`objective_value=1488074.8064039326`, açık E1/E2 strict teşhisi ekli —
+`objective_value=1488074.8064039326`, `claim_complete=True`, `A/B/D/F/G=0`,
+`E1=106`, `E2=221`, `strict_feasible=False`, açık E1/E2 strict teşhisi ekli —
 strict-clean iddiası değil). `outputs/GAMMA_SENSITIVITY_STATIC_SCAN.json`
 raporun bir EKİDİR, resmî sonucu değiştirmez — ayrıntı `KURULUM.md` §4b.
+
+**Teslim paketi:** `runs/bias_cozum.zip` — paket çalışır, fixture valid,
+full-data output claim-complete/hard-family-clean ve diagnostics dürüsttür.
+Strict feasibility iddiası yoktur; risk Kriter 2'dedir.
 
 ## Teknoloji yığını
 
@@ -660,7 +667,6 @@ Sınırlama: zaman limitli ve paralel MIP araması, aynı seed ile bile alternat
 | Belge | Ne zaman okunmalı? |
 |---|---|
 | [`README.md`](README.md) | Projeye giriş, kurulum, mimari ve genel durum |
-| [`CLAUDE.md`](CLAUDE.md) | Ayrıntılı kilometre taşı geçmişi, kilit teknik kararlar ve çalışma bağlamı |
 | [`ASSUMPTIONS.md`](ASSUMPTIONS.md) | Veri/model yorumları ve organizatöre bağlı açık varsayımlar |
 | [`docs/model.md`](docs/model.md) | Kümeler, değişkenler, amaç ve A–G matematiksel formülasyonu |
 | [`docs/STATUS.md`](docs/STATUS.md) | Full-data koşularının güncel tek-bakışta durumu |

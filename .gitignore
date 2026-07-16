@@ -18,3 +18,6 @@ data_raw/
 # v1/v2 O&D file sitting at repo root alongside data_raw/'s canonical one).
 # Relocate the whole package under data_raw/ instead of leaving it at root.
 /TEKNOFEST_tarife_input_files*/
+
+# AI assistant context file -- not part of the project deliverable
+CLAUDE.md
