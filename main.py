@@ -8,7 +8,10 @@ M4 scope: + E1 (yönsel sayı dengesi) + E2 (JT-farkı) + F (kova/kapasite
 bağlama). Tüm kısıt grupları (A-G) artık aktif -- build_model_m4.
 """
 import argparse
+import json
+import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -25,6 +28,47 @@ from src.output.writer import write_output
 from src.solve.ladder import solve_with_ladder
 from src.solve.runner import SolveResult
 from src.validate.independent_validator import finalize_reported_objective, recompute_objective, validate_output
+
+def _try_generate_dashboard(output_path: Path, is_full_data: bool, copy: bool = True) -> None:
+    """JSON çıktısından HTML pano üret; herhangi bir hata varsa sessizce geç."""
+    try:
+        from src.report.dashboard import build_dashboard_html
+        from src.data.provenance import file_provenance
+        from src.config.paths import FULL_CR, FULL_FP, FULL_OD, FULL_YV
+
+        root = Path(__file__).resolve().parent
+        outputs_dir = root / "outputs"
+        outputs_dir.mkdir(exist_ok=True)
+
+        canonical = outputs_dir / ("full_data_output.json" if is_full_data else "fixture_output.json")
+        if copy and output_path.resolve() != canonical.resolve() and output_path.exists():
+            shutil.copy2(output_path, canonical)
+
+        def _load(p: Path) -> dict:
+            return json.loads(p.read_text()) if p.exists() else {}
+
+        fix_out   = _load(outputs_dir / "fixture_output.json")
+        full_out  = _load(outputs_dir / "full_data_output.json")
+        gamma_out = _load(outputs_dir / "GAMMA_SENSITIVITY_STATIC_SCAN.json")
+
+        provenance = {}
+        for name, p in [("O&D", FULL_OD), ("Yolcu Verisi", FULL_YV),
+                         ("Change Ranking", FULL_CR), ("Flight Pairs", FULL_FP)]:
+            try:
+                provenance[name] = file_provenance(p)
+            except FileNotFoundError:
+                provenance[name] = {"path": str(p), "sha256": "(data_raw/ mevcut değil)"}
+
+        html = build_dashboard_html(
+            fix_out, full_out, gamma_out, provenance,
+            datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        dash = outputs_dir / "dashboard.html"
+        dash.write_text(html, encoding="utf-8")
+        print(f"[dashboard] {dash} ({len(html):,} bytes)")
+    except Exception as e:
+        print(f"[dashboard] skipped: {e}")
+
 
 FIXTURE_OD = "tests/fixtures/synthetic_od_table.xlsx"
 FIXTURE_YV = "tests/fixtures/synthetic_yolcu_verisi.xlsx"
@@ -157,7 +201,7 @@ def main(argv=None) -> int:
             if args.time_budget_sec is not None
             else config.get("benchmark_time_budget_sec", 600)
         )
-        return run_benchmark_pipeline(
+        exit_code = run_benchmark_pipeline(
             output_path=output_path,
             od_path=od_path,
             yv_path=yv_path,
@@ -182,6 +226,8 @@ def main(argv=None) -> int:
             improve_enabled=config.get("benchmark_improve_enabled", True),
             yolcu_strict=not args.full_data,
         )
+        _try_generate_dashboard(output_path, args.full_data)
+        return exit_code
 
     # M5f Kapı-5 (docs/CLOSING_PLAN.md, "gizli test dayanıklılığı"): the
     # ladder's own incumbent check ("has a MIP status") is NOT sufficient to
@@ -242,11 +288,13 @@ def main(argv=None) -> int:
               f"reason=no_accepted_solution_at_any_ladder_step")
         for entry in ladder_log:
             print(f"  ladder: {entry}")
+        _try_generate_dashboard(output_path, args.full_data, copy=False)
         return 1
 
     n_selected = sum(result.selected.values()) if result.selected else 0
     print(f"status={result.status} objective={result.objective_value} "
           f"selected={n_selected} valid=True")
+    _try_generate_dashboard(output_path, args.full_data)
     return 0
 
 

@@ -336,7 +336,7 @@
     }
   ],
   "solver_metrics": {
-    "solve_time_sec": 0.17796015739440918,
+    "solve_time_sec": 0.19607901573181152,
     "status": "optimal"
   }
 }
